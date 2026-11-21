@@ -8992,10 +8992,17 @@ static void page_rec(void)                /* REC held: the metronome, the count-
 static void page_color(void)
 {
     int i;
+    char title[24], amount[12];
     const color_params_t *p = &proj.color[ui.trk];
     band_set(trk_rgb(ui.trk), TRK_NAME[ui.trk], ui.color_page ? "COLOR: MODULES" : "COLOR: AMOUNT", "PRE-SEND + USB STEM", 2, ui.color_page);
     rrect(4,4,232,124,6,C_PANEL);
-    cv_text(12,10,&FONT_B,p->v[COL_ON] ? "COLOR ON" : "COLOR BYPASS",TH_INK);
+    title[0] = 0;
+    text_cat(title,TRK_NAME[ui.trk]);
+    text_cat(title,p->v[COL_ON] ? " COLOR ON" : " COLOR BYPASS");
+    int_text(p->v[COL_AMOUNT]*100/127,amount);
+    text_cat(amount,"%");
+    cv_text(12,10,&FONT_B,title,TH_INK);
+    cv_text(184,10,&FONT_B,amount,TH_FG);
     for (i=0;i<4;i++) {
         int v=p->v[COL_WEAR+i], y=35+i*15;
         cv_text(12,y,&FONT_XS,COLOR_LABEL[COL_WEAR+i],TH_FG);
