@@ -82,6 +82,8 @@ void syn_note_on_f(int trk, int note, float vel, int32_t gate, int mono, int fla
 void syn_note_off(int trk, int note);
 void syn_release(int trk, int seq_only);  /* the track's notes let go (trk < 0: all); seq_only: gated ones only */
 void syn_kill(void);
+/* Hard-cut this track, including its contribution to the last rendered block. */
+void syn_cut_track(int trk);
 void syn_pool(int n);                     /* the voices that may sound, 1..SYN_VOICES (the CPU's shedding) */
 int syn_voices(int trk);                  /* voices sounding (trk < 0: all) */
 int syn_pitch16(int trk);                 /* the track's newest voice's pitch now, 1/16 semitone; -1 none */

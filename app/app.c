@@ -301,12 +301,6 @@ static uint8_t dirty;                     /* changed since the last save: SAVE i
 /* the screen's meters, written where the sound is made (the audio interrupt), read and let go by the screen */
 static volatile float pad_hit[NPADS];     /* a pad's last hit (its velocity), until the screen has shown it */
 static volatile float drum_pk;            /* the drums' peak in the mix since the screen looked */
-static void pad_fire(int pad, float vel)  /* a drum pad sounds: the kit, and the screen's flash */
-{
-    drums_trigger(proj.kit, pad, vel);
-    if (pad >= 0 && pad < NPADS && vel > pad_hit[pad])
-        pad_hit[pad] = vel;
-}
 
 static inline int bit_get(const uint32_t *b, int s) { return (int)(b[s >> 5] >> (s & 31) & 1u); }
 static inline void bit_clear(uint32_t *b, int s) { b[s >> 5] &= ~(1u << (s & 31)); }
@@ -338,6 +332,44 @@ static void clips_all(int n)
 }
 static pattern_t *cur(void) { return &proj.p[proj.pat]; }
 static dpart_t *dcur(void) { return &proj.p[fill_on ? (clip_of(TR_DRUM) + 1) % NPAT : clip_of(TR_DRUM)].d; }
+static uint16_t drum_mutes_applied;
+/* Mutes cancel the current ROLL snapshot; a fresh ROLL hold can replay it. */
+static uint16_t roll_inhibit_pads;
+static uint8_t roll_inhibit_tracks;
+
+static int track_is_muted(int tr) { return (int)(proj.tmute >> tr & 1u); }
+
+static int drum_lane_muted(int pad)
+{
+    return track_is_muted(TR_DRUM) || (dcur()->mute >> pad & 1u);
+}
+
+/* Same lock as the DSP: refresh after a pattern/FILL change as well as the UI.
+ * Only rising edges cut a voice. Turning a mute off cannot resume a tail. */
+static void sync_drum_mutes(void)
+{
+    uint16_t mask = track_is_muted(TR_DRUM) ? (uint16_t)((1u << NPADS) - 1u) : dcur()->mute;
+    uint16_t cut = mask & (uint16_t)~drum_mutes_applied;
+    int pad;
+    if (mask == drum_mutes_applied)
+        return;
+    drum_mutes_applied = mask;
+    roll_inhibit_pads |= cut;
+    for (pad = 0; cut && pad < NPADS; pad++)
+        if (cut >> pad & 1u) {
+            drums_cut_pad(pad);
+            pad_hit[pad] = 0.0f;
+        }
+}
+
+static void pad_fire(int pad, float vel)
+{
+    if (pad < 0 || pad >= NPADS || drum_lane_muted(pad))
+        return;
+    drums_trigger(proj.kit, pad, vel);
+    if (vel > pad_hit[pad])
+        pad_hit[pad] = vel;
+}
 static ipart_t *ipart(int tr) { return &proj.p[clip_of(tr)].t[tr - 1]; }   /* tr 1..3 */
 static track_t *tset(int tr) { return &proj.tr[tr - 1]; }
 static uint8_t *part_len(int tr) { return tr == TR_DRUM ? &dcur()->len : &ipart(tr)->len; }
@@ -1749,7 +1781,7 @@ static void arp_tick(int t, uint32_t n)   /* audio interrupt: n samples on */
 {
     int i;
     float step;
-    if (!tset(t)->arp_mode)
+    if (track_is_muted(t) || !tset(t)->arp_mode)
         return;
     for (i = arp[t].n - 1; i >= 0; i--)   /* a step's notes end with its gate */
         if (arp[t].life[i] >= 0 && (arp[t].life[i] -= (int32_t)n) <= 0)
@@ -2066,9 +2098,9 @@ static void roll_fire(void)               /* ROLL: each track's step as it was p
     perf.rolls++;
     const dpart_t *d = dcur();
     int st = perf.roll_step[TR_DRUM] % (d->len ? d->len : 1);
-    if (clip[TR_DRUM] >= 0 && !(proj.tmute & 1u))
+    if (clip[TR_DRUM] >= 0 && !((proj.tmute | roll_inhibit_tracks) & 1u))
         for (pad = 0; pad < NPADS; pad++)
-            if (bit_get(d->hit[pad], st) && !(d->mute >> pad & 1u)) {
+            if (bit_get(d->hit[pad], st) && !((d->mute | roll_inhibit_pads) >> pad & 1u)) {
                 float v = bit_get(d->acc, st) ? 1.0f : DRUMS_VEL_NORMAL;
                 pad_fire(pad, v);
                 if (pad == 0)
@@ -2078,7 +2110,7 @@ static void roll_fire(void)               /* ROLL: each track's step as it was p
         const ipart_t *p = ipart(t);
         const nstep_t *s = &p->st[perf.roll_step[t] % (p->len ? p->len : 1)];
         int i;
-        if (clip[t] < 0 || (proj.tmute >> t & 1u) || !s->note[0])
+        if (clip[t] < 0 || ((proj.tmute | roll_inhibit_tracks) >> t & 1u) || !s->note[0])
             continue;
         for (i = 0; i < NCHORD && s->note[i]; i++)
             syn_note_on(t, s->note[i], (float)ns_vel(s) / 127.0f, (int32_t)(perf.roll_len * 0.6f), tset(t)->type == TY_MONO);
@@ -2365,6 +2397,8 @@ static void midi_in(void)                 /* audio interrupt */
             if (on && pad >= 0)
                 pad_fire(pad, d2 >= 127u ? 1.0f : (float)d2 / 127.0f);
         } else if (tr > 0 && d1 > 0u) {
+            if (on && track_is_muted(tr))
+                continue;
             if (tset(tr)->arp_mode) {
                 if (on || off)
                     arp_key(tr, (int)d1, (int)d2, on);
@@ -2634,6 +2668,8 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         uint8_t w = perf.want, up = (uint8_t)(w & ~perf.on), down = (uint8_t)(perf.on & ~w);
         if (up >> PF_ROLL & 1u) {
             int t;
+            roll_inhibit_tracks = proj.tmute;
+            roll_inhibit_pads = dcur()->mute;
             for (t = 0; t < NTRK; t++)
                 perf.roll_step[t] = (int8_t)(sq.t[t].step < 0 ? 0 : sq.t[t].step);
             perf.roll_to = 0.0f;
@@ -2758,6 +2794,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             if (m < (float)chunk)
                 chunk = m < 1.0f ? 1u : (uint32_t)m;
         }
+        sync_drum_mutes();
         drums_render(proj.kit, buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, (int)chunk);
         drum_mix(buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, chunk);
         if (STEMS && stems_on)            /* (the mix holds the drums alone until the synth comes in) */
@@ -3198,10 +3235,12 @@ static void pad_play(int pad, uint32_t vel)   /* a pad played by hand: heard, se
 {
     float v = vel >= 127u ? 1.0f : (float)vel / 127.0f;
     uint32_t f = plat_lock();
-    locks_apply(dcur(), -1, pad);         /* no step's locks; the drums' LFO, if it moves this pad */
-    pad_fire(pad, v);
-    if (pad == 0)
-        fx_key(proj.kit, v);
+    if (!drum_lane_muted(pad)) {
+        locks_apply(dcur(), -1, pad);     /* no step's locks; the drums' LFO, if it moves this pad */
+        pad_fire(pad, v);
+        if (pad == 0)
+            fx_key(proj.kit, v);
+    }
     plat_unlock(f);
     plat_midi_send(0x09u | 0x99u << 8 | (uint32_t)PAD_GM[pad] << 16 | (vel ? vel : 1u) << 24, TO_USB);
     if (ui.rec && (sq.playing || (ck.count > 0 && ck.count <= (int32_t)(bar_samples() * 0.125f)))) {
@@ -3364,13 +3403,17 @@ static void held_clear(void)              /* a step held + OCT-: its chance and 
 
 static void mute_toggle(int pad)
 {
-    dpart_t *p = dcur();
+    dpart_t *p;
     uint32_t f;
+    int muted;
     undo_mark(0);
     f = plat_lock();
+    p = dcur();
     p->mute ^= (uint16_t)(1u << pad);
+    muted = (int)(p->mute >> pad & 1u);
+    sync_drum_mutes();
     plat_unlock(f);
-    app_say(drums_pad_name(proj.kit, pad), (p->mute >> pad & 1u) ? "MUTED" : "ON");
+    app_say(drums_pad_name(proj.kit, pad), muted ? "MUTED" : "ON");
 }
 
 /* ------------------------------------------------------ the instrument tracks --- */
@@ -3392,7 +3435,7 @@ static void preview(int tr, const nstep_t *s)   /* a step heard by itself (stopp
     int i, mono = tset(tr)->type == TY_MONO;
     uint32_t f;
     int32_t gate;
-    if (sq.playing || !s->note[0])
+    if (sq.playing || !s->note[0] || track_is_muted(tr))
         return;
     gate = (int32_t)((float)s->gate * 0.125f * base_step(tr));
     f = plat_lock();
@@ -3659,14 +3702,16 @@ static void note_down(int key)            /* a key on the KEYS (or EDIT) page of
     ui.key_chord[key] = (uint8_t)(ts->chord | ts->chord_inv << 4);
     nc = chord_of(ui.key_chord[key], note, cn);
     f = plat_lock();
-    for (i = 0; i < nc; i++) {
-        if (ts->arp_mode)
-            arp_key(tr, cn[i], vel, 1);
-        else
-            syn_note_on(tr, cn[i], (float)vel / 127.0f, -1, ts->type == TY_MONO);
+    if (!track_is_muted(tr)) {
+        for (i = 0; i < nc; i++) {
+            if (ts->arp_mode)
+                arp_key(tr, cn[i], vel, 1);
+            else
+                syn_note_on(tr, cn[i], (float)vel / 127.0f, -1, ts->type == TY_MONO);
+        }
+        if (!ts->arp_mode)
+            lfo_note(tr);
     }
-    if (!ts->arp_mode)
-        lfo_note(tr);
     plat_unlock(f);
     for (i = 0; i < nc; i++)
         plat_midi_send(0x09u | (0x90u | (uint32_t)tr) << 8 | (uint32_t)cn[i] << 16 | (uint32_t)vel << 24, TO_USB);
@@ -5239,16 +5284,40 @@ static void nudge(int32_t e)              /* HOME, SEL + SELECT while playing: t
     app_say("NUDGE", s);
 }
 
+/* Set under the audio lock. Future notes follow the mask; old voices, arp
+ * material and the unused portion of the current synth block are removed.
+ * The shared FX/output history is intentionally not flushed. */
+static void set_track_mutes(uint8_t mask)
+{
+    uint32_t f = plat_lock();
+    uint8_t cut = mask & (uint8_t)~proj.tmute;
+    int t;
+    proj.tmute = mask;
+    roll_inhibit_tracks |= cut;
+    sync_drum_mutes();
+    if (cut & 1u)
+        drum_pk = 0.0f;
+    for (t = 1; t < NTRK; t++)
+        if (cut >> t & 1u) {
+            arp_clear(t);
+            sq.slid[t] = 0;
+            syn_cut_track(t);
+        }
+    if ((cut & 0x0Eu) && syn_at < SYN_CTL)
+        syn_mix(syn_l, syn_r, syn_rv, syn_dl);
+    plat_unlock(f);
+}
+
 static void solo(int tr)                  /* HOME, a track key + OCT+: only it heard; again: as before */
 {
     if (ui.solo_trk == tr) {
-        proj.tmute = ui.solo_save;
+        set_track_mutes(ui.solo_save);
         ui.solo_trk = -1;
         app_say(TRK_NAME[tr], "SOLO OFF");
     } else {
         if (ui.solo_trk < 0)
             ui.solo_save = proj.tmute;
-        proj.tmute = (uint8_t)(0x0Fu & ~(1u << tr));
+        set_track_mutes((uint8_t)(0x0Fu & ~(1u << tr)));
         ui.solo_trk = (int8_t)tr;
         app_say(TRK_NAME[tr], "SOLO");
     }
@@ -5268,7 +5337,7 @@ static int home_trkkey(void)              /* HOME: the track key held (the lowes
 
 static void track_mute(int tr)            /* HOME + pad keys 1-4 */
 {
-    proj.tmute ^= (uint8_t)(1u << tr);
+    set_track_mutes((uint8_t)(proj.tmute ^ (1u << tr)));
     dirty = 1;
     app_say(TRK_NAME[tr], (proj.tmute >> tr & 1u) ? "MUTED" : "ON");
 }
@@ -5975,6 +6044,7 @@ static void input(void)
             undo_mark(0);
             f = plat_lock();
             dcur()->mute = 0;
+            sync_drum_mutes();
             plat_unlock(f);
             app_say("ALL PADS", "ON");
         } else if (inst && ui.page == PG_GEN) {   /* the 303 generator: OCT+ a new line, OCT- a few steps changed */
@@ -6211,7 +6281,13 @@ static void input(void)
         }
         if (!(kp & bit))
             continue;
-        if ((ui.btn >> B_SEL & 1u) && k < NTRK) {   /* SEL held + pad keys 1-4: the track */
+        if (!inst && (ui.btn >> B_ENV & 1u) &&
+            (ui.page == PG_SEQ || ui.page == PG_EDIT || ui.page == PG_MUTE)) {
+            /* ENV + a black key directly mutes that lane, including when
+             * ENV was pressed from MUTE and has just returned to the editor. */
+            pad_pick((int)k);
+            mute_toggle((int)k);
+        } else if ((ui.btn >> B_SEL & 1u) && k < NTRK) {   /* SEL held + pad keys 1-4: the track */
             ui.sel_used = 1;
             track_pick((int)k);
             inst = ui.trk != TR_DRUM;
@@ -7533,9 +7609,12 @@ static void page_steps(void)              /* the drums' grid: 11 pads and the ac
 {
     dpart_t *p = dcur();
     int row, k, st = sq.t[TR_DRUM].step;
-    char t[24];
+    char t[24], hint[28];
     steps_text(t);
-    kit_band(t, drums_pad_name(proj.kit, ui.pad), npages(), ui.spage);
+    hint[0] = 0;
+    text_cat(hint, drums_pad_name(proj.kit, ui.pad));
+    text_cat(hint, drum_lane_muted(ui.pad) ? " MUTED / ENV+PAD" : " / MUTE: ENV+PAD");
+    kit_band(t, hint, npages(), ui.spage);
     hits_take();
     for (row = 0; row < NPADS + 1; row++) {
         int y = row * 11, muted = row < NPADS && (p->mute >> row & 1u), sel = row == ui.pad;
@@ -8130,14 +8209,14 @@ static void page_mute(void)               /* the drums' pads: on or muted in thi
     dpart_t *p = dcur();
     int k;
     uint16_t kc = KIT_RGB[proj.kit];
-    kit_band("MUTE", "PAD KEYS: MUTE  OCT+: ALL ON", 0, 0);
+    kit_band("LANE MUTE", track_is_muted(TR_DRUM) ? "DRUM TRACK MUTED" : "PAD KEYS: MUTE  OCT+: ALL ON", 0, 0);
     hits_take();
     for (k = 0; k < NPADS; k++) {
         int x = 3 + (k % 4) * 59, y = 2 + (k / 4) * 44, muted = (int)(p->mute >> k & 1u);
         uint16_t bg = muted ? C_PANEL : hit[k] > 0.05f ? mix565(C_TILE, C_WHITE2, (int)(hit[k] * 200.0f)) : C_TILE;
         rrect(x, y, 56, 40, 6, bg);
         cv_text(x + 7, y + 3, &FONT_B, drums_pad_name(proj.kit, k), muted ? C_TXT2 : hit[k] > 0.5f ? C_INK : C_TILET);
-        cv_text(x + 7, y + 21, &FONT_S, muted ? "OFF" : "ON", muted ? TH_RED : C_TILET2);
+        cv_text(x + 7, y + 21, &FONT_S, muted ? "MUTE" : "ON", muted ? TH_RED : C_TILET2);
         if (k == ui.pad)
             rrect(x + 36, y + 6, 12, 12, 6, kc);
     }

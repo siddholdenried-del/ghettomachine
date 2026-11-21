@@ -29,6 +29,8 @@ const char *drums_kit_name(int kit);
 void drums_init(void);
 /* vel 0..1: DRUMS_VEL_NORMAL for a plain step, 1.0 for an accented one; a played key's velocity in between */
 void drums_trigger(int kit, int pad, float vel);
+/* Cut the pad in all kits, including another kit's held-over tail. */
+void drums_cut_pad(int pad);
 /* renders n (<= DRUMS_MAX_BLOCK) samples of the kit, plus the other kit's tails while they ring, into l / r, and the
  * pads' reverb and delay sends (each pad's Rev and Dly knobs) into rev / dly (all overwritten) */
 void drums_render(int kit, float *l, float *r, float *rev, float *dly, int n);

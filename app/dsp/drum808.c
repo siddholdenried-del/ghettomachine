@@ -1700,7 +1700,6 @@ static int voice_active(const drum808_t *d, int l)
 #define D8_TAIL_K 1.0e-3f              /* -60 dB */
 #define D8_TAIL_N 882                  /* 20 ms: the gaps between a clap's bursts are shorter */
 #define D8_TAIL_FLOOR 1.0e-2f          /* the hit has sounded (voices peak at 0.2 .. 7) */
-#if D8_TAIL_DB
 static void voice_stop(drum808_t *d, int l)
 {
     switch (l) {
@@ -1717,6 +1716,24 @@ static void voice_stop(drum808_t *d, int l)
     default: d->cy.active = 0; break;
     }
 }
+void drum808_cut(drum808_t *d, int track)
+{
+    /* Alternate sounds can still be ringing after the pad's switch changes. */
+    switch (track) {
+    case D8_BD: voice_stop(d, L_BD); break;
+    case D8_SD: voice_stop(d, L_SD); break;
+    case D8_LT: case D8_MT: case D8_HT: voice_stop(d, L_T0 + (track - D8_LT)); break;
+    case D8_RS: voice_stop(d, L_RS); voice_stop(d, L_CL); break;
+    case D8_CP: voice_stop(d, L_CP); voice_stop(d, L_MA); break;
+    case D8_CH: voice_stop(d, L_CH); break;
+    case D8_OH: voice_stop(d, L_OH); break;
+    case D8_CY: voice_stop(d, L_CY); break;
+    case D8_CB: voice_stop(d, L_CB); break;
+    default: break;
+    }
+}
+
+#if D8_TAIL_DB
 static void lane_tail(drum808_t *d, int l, const float *buf, int m)
 {
     d8_lane_t *ln = &d->lane[l];

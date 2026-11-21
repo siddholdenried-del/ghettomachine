@@ -1234,6 +1234,23 @@ static volatile float trk_pk[SYN_TRACKS];   /* each track's peak in the mix sinc
 static float trk_l[SYN_TRACKS][SYN_CTL], trk_r[SYN_TRACKS][SYN_CTL];   /* the last block, each track alone */
 static uint32_t trk_used;                 /* bit t: track t sounded in it */
 
+void syn_cut_track(int t)
+{
+    int i;
+    if (t < 1 || t >= SYN_TRACKS)
+        return;
+    for (i = 0; i < NVOICE; i++)
+        if (vx[i].trk == t) {
+            vx[i].trk = 0;
+            vx[i].astage = vx[i].fstage = vx[i].mstage = 0;
+            vv[i].active = 0;
+        }
+    tk[t].nstack = 0;
+    used_m[0][t] = used_m[1][t] = used_lr[0][t] = used_lr[1][t] = 0;
+    trk_used &= ~(1u << t);
+    trk_pk[t] = 0.0f;
+}
+
 const float *syn_track(int t, int side)
 {
     if (t < 1 || t >= SYN_TRACKS || !(trk_used >> t & 1u))

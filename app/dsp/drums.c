@@ -77,6 +77,14 @@ void drums_trigger(int kit, int pad, float vel)
         drum909_trigger(&d909, v, vel);
 }
 
+void drums_cut_pad(int pad)
+{
+    if (pad < 0 || pad >= DRUMS_NPADS)
+        return;
+    drum909_cut(&d909, pad);
+    drum808_cut(&d808, PAD808[pad]);
+}
+
 void drums_render(int kit, float *l, float *r, float *rev, float *dly, int n)
 {
     int i;

@@ -91,7 +91,7 @@ at the top and the knob cards are dark, lettered in it. Three parts, top to bott
 - **EDIT:** the pad's knobs: tune, tone, decay, its reverb and delay sends, and so on. Tap EDIT for more. The last page
   is the kit's own knobs (accent, velocity).
   - Hold a step and turn a knob: that value for that step only (a lock). Held step + OCT− clears its locks.
-- **ENV:** the MUTE page. Pad keys mute pads in this pattern. OCT+ unmutes them all.
+- **ENV:** the LANE MUTE page. Tap a black pad key to toggle that drum lane in this pattern, or hold **ENV** and tap a pad from the drum editor. The grid shows each lane as ON or MUTE. OCT+ unmutes them all. Muting cuts a ringing hit immediately; unmuting waits for a new hit.
 - **Knobs on the steps page:** LENGTH and RATE of this track's part, SWING and TEMPO.
 
 Hold **SEQ** and tap **OCT+** to repeat the selected track’s part into a second half, or **OCT−** to keep its first half (rounding an odd length down). This copies notes, accents, chance and locks without changing the track’s rate. The second half is erased on halving. A full repeat is blocked if it would exceed 128 steps or the part’s lock capacity. **EDIT + OCT−** undoes, **EDIT + OCT+** redoes. On instrument STEPS, black keys 1–8 pick the available banks of 16.
@@ -398,6 +398,8 @@ bass of pattern 7. The playing clip is solid with a bar showing where it is; a c
 | **Hold a track key + OCT−** | That track stops (at the bar). Start it again with a clip. |
 | **Tap a track key** | Mute or unmute it. |
 | **Hold a track key + OCT+** | **Solo** it; again to go back to how the mutes were. |
+
+Track and lane mutes cut their internal voices and new sends immediately, including held notes. Unmuting waits for a new hit or note. Sound already in the shared reverb/delay or performance loop decays or releases naturally; muting does not flush effects used by the other tracks.
 | **Hold a white key + K1 / K2** | That scene's **follow action** and after how many bars (below). |
 | **Black keys 5–11, held** | The **perform keys** (below). |
 | **Hold OCT+** | TAPE STOP. |
