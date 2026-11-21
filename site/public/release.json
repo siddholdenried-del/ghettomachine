@@ -25,8 +25,8 @@
       "sha256": "c4fc02bbe685f3161e16c6233e7f7f1fb3a36f4de9c8a874103030b6751bcfa9"
     },
     "emu/app.wasm": {
-      "bytes": 689762,
-      "sha256": "93b7b97a7a2682c269d891a471944bae10678a8c1f31748a79aa8a4e98cc010c"
+      "bytes": 693158,
+      "sha256": "f9572263cb8120fcc265f9a11d5a19acf61d6166d686d6ec10358fd6408ef99b"
     },
     "emu/app_worklet.js": {
       "bytes": 210,
@@ -105,8 +105,8 @@
       "sha256": "d0500e1b146ac32cae7059985bd702e76370bc31c84dddccc4c4657c04e859ab"
     },
     "guide/setup/index.html": {
-      "bytes": 30325,
-      "sha256": "444149ee29c730785d8ef33eab8a6b0e9d0f47594f4fdd70693109569332820f"
+      "bytes": 30627,
+      "sha256": "6cd2068ae4f90c862bd881decb7003f14c52284b2e4d0b24347e365db89d7975"
     },
     "guide/sounds/index.html": {
       "bytes": 27064,
@@ -117,8 +117,8 @@
       "sha256": "527ec9b87b820943bdae48b8851edb5532d2c6bb7ce5b270a76d8dc622d38e76"
     },
     "technical/index.html": {
-      "bytes": 65104,
-      "sha256": "57409126b78520c10f898a0ed30814520427a2fe1ff266cbff218b75d6d5e9b9"
+      "bytes": 66310,
+      "sha256": "4ab007bd95c7cac6f13fb5719a7e396664163d195ff941b19b85a921a5a6e49b"
     }
   },
   "project": "GhettoMachine",
@@ -126,20 +126,20 @@
   "site": "https://ghettomachine.bongcult.com",
   "source": {
     "emscripten": "7.0.0+777e6e5db7b4990bcaeb1b9998ed642cc84e6629",
-    "emulator_build_commit": "048bd0772a8dd301e087569e9dde77b7f812a731",
-    "feature_source": "048bd0772a8dd301e087569e9dde77b7f812a731",
+    "emulator_build_commit": "7aa0a817b82a8c2b40613387d384cd3a2adf8e5c",
+    "feature_source": "7aa0a817b82a8c2b40613387d384cd3a2adf8e5c",
     "felucca_bsp": "2a5af3dfc8bccb92e37d48a3e7e0bf9a5827e51f",
     "fm1_base": "7337375c15e9db26f23b0c68a1db61429add2f48",
-    "provenance": "Browser development build from the exact clean source of the CPU pass: the 606 clap at 22.05 kHz and cheaper hats and cymbal, cheaper Color and phaser, inserts and Color that sleep on silence, and SETUP's CPU-by-stage view.",
-    "remote_main_predecessor": "593f1bcfa98d49648325c474de7ff5f12c5e3bb2",
+    "provenance": "Browser development build from the exact clean source of the second CPU pass: the reverb at 22.05 kHz (its tail within 0.8 dB of before in every octave band), the master bus's loops tightened (bit for bit the same), and the synth's voices, reverb, delay and master bus placed in the FM-1's RAM (plain code in the browser).",
+    "remote_main_predecessor": "fab31ec64cba9d02d7b5e4602869b3e391a128bd",
     "repository": "https://github.com/siddholdenried-del/ghettomachine",
-    "runtime_tree": "7ad8735deaa0da70de9f3dd3861d9ed64d252107"
+    "runtime_tree": "644c2c6ce208adba6b71da45ac6a1a61e8eae376"
   },
   "targets": {
     "device": {
-      "application_bytes": 567008,
-      "build_from": "048bd0772a8dd301e087569e9dde77b7f812a731",
-      "build_id": "FC10272B",
+      "application_bytes": 567544,
+      "build_from": "7aa0a817b82a8c2b40613387d384cd3a2adf8e5c",
+      "build_id": "5B355D7D",
       "build_status": "linked-and-packaged",
       "downloads": [],
       "flashed": false,
@@ -152,10 +152,10 @@
       "hardware_tested": false,
       "package_bytes": 616099,
       "package_identity": "FM-1_800",
-      "package_sha256": "50f2986bd63c259e37be4fb17c5a01fbe0f4cc680cd4a3155270db93047aaf2e",
+      "package_sha256": "bd34ee0e334d47ca46161290ddc61d2d9892b996daee21dc7c3014547e56db55",
       "pool_guard_bytes": 8192,
       "pool_limit_bytes": 344064,
-      "pool_used_bytes": 335124,
+      "pool_used_bytes": 326872,
       "ram_limit_bytes": 98304,
       "ram_used_bytes": 97604,
       "status": "not-distributed",
@@ -186,7 +186,7 @@
       "identity": "GHETTOMACHINE DEV",
       "path": "emu/app.wasm",
       "platform": "browser",
-      "sha256": "93b7b97a7a2682c269d891a471944bae10678a8c1f31748a79aa8a4e98cc010c"
+      "sha256": "f9572263cb8120fcc265f9a11d5a19acf61d6166d686d6ec10358fd6408ef99b"
     }
   ]
 }
