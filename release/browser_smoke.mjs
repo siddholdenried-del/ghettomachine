@@ -81,11 +81,20 @@ try{
     await call('Emulation.setDeviceMetricsOverride',{width,height:844,deviceScaleFactor:1,mobile:width<600});
     if(kind==='ghettomachine'){
       await nav('/','location.pathname==="/" && !!document.querySelector(".gm-home")');
-      assert.equal(await value('document.querySelector(".ver").textContent.trim()'),'V0.4');
+      const claim=await value(`(async()=>{
+        const m=await (await fetch('/release.json')).json();
+        return {label:document.querySelector('.ver').textContent.trim(),sealed:m.targets.web.landing_label,
+        has128:document.querySelector('.gm-home .sub').textContent.includes('128-step'),
+        device:m.targets.device.status};
+      })()`);
+      assert.equal(claim.label,claim.sealed);
+      assert.ok(claim.has128 && claim.device==='not-distributed');
       await nav('/guide/recording/#record-notes','location.pathname==="/guide/recording/" && !!document.querySelector(".gm-guide")');
       await wait('getComputedStyle(document.documentElement).getPropertyValue("--bbs-line").trim()==="1px"','shared local theme is not loaded');
       assert.ok(await value('document.documentElement.scrollWidth <= innerWidth+2 && document.querySelector(".gm-guide").textContent.includes("Hold REC and press GLO.")'));
       if(width===390)assert.ok(await value('document.querySelector(".gm-toc-mobile summary").getBoundingClientRect().width>0'));
+      await nav('/guide/sounds/#track-inserts','location.pathname==="/guide/sounds/" && !!document.getElementById("track-inserts")');
+      assert.ok(await value('document.querySelector(".gm-guide").textContent.includes("Trem / Pan") && document.querySelector(".gm-guide").textContent.includes("hold SEL and tap FX")'));
       await nav('/emu/','location.pathname==="/emu/" && !!document.getElementById("go")');
       assert.ok(await value('document.documentElement.scrollWidth <= innerWidth+2 && document.getElementById("go").textContent==="Switch on"'));
       await value('document.getElementById("go").click()');

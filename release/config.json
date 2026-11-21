@@ -33,7 +33,7 @@
   ],
   "claims": [
     {
-      "literal": "<span class=\"ver\">V0.4</span>",
+      "literal": "<span class=\"ver\">DEV PREVIEW</span>",
       "path": "index.html"
     },
     {
@@ -57,16 +57,32 @@
       "path": "guide/setup/index.html"
     },
     {
-      "literal": "The controls below cover 0.4 and 0.5. Hardware-only USB stems are new in 0.5.",
-      "path": "guide/index.html"
-    },
-    {
       "literal": "<span class=\"ver\">V0.5</span>",
       "path": "technical/index.html"
     },
     {
       "literal": "This is an FM-1 hardware feature, not an export button in the browser groovebox.",
       "path": "guide/recording/index.html"
+    },
+    {
+      "literal": "909, 808 and 606 kits, three synth or sampler tracks, and a 128-step sequencer.",
+      "path": "index.html"
+    },
+    {
+      "literal": "This guide covers the current browser development preview",
+      "path": "guide/index.html"
+    },
+    {
+      "literal": "Phaser, Trem / Pan, Chorus, Flanger, Comb, Env Filter, Freq Shift, Micro Pitch, Resonator or OFF.",
+      "path": "guide/sounds/index.html"
+    },
+    {
+      "literal": "reads project formats 1\u20134 and saves format 5.",
+      "path": "guide/setup/index.html"
+    },
+    {
+      "literal": "Historical tour (0.5).",
+      "path": "technical/index.html"
     }
   ],
   "manifest_path": "release.json",
@@ -77,33 +93,51 @@
     "/guide/recording/",
     "/guide/setup/",
     "/emu/",
-    "/technical/"
+    "/technical/",
+    "/guide/sounds/"
   ],
   "schema": 1,
   "site": "https://ghettomachine.bongcult.com",
   "source": {
-    "emulator_archive_commit": "47e52f19c0e5b5ec0dcbfb9f3a5731492b0ab5be",
-    "emulator_build_commit": "60b577ea722e7e089b8f620ec010af3200d3f0bf",
-    "provenance": "Historical committed artifact, not a fresh reproduction from this release plumbing checkout.",
-    "public_seed_commit": "49bb2e8267862119a30be1c960e372f4d22e4ac6",
-    "repository": "https://github.com/siddholdenried-del/ghettomachine"
+    "emscripten": "4.0.11+d3432e7a2a6585331c94b041973fb16c9f332ce4",
+    "emulator_build_commit": "d05369606353b86c55006708332de8959c38eff6",
+    "feature_source": "8d8880b0f169a435a15406d867e28914103c7fd5",
+    "felucca_bsp": "2a5af3dfc8bccb92e37d48a3e7e0bf9a5827e51f",
+    "fm1_base": "7337375c15e9db26f23b0c68a1db61429add2f48",
+    "provenance": "Fresh browser development build from clean committed runtime, after reconciling current main dark-theme CPU/display changes and 808 gain with the approved sequencer/606/mute/chord/insert/art changes.",
+    "remote_main_predecessor": "435f9c8455d47e05a328cc6d0bb842a2f8863a97",
+    "repository": "https://github.com/siddholdenried-del/ghettomachine",
+    "runtime_tree": "a1105d58d15488c6d3be97e305a17ff8119503de"
   },
   "targets": {
     "device": {
+      "application_bytes": 520032,
+      "build_from": "d05369606353b86c55006708332de8959c38eff6",
+      "build_id": "556E98C4",
+      "build_status": "linked-and-packaged",
       "downloads": [],
+      "flashed": false,
+      "hardware_tested": false,
+      "package_bytes": 616099,
+      "package_identity": "FM-1_800",
+      "package_sha256": "3c6bea2e1fe97feab1aa05224eb697aba3042d91d067717ebce9c7e10f8f5cad",
+      "pool_guard_bytes": 8192,
+      "pool_limit_bytes": 344064,
+      "pool_used_bytes": 334672,
+      "ram_limit_bytes": 98304,
+      "ram_used_bytes": 93172,
       "status": "not-distributed",
       "tested_for_this_release": false
     },
     "web": {
       "deployment": "existing Worker Builds project; do not publish this branch without review",
       "emulator_identity": "GHETTOMACHINE DEV",
-      "landing_label": "V0.4",
+      "landing_label": "DEV PREVIEW",
       "manual_versions": [
-        "0.4",
-        "0.5"
+        "development-preview"
       ],
       "status": "candidate",
-      "technical_tour_version": "0.5"
+      "technical_tour_version": "0.5 (historical)"
     }
   },
   "theme": {
@@ -115,13 +149,13 @@
     "tokens_path": "dungeon-bbs-tokens.css",
     "tokens_sha256": "45aa96236241aceb26c8a824f558e570a84fed17f73e8bf39a62b8038bb97cf2"
   },
-  "version": "0.4",
+  "version": "development-preview",
   "wasm": [
     {
       "identity": "GHETTOMACHINE DEV",
       "path": "emu/app.wasm",
       "platform": "browser",
-      "sha256": "5f09b3d0cbcd49ed51a9c2c55192e684fae2c467c25f45653fcb9738d7c98907"
+      "sha256": "8868f57e66549d02bab6b6abdc2d62e4c8a43e8858df436244a9542495fbee1c"
     }
   ]
 }

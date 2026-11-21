@@ -116,7 +116,7 @@ def check_claims(root, cfg, actual, support):
             raise ValueError(f"wasm provenance pin changed: {item['path']}")
     if cfg["project"] == "GhettoMachine":
         labels = re.findall(r'<span class="ver">([^<]+)</span>', (root/"index.html").read_text(encoding="utf-8"))
-        if labels != ["V"+cfg["version"]] or labels != [cfg["targets"]["web"]["landing_label"]]:
+        if labels != [cfg["targets"]["web"]["landing_label"]]:
             raise ValueError("release claim: landing version must match the profile")
         for asset in cfg["wasm"]:
             if asset.get("identity","").encode("ascii") not in (root/asset["path"]).read_bytes():

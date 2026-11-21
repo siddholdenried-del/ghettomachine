@@ -3,12 +3,13 @@
 # The ordinary/default command is read-only. --publish remains explicit.
 set -eu
 case "${1:---check}" in
-    --check) python3 release/verify_release.py verify site/public; exit ;;
+    --check) sh release/check_runtime_source.sh; python3 release/verify_release.py verify site/public; exit ;;
     --publish) ;;
     *) echo "usage: sh site/publish.sh [--check | --publish]" >&2; exit 2 ;;
 esac
 [ "$(git branch --show-current)" = main ] || { echo "publish: only the reviewed local main branch can publish" >&2; exit 1; }
 [ -z "$(git status --porcelain -- .)" ] || { echo "publish: commit all reviewed source changes first" >&2; exit 1; }
+sh release/check_runtime_source.sh
 SRC=$(git rev-parse --short HEAD)
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT HUP INT TERM

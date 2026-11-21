@@ -210,6 +210,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 0.85rem; border-top: 
 <tr><th scope="row">Read the display without relying on the LCD</th><td>Open Screen Reader below the panel. Use System screen reader, Built-in voice, or Off, plus Read whole screen and Repeat last. If the built-in voice won't start, try System screen reader.</td></tr>
 </tbody></table></div>
 
+<p>If SAVE shows <strong>PROJECT TOO LARGE</strong>, the previous save is untouched and the edits are still in memory. Shorten or clear some long, heavily programmed parts and save again. The existing project slots and sample-bank space have not changed.</p>
 <h2 id="shortcuts" tabindex="-1">Context shortcuts worth memorizing</h2>
 <div class="table-wrap gm-guide-table" tabindex="0" role="region" aria-label="FM-1 shortcuts and their context"><table>
 <caption>FM-1 shortcuts and their context</caption>
@@ -249,10 +250,10 @@ footer { margin-top: 48px; color: var(--muted); font-size: 0.85rem; border-top: 
 <tr><th scope="row">User presets and kits</th><td>Immediately on releasing SAVE after choosing a user location, while stopped. While playing, the screen says STOP FIRST.</td><td>Separate preset store. Tap SAVE as well to keep the edits in the current project.</td></tr>
 </tbody></table></div>
 <p>Browser saves are local to the site and browser profile; another browser, private mode, storage cleanup or a reset can mean a different or empty project. The browser's <strong>Factory reset</strong> requires a second press and forgets its saved groovebox data. It is not an audio fix and cannot restore data once cleared. <strong>Copy session</strong> is for troubleshooting, not backup.</p>
-<p><strong>Versions:</strong> 0.4 and 0.5 read each other’s projects; both read 0.2 and 0.3 project data. Older projects gain default values for newer settings; generator state starts unset. After a 0.4 SAVE, older firmware cannot read the new project format and can show a fresh project if downgraded. Return to 0.4 or 0.5 to read the new format again. Builds before 0.2 are not supported for conversion.</p>
+<p><strong>Project compatibility:</strong> This development preview reads project formats 1–4 and saves format 5. Older formats gain defaults for new settings; instrument inserts start OFF. Back up any project you want to open again in an older firmware. Saving in the preview does not make the new-format project readable by earlier builds.</p>
 
 <h2 id="hardware-install" tabindex="-1">FM-1 hardware installation and recovery</h2>
-<p>GhettoMachine is replacement firmware for the M-VAVE FM-1. Save before updating, because the install restarts the device. Once an fm1-base or Felucca-based firmware is present, the fm1-base USB-MIDI installer can send the built GhettoMachine <code>.fwsc</code> package. It writes changed 4 KiB firmware sectors, not the boot code. Projects and samples are separate from those writes.</p>
+<p>This page documents the hardware workflow, not an install offer for the current preview. The current device target builds, but has not been verified on an FM-1 and is not offered here as a download. GhettoMachine is replacement firmware for the M-VAVE FM-1. Save before updating, because the install restarts the device. Once an fm1-base or Felucca-based firmware is present, the fm1-base USB-MIDI installer can send the built GhettoMachine <code>.fwsc</code> package. It writes changed 4 KiB firmware sectors, not the boot code. Projects and samples are separate from those writes.</p>
 <p>Stock M-VAVE firmware needs a different first-install path: the documented build initially used an ESP32-S3 adapter with a backup and dry run before writing. The same hardware recovery path was used for stock firmware. Don't treat a stock FM-1 or a cut-off install as an ordinary USB update. Check the exact firmware and board before proceeding; see <a href="/technical/">the technical overview</a> and <a href="https://github.com/charlesvestal/fm1-base">fm1-base documentation</a>.</p>
 
 <h2 id="troubleshooting" tabindex="-1">Troubleshoot the symptom in front of you</h2>

@@ -215,7 +215,7 @@ MASTHEAD = """<a class="bc-skip" href="#gm-main">Skip to content</a>
 """
 LANDING = """<div class="hero gm-home">
   <div class="screen">
-    <div class="top"><span class="label">Firmware for the M-VAVE FM-1</span><span class="ver">VRELEASE_VERSION</span></div>
+    <div class="top"><span class="label">Firmware for the M-VAVE FM-1</span><span class="ver">RELEASE_VERSION_LABEL</span></div>
     <h1><span class="logo">GhettoMachine</span></h1>
     <p class="sub">Four-track groovebox firmware. 909, 808 and 606 kits, three synth or sampler tracks, and a 128-step sequencer.</p>
   </div>
@@ -325,7 +325,7 @@ def build_landing(out):
         "  addEventListener('hashchange', forward);\n"
         "})();\n"
     )
-    landing = LANDING.replace("RELEASE_VERSION", html.escape(RELEASE["version"])).replace("REPO", REPO).replace("TECHNICAL_TOPIC_LINKS", fallback)
+    landing = LANDING.replace("RELEASE_VERSION_LABEL", html.escape(RELEASE["targets"]["web"]["landing_label"])).replace("REPO", REPO).replace("TECHNICAL_TOPIC_LINKS", fallback)
     (out / "index.html").write_text(render_document(head, "GhettoMachine · BongTech", "/", landing))
     tech_dir = out / "technical"
     tech_dir.mkdir(exist_ok=True)

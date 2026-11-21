@@ -25,8 +25,8 @@
       "sha256": "c4fc02bbe685f3161e16c6233e7f7f1fb3a36f4de9c8a874103030b6751bcfa9"
     },
     "emu/app.wasm": {
-      "bytes": 551913,
-      "sha256": "5f09b3d0cbcd49ed51a9c2c55192e684fae2c467c25f45653fcb9738d7c98907"
+      "bytes": 663207,
+      "sha256": "8868f57e66549d02bab6b6abdc2d62e4c8a43e8858df436244a9542495fbee1c"
     },
     "emu/app_worklet.js": {
       "bytes": 210,
@@ -77,76 +77,93 @@
       "sha256": "e205d8b375cf94cef107f04849f7d326db70aa8ea9f0882b0ff569e7084dddbd"
     },
     "guide/beats/index.html": {
-      "bytes": 28791,
-      "sha256": "582b42cb04f1f5f6815d9f9ee742a3d9f6e237574b97a0fb174bc5248d9a0771"
+      "bytes": 29822,
+      "sha256": "d9d8fed785ded5ed9d7ba3cae514ea89b42a4c0895fa695cbab3c811c93870d9"
     },
     "guide/index.html": {
-      "bytes": 26319,
-      "sha256": "2197708fbf51ab7f549539eb3c6ed85cb5a9df3c64dbdf9bfeec01cc7e620767"
+      "bytes": 26820,
+      "sha256": "1e9401f763207950ff35262555068c351d46f21c19bcb58d1513bd428081acc5"
     },
     "guide/mixer/index.html": {
-      "bytes": 21199,
-      "sha256": "8d13197679213d5a49f8efc12fad28c81abf156535d34fa59e05cb3558a1c1e6"
+      "bytes": 21355,
+      "sha256": "3d6fd4b52ca4b0dbb2345e768ffa8072cfd8da7404123e8117b0268ac4d650b7"
     },
     "guide/modulation/index.html": {
-      "bytes": 37562,
-      "sha256": "533ccf95e2429f90ead8f426603bd0f65fb0d0b1de1de7c77da7a9d1507a7988"
+      "bytes": 37595,
+      "sha256": "93a32b722864f569595515ec102ad990630ca9ceae45725918d6be77f0aaec80"
     },
     "guide/performance/index.html": {
-      "bytes": 21495,
-      "sha256": "f1aed39b150338d8dee8e51e7896c244a84f83d2aa2fc9769f5a51404138c180"
+      "bytes": 21637,
+      "sha256": "8232d22c5cf08b5e4b59ac42e2041244a953348299c8bfc42de898158dc36d9f"
     },
     "guide/recording/index.html": {
       "bytes": 25434,
       "sha256": "7e4b179d14a59aa3fc428a237ee170403db93fc58ba8cce2dea48b2849df3146"
     },
     "guide/reference/index.html": {
-      "bytes": 54199,
-      "sha256": "f2d3ac512b6380613cb112f350f95b915d2c1244f4ea20d1fc3919e57936bfb5"
+      "bytes": 54632,
+      "sha256": "b77b2fc1c274fda682c53aa3acbe82ce330d241334ed6f39780601388d1cac0c"
     },
     "guide/setup/index.html": {
-      "bytes": 29199,
-      "sha256": "070185c7b8f10c304dcc5b4c0456bf26b0b8e507be8513f36474deea9bf8af36"
+      "bytes": 29593,
+      "sha256": "0e4c93fde3b9e9cefb0d42da065dfa2d229ffcb00d84c6f8fef9b8b0da457207"
     },
     "guide/sounds/index.html": {
-      "bytes": 25129,
-      "sha256": "c28e04127bd7ac21b86e77f110013de2ea92b7c1bd2e9a7f71843b09778f43bd"
+      "bytes": 26052,
+      "sha256": "3047d94c0ad4f92a263560e74cbbd66e20e1d3e2848d43b000ffb12276ebf22b"
     },
     "index.html": {
-      "bytes": 13539,
-      "sha256": "7bbec5404fe595ce6d1e926efeb16664af869bb6226d08decd260e71b8d70dfc"
+      "bytes": 13556,
+      "sha256": "7addc72eb0ed437698ff6f85aba5feaa145db2f8da37ee95931c6076d9d1727b"
     },
     "technical/index.html": {
-      "bytes": 62036,
-      "sha256": "11c20b3d6061cac044df9e81c965024f23fd7640573ccab962c60184ed89a335"
+      "bytes": 63652,
+      "sha256": "5b62ba3f10c647cc342aef776c990570d104409c2e3f61eb87bc981bda49d28f"
     }
   },
   "project": "GhettoMachine",
   "schema": 1,
   "site": "https://ghettomachine.bongcult.com",
   "source": {
-    "emulator_archive_commit": "47e52f19c0e5b5ec0dcbfb9f3a5731492b0ab5be",
-    "emulator_build_commit": "60b577ea722e7e089b8f620ec010af3200d3f0bf",
-    "provenance": "Historical committed artifact, not a fresh reproduction from this release plumbing checkout.",
-    "public_seed_commit": "49bb2e8267862119a30be1c960e372f4d22e4ac6",
-    "repository": "https://github.com/siddholdenried-del/ghettomachine"
+    "emscripten": "4.0.11+d3432e7a2a6585331c94b041973fb16c9f332ce4",
+    "emulator_build_commit": "d05369606353b86c55006708332de8959c38eff6",
+    "feature_source": "8d8880b0f169a435a15406d867e28914103c7fd5",
+    "felucca_bsp": "2a5af3dfc8bccb92e37d48a3e7e0bf9a5827e51f",
+    "fm1_base": "7337375c15e9db26f23b0c68a1db61429add2f48",
+    "provenance": "Fresh browser development build from clean committed runtime, after reconciling current main dark-theme CPU/display changes and 808 gain with the approved sequencer/606/mute/chord/insert/art changes.",
+    "remote_main_predecessor": "435f9c8455d47e05a328cc6d0bb842a2f8863a97",
+    "repository": "https://github.com/siddholdenried-del/ghettomachine",
+    "runtime_tree": "a1105d58d15488c6d3be97e305a17ff8119503de"
   },
   "targets": {
     "device": {
+      "application_bytes": 520032,
+      "build_from": "d05369606353b86c55006708332de8959c38eff6",
+      "build_id": "556E98C4",
+      "build_status": "linked-and-packaged",
       "downloads": [],
+      "flashed": false,
+      "hardware_tested": false,
+      "package_bytes": 616099,
+      "package_identity": "FM-1_800",
+      "package_sha256": "3c6bea2e1fe97feab1aa05224eb697aba3042d91d067717ebce9c7e10f8f5cad",
+      "pool_guard_bytes": 8192,
+      "pool_limit_bytes": 344064,
+      "pool_used_bytes": 334672,
+      "ram_limit_bytes": 98304,
+      "ram_used_bytes": 93172,
       "status": "not-distributed",
       "tested_for_this_release": false
     },
     "web": {
       "deployment": "existing Worker Builds project; do not publish this branch without review",
       "emulator_identity": "GHETTOMACHINE DEV",
-      "landing_label": "V0.4",
+      "landing_label": "DEV PREVIEW",
       "manual_versions": [
-        "0.4",
-        "0.5"
+        "development-preview"
       ],
       "status": "candidate",
-      "technical_tour_version": "0.5"
+      "technical_tour_version": "0.5 (historical)"
     }
   },
   "theme": {
@@ -157,13 +174,13 @@
     "tokens_path": "dungeon-bbs-tokens.css",
     "tokens_sha256": "45aa96236241aceb26c8a824f558e570a84fed17f73e8bf39a62b8038bb97cf2"
   },
-  "version": "0.4",
+  "version": "development-preview",
   "wasm": [
     {
       "identity": "GHETTOMACHINE DEV",
       "path": "emu/app.wasm",
       "platform": "browser",
-      "sha256": "5f09b3d0cbcd49ed51a9c2c55192e684fae2c467c25f45653fcb9738d7c98907"
+      "sha256": "8868f57e66549d02bab6b6abdc2d62e4c8a43e8858df436244a9542495fbee1c"
     }
   ]
 }

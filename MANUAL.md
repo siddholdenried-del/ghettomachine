@@ -1,4 +1,4 @@
-# BongTech GhettoMachine 0.5: the manual
+# BongTech GhettoMachine: development preview manual
 
 The BongTech GhettoMachine turns the M-VAVE FM-1 into a four-track groovebox:
 
@@ -15,7 +15,7 @@ The BongTech GhettoMachine turns the M-VAVE FM-1 into a four-track groovebox:
 - **A 303 pattern generator** on T2–T4: acid lines with slides and accents, made from a few knobs.
 - **Stems over USB:** a computer records the master and each track on its own pair of inputs, all at once.
 
-> **0.5 is on the FM-1** (first installed over USB on 20 Nov). The first recording from it clicked now and then, so
+> **Historical hardware test: 0.5** (first installed over USB on 20 Nov). The first recording from it clicked now and then, so
 > 0.5 now keeps a deeper USB buffer, MASTER no longer changes what a computer records, and the drum steps' beats glow
 > (1, 5, 9, 13): that build went on the FM-1 on 21 Nov, and a recording from it had no clicks. REC + GLO (erase the
 > track's part, to record it again) went on it the same day. The 808 brought up to the 909's level is in the source,
@@ -53,6 +53,7 @@ route still works for getting M-VAVE's firmware back.
 | **EDIT, ENV, LFO, ARP, FX, GLO** | Their pages. Press again for the next page; after the last, back. |
 | **HOME** | The scene grid, for playing live. Again: the song, then SETUP, then back to the track. |
 | **SEL + GLO** | The master bus, at once. |
+| **SEL + FX (T2–T4)** | The selected instrument track's insert; SELECT chooses a mode or OFF. |
 | **SAVE** | Tap: save the project. Hold it and press a pattern key: copy the pattern there. Hold it and turn PRESETS: save a preset. Hold it and press OCT−: the track's sound back to how it was saved. |
 | **EDIT + OCT− / OCT+** | Undo, redo (8 levels). |
 
