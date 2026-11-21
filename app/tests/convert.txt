@@ -8,7 +8,7 @@ flash_load app/tests/fixtures/proj_02.img
 reboot
 wait 600
 expect projfmt 1
-expect projsize 32120
+expect projsize >32120
 # ---- every value as 0.2 saved it
 expect usnd1 1
 expect preset2 24
@@ -76,10 +76,10 @@ wait 600
 tap SAVE
 wait 400
 expect dirty 0
-expect projfmt 3
+expect projfmt 4
 reboot
 wait 600
-expect projfmt 3
+expect projfmt 4
 expect preset2 24
 expect snd2_8 70
 expect ilock2_1_8 100
@@ -117,7 +117,7 @@ expect snd2_9 108
 expect snd2_39 60
 tap SAVE
 wait 400
-expect projfmt 3
+expect projfmt 4
 reboot
 wait 600
 expect sounds 1

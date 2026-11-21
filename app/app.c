@@ -23,7 +23,9 @@
 
 #define NPADS DRUMS_NPADS
 #define NPAT 16
-#define NSTEPS 64
+#define NSTEPS 128
+#define OLD_STEPS 64
+#define STEP_WORDS (NSTEPS / 32)
 #define NPOTS 12                          /* knob positions kept per pad (the engines have at most 11) */
 #define NLOCKS 16                         /* per drum part: a step's chance or a knob locked for one pad's step */
 #define LK_KIT808 0x80u                   /* lock_t.param: the 808's knob (else the 909's) */
@@ -37,9 +39,7 @@
 #define NKEYS 27
 #define KEY_NOTE0 53                      /* key 0 (F3) at octave 0 */
 #define PROJ_MAGIC 0x31544745u            /* "EGT1": fm1-eight 0.1's project; another magic loads the default project */
-#define PROJ_VERSION 3                    /* 3: 0.4's (the 303 generator's settings after the rest); 2: 0.3's (64
-                                           * parameters a sound, 7-byte steps), loaded as it is, the generator unset;
-                                           * 1: 0.1, 0.2 and its performance update's, converted (project_load_v1) */
+#define PROJ_VERSION 4                    /* compact 128-step parts; formats 1-3 remain readable */
 #define EIGHT_VERSION "0.4"
 #define NSONG 32                          /* the song chain's entries */
 #define NUSER 16                          /* user sounds (T2..T4) */
@@ -58,10 +58,10 @@ typedef struct {
 } lock_t;
 
 typedef struct {                          /* the drum track's part of a pattern */
-    uint32_t hit[NPADS][2];               /* step bits: steps 0..31, 32..63 */
-    uint32_t acc[2];                      /* accented steps */
+    uint32_t hit[NPADS][STEP_WORDS];       /* 32 steps per word */
+    uint32_t acc[STEP_WORDS];                      /* accented steps */
     uint16_t mute;                        /* a bit per pad: muted in this pattern (the MUTE page) */
-    uint8_t len;                          /* 1..64 */
+    uint8_t len;                          /* 1..128 */
     uint8_t rate;                         /* RATE_* */
     uint8_t nlk, rsv[3];                  /* locks in use */
     lock_t lk[NLOCKS];
@@ -184,7 +184,27 @@ typedef struct {
     /* appended in 0.4 (format 3): a format-2 file (0.3's) loads, these zeroed */
     gen_t gen[NPAT][NINST];               /* each part's 303 generator */
 } project_t;
-#define PROJ_V2_SIZE ((uint32_t)offsetof(project_t, gen))   /* format 2's file: all before gen */
+/* Freeze the persisted 64-step layouts. Header and tail fields did not change in format 4. */
+typedef struct {
+    uint32_t hit[NPADS][2], acc[2];
+    uint16_t mute;
+    uint8_t len, rate, nlk, rsv[3];
+    lock_t lk[NLOCKS];
+} dpart_old_t;
+typedef struct {
+    nstep_t st[OLD_STEPS];
+    uint8_t len, rate, nlk, rsv;
+    ilock_t lk[NILOCKS];
+} ipart_old_t;
+typedef struct { dpart_old_t d; ipart_old_t t[NINST]; } pattern_old_t;
+#define PROJ_PREFIX ((uint32_t)offsetof(project_t, p))
+#define PROJ_TAIL ((uint32_t)offsetof(project_t, pots))
+#define PROJ_TAIL_BYTES (sizeof(project_t) - PROJ_TAIL)
+#define OLD_TAIL (PROJ_PREFIX + NPAT * sizeof(pattern_old_t))
+#define PROJ_V3_SIZE (OLD_TAIL + PROJ_TAIL_BYTES)
+#define PROJ_V2_SIZE (PROJ_V3_SIZE - sizeof(((project_t *)0)->gen))
+#define PROJ_CAPACITY (8u * 4096u - PLAT_FILE_HEAD)
+#define PROJ_META (PROJ_PREFIX + PROJ_TAIL_BYTES)
 
 /* project format 1 (0.1, 0.2 and 0.2's performance update), frozen: a file saved by them is read a part at a time
  * into format 2 (project_load_v1). Its sounds had 26 parameters, its steps a spare byte; 0.2 saved it up to psnd */
@@ -193,12 +213,12 @@ typedef struct {
     uint8_t vel, gate, prob, rsv;
 } nstep_v1_t;
 typedef struct {
-    nstep_v1_t st[NSTEPS];
+    nstep_v1_t st[OLD_STEPS];
     uint8_t len, rate, nlk, rsv;
     ilock_t lk[NILOCKS];
 } ipart_v1_t;
 typedef struct {
-    dpart_t d;
+    dpart_old_t d;
     ipart_v1_t t[NINST];
 } pattern_v1_t;
 typedef struct {
@@ -248,7 +268,7 @@ _Static_assert(PROJ_V2_SIZE == 31544u, "format 2 as 0.3 saved it");
 
 /* the project's file: two copies of 32 KiB at the start of the data area (plat_file_*) */
 static const plat_file_t PROJ_FILE = {0x97000u, 0x9F000u, 8u * 4096u};
-_Static_assert(sizeof(project_t) <= 8u * 4096u - PLAT_FILE_HEAD, "the project must fit its file");
+_Static_assert(PROJ_V3_SIZE == 32120u, "format 3 as 0.4 saved it");
 
 static project_t proj PLAT_POOL;
 static uint8_t dirty;                     /* changed since the last save: SAVE is lit */
@@ -264,6 +284,7 @@ static void pad_fire(int pad, float vel)  /* a drum pad sounds: the kit, and the
 }
 
 static inline int bit_get(const uint32_t *b, int s) { return (int)(b[s >> 5] >> (s & 31) & 1u); }
+static inline void bit_clear(uint32_t *b, int s) { b[s >> 5] &= ~(1u << (s & 31)); }
 static inline void bit_flip(uint32_t *b, int s) { b[s >> 5] ^= 1u << (s & 31); }
 static inline void bit_set(uint32_t *b, int s) { b[s >> 5] |= 1u << (s & 31); }
 /* the scene grid (HOME): the 16 patterns' four parts are 16 x 4 clips. clip[t]: the pattern whose part track t plays,
@@ -297,11 +318,19 @@ static track_t *tset(int tr) { return &proj.tr[tr - 1]; }
 static uint8_t *part_len(int tr) { return tr == TR_DRUM ? &dcur()->len : &ipart(tr)->len; }
 static uint8_t *part_rate(int tr) { return tr == TR_DRUM ? &dcur()->rate : &ipart(tr)->rate; }
 
+static int drum_row_used(const uint32_t *bits)
+{
+    int i;
+    for (i = 0; i < STEP_WORDS; i++)
+        if (bits[i])
+            return 1;
+    return 0;
+}
 static int dpart_empty(const dpart_t *d)
 {
     int i;
     for (i = 0; i < NPADS; i++)
-        if (d->hit[i][0] | d->hit[i][1])
+        if (drum_row_used(d->hit[i]))
             return 0;
     return 1;
 }
@@ -599,16 +628,17 @@ static void track_shape(int t)           /* a SAMPLER track's start, end, loop a
     plat_unlock(f);
 }
 
-static uint32_t crc32_of(const uint8_t *d, uint32_t n)   /* zlib's CRC-32 */
+static uint32_t crc32_more(uint32_t c, const uint8_t *d, uint32_t n)
 {
-    uint32_t c = 0xFFFFFFFFu, k;
+    uint32_t k;
     while (n--) {
         c ^= *d++;
         for (k = 0; k < 8u; k++)
             c = c >> 1 ^ (0xEDB88320u & (0u - (c & 1u)));
     }
-    return ~c;
+    return c;
 }
+static uint32_t crc32_of(const uint8_t *d, uint32_t n) { return ~crc32_more(0xFFFFFFFFu, d, n); }
 
 static void project_check(void)           /* a loaded project's values kept in range */
 {
@@ -767,14 +797,16 @@ static void project_check(void)           /* a loaded project's values kept in r
 static void psnd_fetch_all(void);
 static void psnd_store_all(void);
 
-/* the file's format: 2 (this one's), 1 (0.2's, whole or up to psnd), 0 none / neither */
+/* Identify the persisted layout without treating a legacy project as a current RAM struct. */
 static int proj_file_format(void)
 {
     int sz = plat_file_size(&PROJ_FILE);
     uint8_t ver = 0;
     if (sz < (int)offsetof(project_t, tr) || plat_file_read(&PROJ_FILE, offsetof(project_t, version), &ver, 1) != 0)
         return 0;
-    if (sz == (int)sizeof proj && ver == PROJ_VERSION)
+    if (sz >= (int)PROJ_META && sz <= (int)PROJ_CAPACITY && ver == PROJ_VERSION)
+        return 4;
+    if (sz == (int)PROJ_V3_SIZE && ver == 3)
         return 3;
     if (sz == (int)PROJ_V2_SIZE && ver == 2)
         return 2;
@@ -839,6 +871,51 @@ static int psound_from_v1(int p, int t, psound_t *d)   /* format 1's pattern p, 
     return 0;
 }
 
+static int read_old_drums(uint32_t at, dpart_t *d)
+{
+    dpart_old_t old;
+    int pad, w, i;
+    if (plat_file_read(&PROJ_FILE, at, &old, sizeof old) != 0)
+        return -1;
+    for (w = 0; w < 2; w++) {
+        d->acc[w] = old.acc[w];
+        for (pad = 0; pad < NPADS; pad++)
+            d->hit[pad][w] = old.hit[pad][w];
+    }
+    d->mute = old.mute; d->len = old.len; d->rate = old.rate; d->nlk = old.nlk;
+    for (i = 0; i < NLOCKS; i++)
+        d->lk[i] = old.lk[i];
+    return 0;
+}
+
+static int project_load_v23(int fmt)
+{
+    static ipart_old_t old;
+    int i, t, k;
+    if (plat_file_read(&PROJ_FILE, 0, &proj, PROJ_PREFIX) ||
+        plat_file_read(&PROJ_FILE, OLD_TAIL, proj.pots, fmt == 2 ? PROJ_V2_SIZE - OLD_TAIL : PROJ_TAIL_BYTES))
+        return -1;
+    for (i = 0; i < NPAT; i++) {
+        uint32_t at = PROJ_PREFIX + (uint32_t)i * sizeof(pattern_old_t);
+        if (read_old_drums(at, &proj.p[i].d))
+            return -1;
+        for (t = 0; t < NINST; t++) {
+            ipart_t *d = &proj.p[i].t[t];
+            if (plat_file_read(&PROJ_FILE, at + offsetof(pattern_old_t, t) + (uint32_t)t * sizeof old,
+                               &old, sizeof old))
+                return -1;
+            d->len = old.len; d->rate = old.rate; d->nlk = old.nlk;
+            for (k = 0; k < NILOCKS; k++)
+                d->lk[k] = old.lk[k];
+            for (k = 0; k < OLD_STEPS; k++)
+                d->st[k] = old.st[k];
+        }
+    }
+    return 0;
+}
+
+#include "project_codec.h"
+
 /* a format-1 file into proj (cleared first), a part at a time from the flash: 0 read */
 static int project_load_v1(void)
 {
@@ -854,14 +931,14 @@ static int project_load_v1(void)
         return -1;                        /* lfo .. song: bytes, laid out alike (the padding after them differs) */
     for (i = 0; i < NPAT; i++) {
         uint32_t at = V1_OFF(p) + (uint32_t)i * sizeof(pattern_v1_t);
-        if (plat_file_read(&PROJ_FILE, at, &proj.p[i].d, sizeof(dpart_t)) != 0)
+        if (read_old_drums(at, &proj.p[i].d) != 0)
             return -1;
         for (t = 0; t < NINST; t++) {
             ipart_t *d = &proj.p[i].t[t];
             if (plat_file_read(&PROJ_FILE, at + (uint32_t)offsetof(pattern_v1_t, t) + (uint32_t)t * sizeof ip, &ip,
                                sizeof ip) != 0)
                 return -1;
-            for (k = 0; k < NSTEPS; k++) {
+            for (k = 0; k < OLD_STEPS; k++) {
                 int n;
                 for (n = 0; n < NCHORD; n++)
                     d->st[k].note[n] = ip.st[k].note[n];
@@ -894,13 +971,13 @@ static int project_load(void)
 {
     int fmt = proj_file_format(), r = -1;
     uint32_t i;
+    dirty = 0;
     for (i = 0; i < sizeof proj; i++)
         ((uint8_t *)&proj)[i] = 0;
-    if (fmt == 3) {
-        r = plat_file_read(&PROJ_FILE, 0, &proj, sizeof proj);
-    } else if (fmt == 2) {                /* 0.3's: the same up to the generator's settings, which stay unset */
-        r = plat_file_read(&PROJ_FILE, 0, &proj, PROJ_V2_SIZE);
-        proj.version = PROJ_VERSION;
+    if (fmt == 4) {
+        r = project_decode(plat_file_data(&PROJ_FILE), (uint32_t)plat_file_size(&PROJ_FILE));
+    } else if (fmt >= 2) {
+        r = project_load_v23(fmt);
     } else if (fmt == 1) {
         r = project_load_v1();
     }
@@ -924,21 +1001,15 @@ static void locks_release(void);
 
 static int project_save(void)             /* main loop, stopped (each erase stops the sound) */
 {
-    const uint8_t *src = (const uint8_t *)&proj;
-    uint32_t size = sizeof proj, off, n, f = plat_lock();
+    uint32_t f = plat_lock();
+    int result;
     locks_release();                      /* the knobs' own values, not a lock's or the LFO's */
     plat_unlock(f);
     pots_from_engines();
     psnd_store_all();                     /* SOUNDS PER PATTERN: each track's sound with the pattern it's on */
-    if (plat_file_begin(&PROJ_FILE, size) != 0)
-        return -1;
-    for (off = 0; off < size; off += n) {
-        n = size - off < 4096u ? size - off : 4096u;
-        if (plat_file_write(&PROJ_FILE, off, src + off, n) != 0)
-            return -1;
-    }
-    if (plat_file_commit(&PROJ_FILE, size, crc32_of(src, size)) != 0)
-        return -1;
+    result = project_encode();
+    if (result != 0)
+        return result;
     dirty = 0;
     return 0;
 }
@@ -2876,7 +2947,8 @@ static struct {
     uint8_t page;
     uint8_t trk;                          /* the track picked */
     uint8_t pad;                          /* the drum pad being edited */
-    uint8_t spage;                        /* the step page, 0..3 */
+    uint8_t spage;                        /* the step page, 0..7 */
+    uint8_t seq_prev, seq_used;           /* a resize chord leaves the previous SEQ view alone */
     uint8_t epage;                        /* the EDIT page (four knobs each) */
     uint8_t envpage;                      /* an instrument track's ENV page: 0 the amp's, 1 the filter's, 2 MOD ENV */
     uint8_t lfopage, arppage;             /* the LFO's pages (LFO 1, its MORE; an instrument's LFO 2, MATRIX); ARP's 0, 1 */
@@ -3369,7 +3441,9 @@ static void quantize(void)
         dpart_t *p = dcur();
         int pad;
         for (pad = 0; pad <= NPADS; pad++) {
-            uint32_t *bits = pad < NPADS ? p->hit[pad] : p->acc, old[2] = {bits[0], bits[1]};
+            uint32_t *bits = pad < NPADS ? p->hit[pad] : p->acc, old[STEP_WORDS];
+            int word;
+            for (word = 0; word < STEP_WORDS; word++) old[word] = bits[word];
             for (s = 0; s < len; s++)
                 if (bit_get(old, s))
                     bits[s >> 5] &= ~(1u << (s & 31));
@@ -3472,11 +3546,12 @@ static void part_erase(void)
     f = plat_lock();
     if (tr == TR_DRUM) {
         dpart_t *p = &proj.p[n].d;
+        int word;
         for (s = 0; s < NPADS; s++) {
-            p->hit[s][0] = p->hit[s][1] = 0;
+            for (word = 0; word < STEP_WORDS; word++) p->hit[s][word] = 0;
             sq.skip_once[s] = -1;
         }
-        p->acc[0] = p->acc[1] = 0;
+        for (word = 0; word < STEP_WORDS; word++) p->acc[word] = 0;
         p->nlk = 0;
         locks_release();                  /* a knob a lock held: its own value again */
         ck.pre_pads = 0;
@@ -4914,7 +4989,7 @@ static void reload_sound(void)            /* SAVE + OCT-: the track's sound (the
     }
     if (tr == TR_DRUM) {
         static uint8_t pots[KIT_NUM][NPADS + 1][NPOTS];
-        if (plat_file_read(&PROJ_FILE, fmt == 2 ? (uint32_t)offsetof(project_t, pots) : V1_OFF(pots), pots,
+        if (plat_file_read(&PROJ_FILE, fmt == 4 ? PROJ_PREFIX : fmt >= 2 ? OLD_TAIL : V1_OFF(pots), pots,
                            sizeof pots) != 0)
             return;
         f = plat_lock();
@@ -4933,13 +5008,13 @@ static void reload_sound(void)            /* SAVE + OCT-: the track's sound (the
         static psound_t q;
         track_t *ts = tset(tr);
         int k;
-        if (fmt == 2 ? plat_file_read(&PROJ_FILE, (uint32_t)((uint8_t *)&proj.tr[tr - 1] - (uint8_t *)&proj), &t,
+        if (fmt >= 2 ? plat_file_read(&PROJ_FILE, (uint32_t)((uint8_t *)&proj.tr[tr - 1] - (uint8_t *)&proj), &t,
                                       sizeof t) != 0
                      : track_from_v1(tr - 1, &t) != 0)
             return;
         q.used = 0;
-        if (sounds_pp() && fmt == 2)
-            plat_file_read(&PROJ_FILE, (uint32_t)((uint8_t *)&proj.psnd[clip_of(tr)][tr - 1] - (uint8_t *)&proj), &q,
+        if (sounds_pp() && fmt >= 2)
+            plat_file_read(&PROJ_FILE, (fmt == 4 ? PROJ_PREFIX : OLD_TAIL) + (uint32_t)((uint8_t *)&proj.psnd[clip_of(tr)][tr - 1] - (uint8_t *)proj.pots), &q,
                            sizeof q);
         else if (sounds_pp() && sz == (int)sizeof(project_v1_t) && psound_from_v1(clip_of(tr), tr - 1, &q) != 0)
             q.used = 0;
@@ -5149,7 +5224,10 @@ static void do_save(void)
         app_say("SAVE", "WHEN STOPPED");
         return;
     }
-    app_say(project_save() != 0 ? "SAVE FAILED" : "SAVED", "");
+    {
+        int r = project_save();
+        app_say(r == -2 ? "PROJECT TOO LARGE" : r ? "SAVE FAILED" : "SAVED", r == -2 ? "OLD SAVE KEPT" : "");
+    }
 }
 
 static void page_button(int page)         /* a page's button: its page, or (pressed again) the track's own */
@@ -5583,6 +5661,75 @@ static void knob(int k, int32_t e)        /* KNOB 1..4 (k 0..3) on the page show
     ui.redraw = 1;
 }
 
+/* SEQ + octave doubles the selected clip's active loop or truncates it.
+ * Preflight locks: never repeat the notes but silently drop their automation. */
+static void part_resize(int up)
+{
+    int tr = ui.trk, i, k, count = 0;
+    pattern_t *pat = &proj.p[clip_of(tr)];
+    dpart_t *d = &pat->d;
+    ipart_t *p = tr == TR_DRUM ? 0 : &pat->t[tr - 1];
+    uint8_t *len = p ? &p->len : &d->len;
+    int old = *len, newlen = up ? old * 2 : old / 2;
+    uint32_t f;
+    char t[16];
+    if (up && newlen > NSTEPS) {
+        app_say("DOUBLE PART", "MAX 128 STEPS");
+        return;
+    }
+    if (!up && old == 1) {
+        app_say("HALVE PART", "MIN 1 STEP");
+        return;
+    }
+    if (up) {
+        int locks = p ? p->nlk : d->nlk;
+        for (i = 0; i < locks; i++)
+            count += (p ? p->lk[i].step : d->lk[i].step) < old;
+        if (count * 2 > (p ? NILOCKS : NLOCKS)) {
+            app_say("DOUBLE PART", "TOO MANY LOCKS");
+            return;
+        }
+    }
+    undo_mark(0);
+    f = plat_lock();
+    if (p) {
+        for (i = 0, k = 0; i < p->nlk; i++)
+            if (p->lk[i].step < (up ? old : newlen)) p->lk[k++] = p->lk[i];
+        p->nlk = (uint8_t)k;
+        for (i = 0; up && i < k; i++) {
+            ilock_t c = p->lk[i];
+            c.step = (uint8_t)(c.step + old);
+            p->lk[p->nlk++] = c;
+        }
+        for (i = up ? old : newlen; i < NSTEPS; i++)
+            if (i < newlen) p->st[i] = p->st[i - old];
+            else nstep_clear(&p->st[i]);
+    } else {
+        for (i = 0, k = 0; i < d->nlk; i++)
+            if (d->lk[i].step < (up ? old : newlen)) d->lk[k++] = d->lk[i];
+        d->nlk = (uint8_t)k;
+        for (i = 0; up && i < k; i++) {
+            lock_t c = d->lk[i];
+            c.step = (uint8_t)(c.step + old);
+            d->lk[d->nlk++] = c;
+        }
+        for (k = 0; k <= NPADS; k++) {
+            uint32_t *row = k < NPADS ? d->hit[k] : d->acc;
+            for (i = up ? old : newlen; i < NSTEPS; i++)
+                if (i < newlen && bit_get(row, i - old)) bit_set(row, i);
+                else bit_clear(row, i);
+        }
+    }
+    *len = (uint8_t)newlen;
+    if (ui.spage * 16 >= newlen) ui.spage = (uint8_t)((newlen - 1) / 16);
+    if (ui.cursor[tr] >= newlen) ui.cursor[tr] = (uint8_t)(newlen - 1);
+    plat_unlock(f);
+    int_text(newlen, t);
+    text_cat(t, " STEPS");
+    app_say(up ? "DOUBLE PART" : "HALVE PART", t);
+    ui.redraw = 1;
+}
+
 static void input(void)
 {
     uint32_t keys, btn = plat_buttons(), k, pressed, released, kp, kr;
@@ -5614,11 +5761,20 @@ static void input(void)
             rec_arm();
         }
     }
+    if (pressed >> B_SEQ & 1u) {
+        ui.seq_prev = ui.page;
+        ui.seq_used = 0;
+    }
     if ((pressed >> B_OCTDN & 1u) || (pressed >> B_OCTUP & 1u)) {
         int up = (int)(pressed >> B_OCTUP & 1u);
         if ((btn >> B_SAVE & 1u) && !up) {   /* SAVE + OCT-: the track's sound as last saved */
             ui.save_used = 1;
             reload_sound();
+        } else if ((btn >> B_SEQ & 1u) && !(btn >> B_REC & 1u) && !(btn >> B_EDIT & 1u) &&
+                   !(btn >> B_SAVE & 1u) && ui.held_step < 0) {
+            ui.seq_used = 1;
+            ui.page = ui.seq_prev;
+            part_resize(up);
         } else if (ui.page == PG_HOME && home_trkkey() >= 0) {   /* HOME, a track key held: OCT- stops it, OCT+ solo */
             int tk = home_trkkey();
             ui.tkey_used |= (uint8_t)(1u << tk);
@@ -5687,7 +5843,7 @@ static void input(void)
             ui.epage = (uint8_t)(ui.epage + 1 < drum_epages() ? ui.epage + 1 : 0);
         }
     }
-    if (pressed >> B_SEQ & 1u) {          /* the steps; on an instrument track, again: the 303 generator (the page of it
+    if ((pressed >> B_SEQ & 1u) && !ui.seq_used) {      /* the steps; on an instrument track, again: the 303 generator (the page of it
                                            * shown last; SELECT its other), then back to the keys */
         if (!inst || (ui.page != PG_SEQ && ui.page != PG_GEN))
             ui.page = PG_SEQ;
@@ -5906,7 +6062,7 @@ static void input(void)
                 mute_toggle((int)k);
             else
                 pad_play((int)k, touch_vel(key));
-        } else if (ui.page == PG_SEQ) {   /* pad keys 1-4: the step page */
+        } else if (ui.page == PG_SEQ) {   /* black keys 1-8: the step page */
             if ((int)k < npages()) {
                 ui.spage = (uint8_t)k;
                 ui.spage_t = plat_ms();
@@ -6048,7 +6204,7 @@ static void lights(void)
                     bk |= 1u << BK[k];  /* playing pads lit, muted ones dark */
             } else if ((int)k == ui.pad) {
                 bk |= 1u << BK[k];
-            } else if (p->hit[k][0] | p->hit[k][1]) {
+            } else if (drum_row_used(p->hit[k])) {
                 dimk |= 1u << BK[k];
             }
         }
@@ -6064,7 +6220,7 @@ static void lights(void)
             if (sq.playing && s == st)
                 wk ^= 1u << WK[k];
         }
-        for (k = 0; k < 4u; k++)         /* pad keys 1-4: the step pages */
+        for (k = 0; k < NSTEPS / 16u; k++) /* black keys 1-8: the step pages */
             if ((int)k == ui.spage)
                 bk |= 1u << BK[k];
             else if ((int)k < npages())
@@ -8599,18 +8755,33 @@ static const nstep_t *expect_step(const char *what, int skip)   /* "XXXN_S...": 
     const char *u = strchr(what + skip, '_');
     if (tr < 2 || tr > NTRK || !u)
         return 0;
-    return &ipart(tr - 1)->st[(atoi(u + 1) - 1) & 63];
+    return &ipart(tr - 1)->st[(atoi(u + 1) - 1) & (NSTEPS - 1)];
 }
 
 int app_expect(const char *what, int *got)
 {
     dpart_t *p = dcur();
     const nstep_t *ns;
-    if (!strcmp(what, "projfmt")) {       /* the saved file's format: 3 this one's, 2 0.3's, 1 0.2's (converted as it
-                                           * loads), 0 none */
+    if (!strcmp(what, "projfmt")) {       /* saved format, or 0 if none */
         *got = proj_file_format();
-    } else if (!strcmp(what, "projsize")) {   /* the project's bytes (its file holds 32736) */
+    } else if (!strcmp(what, "projsize")) {   /* bytes in RAM (not the packed saved size) */
         *got = (int)sizeof proj;
+    } else if (!strcmp(what, "seed_dense")) { /* simulator only: exercise an incompressible project through SAVE */
+        uint32_t rng = 0x579C0219u;
+        int i, j, k, m;
+        for (i = 0; i < NPAT; i++) for (j = 0; j < NINST; j++) {
+            ipart_t *d = &proj.p[i].t[j];
+            uint8_t *b = (uint8_t *)d->st;
+            for (k = 0; k < NSTEPS; k++) for (m = 0; m < (int)sizeof(nstep_t); m++) {
+                rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5;
+                *b++ = (uint8_t)((rng & 0x7Fu) | 1u);
+            }
+            d->len = NSTEPS;
+        }
+        dirty = 1;
+        *got = 1;
+    } else if (!strcmp(what, "savedsize")) {
+        *got = plat_file_size(&PROJ_FILE);
     } else if (!strcmp(what, "splash")) {     /* the boot screen drawn now (a shot straight after sees it) */
         app_splash();
         *got = 1;
@@ -8867,7 +9038,7 @@ int app_expect(const char *what, int *got)
         const char *u = strchr(what, '_'), *v = u ? strchr(u + 1, '_') : 0;
         if (tr < 1 || tr >= NTRK || !v)
             return 0;
-        j = ilock_find(ipart(tr), (atoi(u + 1) - 1) & 63, atoi(v + 1));
+        j = ilock_find(ipart(tr), (atoi(u + 1) - 1) & (NSTEPS - 1), atoi(v + 1));
         *got = j >= 0 ? ipart(tr)->lk[j].val : -1000;
     } else if (!strncmp(what, "inlk", 4)) {  /* inlkN: track N's locks in this pattern */
         int tr = atoi(what + 4) - 1;
@@ -8933,21 +9104,21 @@ int app_expect(const char *what, int *got)
     } else if (!strncmp(what, "hit", 3)) { /* hitP_S: pad P, step S (1-based) */
         int pad = atoi(what + 3);
         const char *u = strchr(what, '_');
-        *got = u ? bit_get(p->hit[pad % NPADS], (atoi(u + 1) - 1) & 63) : -1;
+        *got = u ? bit_get(p->hit[pad % NPADS], (atoi(u + 1) - 1) & (NSTEPS - 1)) : -1;
     } else if (!strncmp(what, "prob", 4)) { /* probP_S: pad P's step S chance, % */
         int pad = atoi(what + 4), i;
         const char *u = strchr(what, '_');
-        i = u ? lock_find(p, (atoi(u + 1) - 1) & 63, pad % NPADS, LK_PROB) : -1;
+        i = u ? lock_find(p, (atoi(u + 1) - 1) & (NSTEPS - 1), pad % NPADS, LK_PROB) : -1;
         *got = i >= 0 ? p->lk[i].val : 100;
     } else if (!strncmp(what, "lock", 4)) {   /* lockP_S_I: pad P's step S, knob I locked to (-1: none) */
         int pad = atoi(what + 4), s, k, i;
         const char *u = strchr(what, '_'), *v = u ? strchr(u + 1, '_') : 0;
-        s = u ? (atoi(u + 1) - 1) & 63 : 0;
+        s = u ? (atoi(u + 1) - 1) & (NSTEPS - 1) : 0;
         k = v ? atoi(v + 1) : 0;
         i = lock_find(p, s, pad % NPADS, lk_param(proj.kit, k));
         *got = i >= 0 ? p->lk[i].val : -1;
     } else if (!strncmp(what, "acc", 3))  /* accS */
-        *got = bit_get(p->acc, (atoi(what + 3) - 1) & 63);
+        *got = bit_get(p->acc, (atoi(what + 3) - 1) & (NSTEPS - 1));
     else if (!strncmp(what, "pot", 3)) {  /* potP_I: the kit's pad P, parameter I */
         int pad = atoi(what + 3);
         const char *u = strchr(what, '_');
