@@ -107,6 +107,10 @@
     {
       "literal": "before shared sends and the selected track\u2019s USB stem",
       "path": "guide/mixer/index.html"
+    },
+    {
+      "literal": "A device smoke check verified startup and USB detection on an FM-1. Live audio and saved-project behavior on hardware have not been verified. This build is not offered here as a download.",
+      "path": "guide/setup/index.html"
     }
   ],
   "manifest_path": "release.json",
@@ -140,7 +144,13 @@
       "build_id": "DED60016",
       "build_status": "linked-and-packaged",
       "downloads": [],
-      "flashed": false,
+      "flashed": true,
+      "hardware_smoke": {
+        "live_audio_tested": false,
+        "saved_project_tested": false,
+        "startup": true,
+        "usb_detection": true
+      },
       "hardware_tested": false,
       "package_bytes": 616099,
       "package_identity": "FM-1_800",

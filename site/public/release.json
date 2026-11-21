@@ -105,8 +105,8 @@
       "sha256": "944cadedcf60e0070ce47955374a54b63884a3e56f2c10d2c722445714926e1e"
     },
     "guide/setup/index.html": {
-      "bytes": 29584,
-      "sha256": "942314000deb8aa96e8785b23f1d8b0f81a1053ab8c65af6237b9dc29661ffde"
+      "bytes": 29662,
+      "sha256": "d69490ac9d909c0349e1cb75599ffd4ef3c7a908ee1b6ed8c9f39a590826aa63"
     },
     "guide/sounds/index.html": {
       "bytes": 27064,
@@ -142,7 +142,13 @@
       "build_id": "DED60016",
       "build_status": "linked-and-packaged",
       "downloads": [],
-      "flashed": false,
+      "flashed": true,
+      "hardware_smoke": {
+        "live_audio_tested": false,
+        "saved_project_tested": false,
+        "startup": true,
+        "usb_detection": true
+      },
       "hardware_tested": false,
       "package_bytes": 616099,
       "package_identity": "FM-1_800",
