@@ -87,11 +87,11 @@ expect dpreset 2
 spin K2 -40
 wait 30
 expect pot1_1 44
-turn PRESET -3
+turn PRESET -4
 wait 30
 expect dpreset 0
 expect kit 0
-turn PRESET 3
+turn PRESET 4
 wait 30
 expect dpreset 2
 expect kit 1

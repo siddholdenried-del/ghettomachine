@@ -1,0 +1,83 @@
+# Begin with a real format-5 save, configure both candidate features, and round-trip them together.
+flash_load app/tests/fixtures/proj_v5.img
+reboot
+wait 600
+expect projfmt 5
+expect kit 2
+expect insert2 2
+expect pot7_0 57
+expect color3_5 0
+# Mix a 707 open-hat lane into the legacy 606 kit.
+key 20 down
+wait 30
+key 20 up
+wait 30
+tap EDIT
+wait 30
+turn SELECT 8
+wait 30
+turn K1 1
+wait 30
+expect model8 3
+expect model7 2
+expect kitcustom 1
+# Put Color on T3. Open the mixed hat and the synth together.
+turn ALGO 2
+wait 30
+expect trk 3
+tap FX
+wait 30
+tap FX
+wait 30
+tap FX
+wait 30
+tap FX
+wait 30
+tap FX
+wait 30
+expect page 17
+spin K4 1
+wait 30
+expect color3_5 1
+expect color1_5 0
+midi 92 3C 7F
+midi 99 2E 7F
+wait 35
+expect stem1 >-600
+expect stem3 >-600
+# Mute only the drums; their current 707 hat cuts, T3 keeps processing.
+tap HOME
+wait 30
+key 1 down
+wait 30
+key 1 up
+wait 30
+expect tmute 1
+expect stemreset 1
+wait 30
+expect stem1 -1200
+expect stem3 >-1000
+key 1 down
+wait 30
+key 1 up
+wait 30
+expect tmute 0
+expect stemreset 1
+wait 30
+expect stem1 -1200
+midi 82 3C 00
+tap SAVE
+wait 400
+expect projfmt 7
+expect dirty 0
+reboot
+wait 600
+expect projfmt 7
+expect kitcustom 1
+expect model8 3
+expect model7 2
+expect color1_5 0
+expect color2_5 0
+expect color3_5 1
+expect color4_5 0
+expect insert2 2
