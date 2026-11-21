@@ -104,7 +104,11 @@ A very dense collection of long parts can exceed the fixed FM-1 project save slo
 
 - **KEYS** (their home page): all 27 keys play. OCT− / OCT+ move the octave.
 - **Steps (SEQ):** the screen shows the notes, pitch upward. The white keys are steps; pad keys 1–4 pick the step page.
-  - Press an empty step: it gets the last note you played.
+  - Tap an empty step to insert the last note you played, or stamp the selected chord and inversion on that root. The
+    screen shows what it will stamp. Tap a filled step to clear it.
+  - Hold a step and press **ARP** to open **PICK NOTES**. Tap any white or black key to add that pitch; tap a lit key
+    to remove it. A step holds up to four notes. **OCT− / OCT+** shift the picker's range without changing the track's
+    playing octave. Press **ARP** or **SEQ** to get back to STEPS.
   - Hold a step: **K1** moves its note (or chord), **K2** sets velocity, **K3** sets gate (up to almost 32 steps, two bars at 1/16;
     over 2 steps it moves a whole step a click),
     **SELECT** sets chance.
@@ -244,8 +248,10 @@ On STEPS an accented note has a white bar over it and a slide a mark at its end.
 
 Press **ARP** twice (page 2) on T2–T4:
 
-- **K2 CHORD:** OFF, MAJ, MIN, 7, MAJ7, MIN7, SUS2, SUS4, DIM, AUG, 5 (power chord), OCT. Each key then plays that chord
+- **K2 CHORD:** OFF, MAJ, MIN, 7, MAJ7, MIN7, SUS2, SUS4, DIM, AUG, 5 (power chord), OCT, MIN9, MAJ9, 7#9, 7SUS4. Each key then plays that chord
   built on it. The page shows the chord on a keyboard; the KEYS page's band shows which chord is on.
+  MIN9 and MAJ9 leave out the fifth for house and garage stabs; 7#9 is a four-note altered voicing for funk/electro,
+  and 7SUS4 keeps the third out of the way for suspended techno stabs.
 - **K3 INVERT:** ROOT, 1ST, 2ND, 3RD: the lowest notes move up an octave, for smoother changes between chords.
 - Chords are recorded as chords (a step holds up to 4 notes), live or step by step, and go through the arpeggiator
   if it's on: one key, an arpeggiated chord.

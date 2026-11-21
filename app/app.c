@@ -34,6 +34,7 @@
 #define NINST 3                           /* instrument tracks */
 #define TR_DRUM 0
 #define NCHORD 4                          /* notes a step holds */
+#define NCHORDS 16                        /* chord ID shares a byte with held-key inversion */
 #define GATE_DEF 6                        /* a new step's gate: 6/8 of a step */
 #define GATE_MAX (NSTEPS * 8)             /* 128 steps, still edited in eighths of one step */
 #define NKEYS 27
@@ -697,7 +698,7 @@ static void project_check(void)           /* a loaded project's values kept in r
         proj.tr[t].arp_oct = (uint8_t)clamp(proj.tr[t].arp_oct, 1, 4);
         proj.tr[t].arp_gate = (uint8_t)clamp(proj.tr[t].arp_gate, 5, 100);
         proj.tr[t].arp_latch &= 1u;
-        proj.tr[t].chord = (uint8_t)(proj.tr[t].chord < 12u ? proj.tr[t].chord : 0u);
+        proj.tr[t].chord = (uint8_t)(proj.tr[t].chord < NCHORDS ? proj.tr[t].chord : 0u);
         proj.tr[t].chord_inv &= 3u;
     }
     for (t = 0; t < NTRK; t++) {
@@ -1585,12 +1586,13 @@ enum { AM_OFF, AM_UP, AM_DOWN, AM_UPDOWN, AM_RANDOM, AM_ORDER, NARPMODES };
 static const char *const ARP_MODE_NAME[NARPMODES] = {"OFF", "UP", "DOWN", "UP+DOWN", "RANDOM", "AS PLAYED"};
 /* chord mode (ARP 2): a key plays a chord built on it, up to NCHORD notes (what a step holds), inverted by moving its
  * lowest notes up an octave; recorded as a chord */
-#define NCHORDS 12
 static const char *const CHORD_NAME[NCHORDS] = {"OFF", "MAJ", "MIN", "7", "MAJ7", "MIN7", "SUS2", "SUS4", "DIM", "AUG",
-                                                "5", "OCT"};
-static const int8_t CHORD_IV[NCHORDS][4] = {{0, -1}, {0, 4, 7, -1}, {0, 3, 7, -1}, {0, 4, 7, 10}, {0, 4, 7, 11},
-                                            {0, 3, 7, 10}, {0, 2, 7, -1}, {0, 5, 7, -1}, {0, 3, 6, -1}, {0, 4, 8, -1},
-                                            {0, 7, -1}, {0, 12, -1}};
+                                                "5", "OCT", "MIN9", "MAJ9", "7#9", "7SUS4"};
+static const int8_t CHORD_IV[NCHORDS][NCHORD] = {
+    {0, -1}, {0, 4, 7, -1}, {0, 3, 7, -1}, {0, 4, 7, 10}, {0, 4, 7, 11},
+    {0, 3, 7, 10}, {0, 2, 7, -1}, {0, 5, 7, -1}, {0, 3, 6, -1}, {0, 4, 8, -1},
+    {0, 7, -1}, {0, 12, -1}, {0, 3, 10, 14}, {0, 4, 11, 14}, {0, 4, 10, 15}, {0, 5, 7, 10}
+};
 static const char *const INV_NAME[4] = {"ROOT", "1ST", "2ND", "3RD"};
 
 static int chord_of(int spec, int root, int *out)   /* spec: chord | inversion << 4; the notes, how many */
@@ -2910,9 +2912,9 @@ static void undo_step(int redo)
 
 /* ------------------------------------------------------------------------ UI --- */
 enum { PG_SEQ, PG_EDIT, PG_MUTE, PG_HOME, PG_KIT, PG_KEYS, PG_ENV, PG_LFO, PG_ARP, PG_MIX, PG_FX, PG_SONG, PG_MST, PG_SETUP,
-       PG_GEN };
+       PG_GEN, PG_PICK };
 static const char *const PAGE_NAME[] = {"STEPS", "EDIT", "MUTE", "PATTERNS", "KIT", "KEYS", "ENV", "LFO", "ARP", "MIXER",
-                                        "FX", "SONG", "MASTER", "SETUP", "ACID"};
+                                        "FX", "SONG", "MASTER", "SETUP", "ACID", "PICK NOTES"};
 #define NGENPAGE 3                        /* the 303 generator's (SEQ after STEPS, T2..T4): ACID, NOTES, LINE (SELECT) */
 static const char *const TRK_NAME[NTRK] = {"DRUMS", "T2", "T3", "T4"};
 static const char *const TYPE_NAME[NTYPES] = {"MONO", "POLY", "SAMPLER"};
@@ -3007,6 +3009,8 @@ static struct {
     uint32_t last_ticks;
     uint8_t redraw;
     /* instrument tracks */
+    int8_t pick_oct;                      /* independent of the track's playable octave */
+    uint8_t pick_step, pick_clip;        /* index / original clip while PICK NOTES is open */
     uint8_t last_note[NTRK];              /* the note a new step gets */
     uint8_t key_note[NKEYS], key_trk[NKEYS];   /* a key down: the note it plays, on which track (0: none) */
     uint8_t key_mode[NKEYS];              /* 1: live-recorded (key_step), 2: step-recorded */
@@ -3348,6 +3352,14 @@ static void mute_toggle(int pad)
 static int track_note(int tr)             /* the note a new step gets: the last one played, or C of the octave */
 {
     return ui.last_note[tr] ? ui.last_note[tr] : 60 + 12 * tset(tr)->oct;
+}
+
+static void step_stamp(int tr, nstep_t *s)
+{
+    const track_t *t = tset(tr);
+    int i, note[NCHORD], n = chord_of(t->chord | t->chord_inv << 4, track_note(tr), note);
+    for (i = 0; i < n; i++)
+        nstep_add(s, note[i], 100);
 }
 
 static void preview(int tr, const nstep_t *s)   /* a step heard by itself (stopped): its notes for one step */
@@ -3712,7 +3724,7 @@ static void istep_down(int k)
             nstep_clear(&p->st[s]);
             ilock_clear_step(p, s);
         } else {
-            nstep_add(&p->st[s], track_note(tr), 100);
+            step_stamp(tr, &p->st[s]);
         }
         plat_unlock(f);
         return;
@@ -3724,10 +3736,70 @@ static void istep_down(int k)
     if (!ui.held_was_on) {
         undo_mark(0);
         f = plat_lock();
-        nstep_add(&p->st[s], track_note(tr), 100);
+        step_stamp(tr, &p->st[s]);
         plat_unlock(f);
     }
     preview(tr, &p->st[s]);
+}
+
+static void pick_leave(void)
+{
+    ui.page = PG_SEQ;
+    ui.redraw = 1;
+}
+
+static void pick_open(void)
+{
+    ui.pick_step = (uint8_t)ui.held_step;
+    ui.pick_clip = (uint8_t)clip_of(ui.trk);
+    ui.pick_oct = tset(ui.trk)->oct;
+    ui.held_step = -1;                   /* releasing the trigger key must not clear the step */
+    ui.page = PG_PICK;
+    ui.msg_until = 0;                    /* make the mode and target step obvious immediately */
+}
+
+static int pick_pitch(int key)
+{
+    return KEY_NOTE0 + key + 12 * ui.pick_oct;
+}
+
+static int pick_is_selected(const nstep_t *s, int pitch)
+{
+    int i;
+    for (i = 0; i < NCHORD && s->note[i]; i++)
+        if (s->note[i] == pitch)
+            return 1;
+    return 0;
+}
+
+static void pick_toggle(int key)
+{
+    int tr = ui.trk, step = ui.pick_step, pitch = pick_pitch(key), i, count;
+    ipart_t *p = &proj.p[ui.pick_clip].t[tr - 1];
+    nstep_t *s = &p->st[step];
+    uint32_t f;
+    if (clip_of(tr) != ui.pick_clip || step >= p->len) {
+        pick_leave();
+        return;
+    }
+    count = nstep_count(s);
+    for (i = 0; i < count && s->note[i] != pitch; i++) {}
+    if (i == NCHORD) {
+        app_say("4 NOTES MAX", "TAP A LIT NOTE TO REMOVE");
+        return;
+    }
+    undo_mark(0);
+    f = plat_lock();
+    if (i == count) {
+        nstep_add(s, pitch, 100);
+    } else {
+        for (; i < count - 1; i++)
+            s->note[i] = s->note[i + 1];
+        s->note[count - 1] = 0;
+    }
+    plat_unlock(f);
+    preview(tr, s);                      /* no audition while transport plays */
+    ui.redraw = 1;
 }
 
 static void istep_up(int k)
@@ -4880,6 +4952,8 @@ static void track_pick(int tr)
 {
     tr = clamp(tr, 0, NTRK - 1);
     if (tr != ui.trk) {
+        if (ui.page == PG_PICK)
+            pick_leave();
         /* between the drums and an instrument track: the track's own page (its keys play), unless on EDIT or
          * HOME; between instrument tracks the page stays */
         if ((tr == TR_DRUM) != (ui.trk == TR_DRUM) && ui.page != PG_EDIT && ui.page != PG_HOME && ui.page != PG_LFO &&
@@ -5785,6 +5859,8 @@ static void input(void)
     released = ~btn & ui.btn;
     ui.btn = btn;                         /* (step_down reads SEQ from it) */
     inst = ui.trk != TR_DRUM;
+    if (ui.page == PG_PICK && clip_of(ui.trk) != ui.pick_clip)
+        pick_leave();
     if (pressed)                          /* a button: the knob card turned last stands out no more */
         ui.knob_k = -1;
 
@@ -5814,8 +5890,10 @@ static void input(void)
         if ((btn >> B_SAVE & 1u) && !up) {   /* SAVE + OCT-: the track's sound as last saved */
             ui.save_used = 1;
             reload_sound();
-        } else if ((btn >> B_SEQ & 1u) && !(btn >> B_REC & 1u) && !(btn >> B_EDIT & 1u) &&
-                   !(btn >> B_SAVE & 1u) && ui.held_step < 0) {
+        } else if (ui.page == PG_PICK && !(btn & ((1u << B_EDIT) | (1u << B_REC)))) {
+            ui.pick_oct = (int8_t)clamp(ui.pick_oct + (up ? 1 : -1), -3, 3);
+        } else if ((btn >> B_SEQ & 1u) && ui.seq_prev != PG_PICK && !(btn >> B_REC & 1u) &&
+                   !(btn >> B_EDIT & 1u) && !(btn >> B_SAVE & 1u) && ui.held_step < 0) {
             ui.seq_used = 1;
             ui.page = ui.seq_prev;
             part_resize(up);
@@ -5889,7 +5967,9 @@ static void input(void)
     }
     if ((pressed >> B_SEQ & 1u) && !ui.seq_used) {      /* the steps; on an instrument track, again: the 303 generator (the page of it
                                            * shown last; SELECT its other), then back to the keys */
-        if (!inst || (ui.page != PG_SEQ && ui.page != PG_GEN))
+        if (ui.page == PG_PICK)
+            pick_leave();
+        else if (!inst || (ui.page != PG_SEQ && ui.page != PG_GEN))
             ui.page = PG_SEQ;
         else
             ui.page = (uint8_t)(ui.page == PG_SEQ ? PG_GEN : PG_KEYS);
@@ -6004,6 +6084,10 @@ static void input(void)
     if (pressed >> B_ARP & 1u) {          /* T2..T4's arpeggiator */
         if (!inst) {
             app_say("ARP", "ON T2-T4");
+        } else if (ui.page == PG_PICK) {
+            pick_leave();
+        } else if (ui.page == PG_SEQ && ui.held_step >= 0) {
+            pick_open();
         } else if (ui.page != PG_ARP) {
             ui.page = PG_ARP;
         } else if (!ui.arppage) {
@@ -6061,6 +6145,8 @@ static void input(void)
             }
         } else if (!inst) {
             step_down((int)k);
+        } else if (ui.page == PG_PICK) {
+            pick_toggle((int)key);
         } else if (ui.page == PG_SEQ) {
             istep_down((int)k);
         } else {
@@ -6106,6 +6192,8 @@ static void input(void)
                 mute_toggle((int)k);
             else
                 pad_play((int)k, touch_vel(key));
+        } else if (ui.page == PG_PICK) {
+            pick_toggle((int)key);
         } else if (ui.page == PG_SEQ) {   /* black keys 1-8: the step page */
             if ((int)k < npages()) {
                 ui.spage = (uint8_t)k;
@@ -6130,7 +6218,7 @@ static void input(void)
     if ((e = plat_enc(EN_ALGO)) != 0)     /* ALGORITHM: the track */
         track_pick(ui.trk + e);
     inst = ui.trk != TR_DRUM;
-    if ((e = plat_enc(EN_SELECT)) != 0) { /* SELECT: a held step's chance, the cursor, or the page within the page */
+    if ((e = plat_enc(EN_SELECT)) != 0 && ui.page != PG_PICK) { /* SELECT: a held step's chance, the cursor, or the page within the page */
         if (ui.held_step >= 0 && !(inst && (ui.page == PG_EDIT || ui.page == PG_ENV || ui.page == PG_LFO))) {
             /* (there: pages to lock on) */
             if (inst)
@@ -6178,7 +6266,7 @@ static void input(void)
         ui.redraw = 1;
     }
     for (k = 0; k < 4u; k++)
-        if ((e = plat_enc(EN_K1 + (int)k)) != 0)
+        if ((e = plat_enc(EN_K1 + (int)k)) != 0 && ui.page != PG_PICK)
             knob((int)k, e);
 
     if (keys != ui.keys || pressed || released)
@@ -6269,12 +6357,18 @@ static void lights(void)
                 bk |= 1u << BK[k];
             else if ((int)k < npages())
                 dimk |= 1u << BK[k];
+    } else if (ui.page == PG_PICK) {      /* the physical keys and drawing both show selected pitches */
+        const nstep_t *s = &proj.p[ui.pick_clip].t[tr - 1].st[ui.pick_step];
+        for (k = 0; k < NKEYS; k++)
+            if (pick_is_selected(s, pick_pitch((int)k)))
+                wk |= 1u << k;
+        dimk = 1u << 7 | 1u << 19;        /* the Cs anchor the pitch window */
     } else {                              /* the keys: held ones lit, the Cs dim */
         wk = ui.keys & 0x7FFFFFFu;
         dimk = 1u << 7 | 1u << 19;
     }
     if (ui.page != PG_KEYS)
-        b |= 1u << (ui.page == PG_SEQ || ui.page == PG_GEN ? B_SEQ : ui.page == PG_EDIT ? B_EDIT : ui.page == PG_MUTE || ui.page == PG_ENV ? B_ENV
+        b |= 1u << (ui.page == PG_SEQ || ui.page == PG_GEN || ui.page == PG_PICK ? B_SEQ : ui.page == PG_EDIT ? B_EDIT : ui.page == PG_MUTE || ui.page == PG_ENV ? B_ENV
                     : ui.page == PG_LFO ? B_LFO : ui.page == PG_ARP ? B_ARP : ui.page == PG_FX ? B_FX
                     : ui.page == PG_HOME || ui.page == PG_SONG || ui.page == PG_SETUP ? B_HOME : B_GLO);
     if (sq.playing)
@@ -7441,9 +7535,25 @@ static void page_roll(void)               /* an instrument part: its notes, pitc
     int tr = ui.trk, st = sq.t[tr].step, k, i, s, lo = 127, hi = 0, rows, rh, top, n, H = BODY_H - 6;
     ipart_t *p = ipart(tr);
     uint16_t col = TRK_RGB[tr];
-    char t[24], u[24];
+    char t[24], u[40], note[8];
+    const track_t *ts = tset(tr);
     steps_text(t);
-    sound_name(tr, u);
+    if (ui.held_step >= 0 && ui.held_step < p->len) {
+        u[0] = 0;
+        text_cat(u, "HOLD + ARP: PICK NOTES");
+    } else {
+        note_text(track_note(tr), note);
+        upper(note);
+        u[0] = 0;
+        text_cat(u, "STAMP ");
+        text_cat(u, note);
+        if (ts->chord) {
+            text_cat(u, " ");
+            text_cat(u, CHORD_NAME[ts->chord]);
+            text_cat(u, " ");
+            text_cat(u, INV_NAME[ts->chord_inv & 3u]);
+        }
+    }
     band_set(col, TRK_NAME[tr], t, u, npages(), ui.spage);
     for (s = 0; s < p->len; s++)
         for (i = 0; i < NCHORD && p->st[s].note[i]; i++) {
@@ -7671,6 +7781,52 @@ static void page_keys(void)               /* an instrument track's KEYS page: wh
         rrect(w * 15 + 9, 56, 11, 44, 2, on ? mix565(col, C_INK, 100) : C_INK);
     }
     cards_of(KD_SEQ, 0);
+}
+
+static void page_pick(void)
+{
+    int tr = ui.trk, i, w;
+    const nstep_t *s = &proj.p[ui.pick_clip].t[tr - 1].st[ui.pick_step];
+    uint16_t col = TRK_RGB[tr];
+    char t[24] = "STEP ", u[8], notes[32] = "";
+    int_text(ui.pick_step + 1, u);
+    text_cat(t, u);
+    band_set(col, TRK_NAME[tr], "PICK NOTES", t, 0, 0);
+    for (i = 0; i < NCHORD && s->note[i]; i++) {
+        if (i)
+            text_cat(notes, " ");
+        note_text(s->note[i], u);
+        upper(u);
+        text_cat(notes, u);
+    }
+    cv_text(6, 3, &FONT_S, notes[0] ? notes : "REST", TH_FG);
+    t[0] = 0;
+    int_text(i, t);
+    text_cat(t, "/4");
+    text_r(234, 3, &FONT_S, t, TH_FG);
+    cv_text(6, 24, &FONT_XS, "TAP KEY: ADD / REMOVE", TH_FG);
+    text_r(234, 24, &FONT_XS, "OCT: SHIFT", C_TXT2);
+    for (i = 0; i < 16; i++) {
+        int pitch = pick_pitch(WK[i]), on = pick_is_selected(s, pitch);
+        rrect(i * 15, 43, 14, 55, 2, on ? col : C_TILET);
+        if (on)
+            cv_rect(i * 15 + 5, 88, 4, 4, C_WHITE2);
+        if (i == 0 || pitch % 12 == 0 || i == 15) {
+            note_text(pitch, u);
+            upper(u);
+            cv_text(i * 15 + 1, 100, &FONT_T, u, C_TXT2);
+        }
+    }
+    for (i = 0; i < 11; i++) {
+        int key = BK[i], on = pick_is_selected(s, pick_pitch(key));
+        for (w = 0; w < 16 && WK[w] != key - 1; w++) {}
+        rrect(w * 15 + 9, 43, 11, 35, 2, on ? col : C_INK);
+        if (on)
+            cv_rect(w * 15 + 12, 69, 5, 4, C_WHITE2);
+    }
+    cv_text(6, 114, &FONT_T, "ARP / SEQ: BACK TO STEPS", TH_FG);
+    for (i = 0; i < NCHORD; i++)
+        cards[i].on = 0;                 /* the player is tapping musical keys, not adjusting knobs */
 }
 
 static void page_dedit(void)              /* the drums' EDIT page: the pad, its steps and hits, all its knobs */
@@ -8507,6 +8663,7 @@ static void page(void)
         break;
     case PG_KEYS: page_keys(); break;
     case PG_GEN: page_gen(); break;
+    case PG_PICK: page_pick(); break;
     default: inst ? page_roll() : page_steps(); break;
     }
 }
