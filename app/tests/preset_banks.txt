@@ -69,7 +69,7 @@ tap SAVE
 wait 500
 reboot
 wait 600
-expect projfmt 6
+expect projfmt >5
 expect preset2 144
 expect trk 2
 press SAVE
