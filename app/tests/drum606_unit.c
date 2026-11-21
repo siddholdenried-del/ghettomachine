@@ -57,7 +57,7 @@ static double hat_tail(int choke)
 int main(void)
 {
     const int pads[] = {0, 1, 2, 4, 6, 7, 8, 9};
-    assert(KIT_909 == 0 && KIT_808 == 1 && KIT_606 == 2 && KIT_NUM == 3);
+    assert(KIT_909 == 0 && KIT_808 == 1 && KIT_606 == 2 && KIT_NUM >= 3);   /* (the 707 came after: KIT_NUM 4) */
     for (unsigned i = 0; i < sizeof pads / sizeof pads[0]; i++) {
         int pad = pads[i];
         assert(drums_nparams(KIT_606, pad) >= 7);

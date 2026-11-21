@@ -84,7 +84,10 @@ typedef struct {
     d6_bq_t n_hp, n_lp;
     d6_dc_t dc;
     float inc[D6_PARTIALS], x[D6_PARTIALS], y[D6_PARTIALS], k[D6_PARTIALS], amp[D6_PARTIALS], wob[D6_PARTIALS];
-    uint32_t bell;   /* bit i: partial i is a bell line */
+    float k0[D6_PARTIALS];   /* each line's k at no wobble (2 sin(w / 2)): the retune's Taylor step starts from it */
+    int nplain;      /* lines 0..nplain-1 plain, nplain..n-1 bells (0.5: sorted at the trigger, muted lines left out) */
+    uint8_t ord[D6_PARTIALS];   /* the spec's line i is line ord[i] here (0xFF: muted), so the wobble draws keep its order */
+    uint32_t bell;   /* (unused since the sort) */
     float wob_alpha, wob_drive, bell_amt, bell_k, bell_env, click_amt, click_k, click_env;
     float tonal, noise_mix, sat, trim, att_k, att_env, fast_k, slow_k, fast_w, fast_env, slow_env;
 } d6_metal_t;

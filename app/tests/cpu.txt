@@ -1,0 +1,104 @@
+# CPU (0.5): a track's insert and Color sleep once silence has gone through them a while (fxsleepN: track N's chain
+# asleep), and wake with its next sound; SETUP turned with SELECT shows the render's time by stage (cpuN: stage N's
+# running mean, us x 10 a block: 0 DRUMS 1 SYNTH 2 INSERT+COLOR 3 REVERB+DELAY 4 MASTER 5 OTHER 6 TOTAL).
+#   tools/build.py ../../app --host, then  app/build/host/ghettomachine_host app/tests/cpu.txt OUTDIR (OUTDIR must exist)
+wait 600
+master 4096
+# ---- T2: Color on (FX past its last page: COLOR, K4 ON); silent, so it goes to sleep
+turn ALGO 1
+wait 30
+expect trk 2
+tap FX
+wait 30
+tap FX
+wait 30
+tap FX
+wait 30
+tap FX
+wait 30
+tap FX
+wait 30
+expect page 17
+spin K4 1
+wait 30
+expect fxsleep2 0
+wait 300
+expect fxsleep2 1
+# a note wakes it; it stays awake while the note and its tail sound, then sleeps again
+tap SEQ
+wait 30
+tap SEQ
+wait 30
+tap SEQ
+wait 30
+expect page 5
+key 7 down
+wait 50
+expect fxsleep2 0
+wait 300
+expect fxsleep2 0
+key 7 up
+wait 50
+expect fxsleep2 0
+wait 3000
+expect fxsleep2 1
+# ---- T3: an insert (SEL + FX, SELECT: CHORUS, K4 its mix), silent: asleep too
+turn ALGO 1
+wait 30
+expect trk 3
+press SEL
+wait 20
+tap FX
+wait 30
+release SEL
+wait 30
+expect page 16
+turn SELECT 3
+wait 30
+spin K4 64
+wait 30
+wait 300
+expect fxsleep3 1
+# ---- the drums' Color: awake while the beat plays, asleep once it has stopped and rung out
+turn ALGO -2
+wait 30
+expect trk 1
+tap FX
+wait 30
+tap FX
+wait 30
+tap FX
+wait 30
+tap FX
+wait 30
+tap FX
+wait 30
+expect page 17
+spin K4 1
+wait 30
+tap PLAY
+wait 1000
+expect fxsleep1 0
+expect fxsleep2 1
+expect fxsleep3 1
+# ---- SETUP, SELECT: the CPU by stage; every stage measured while it plays
+tap HOME
+wait 30
+tap HOME
+wait 30
+tap HOME
+wait 30
+expect page 13
+expect setupview 0
+turn SELECT 1
+wait 600
+expect setupview 1
+expect cpu0 >0
+expect cpu6 >0
+shot cpu_page.png
+turn SELECT -1
+wait 30
+expect setupview 0
+tap PLAY
+wait 4000
+expect fxsleep1 1

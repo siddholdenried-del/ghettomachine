@@ -777,10 +777,54 @@ static uint32_t crc32_more(uint32_t c, const uint8_t *d, uint32_t n)
 }
 static uint32_t crc32_of(const uint8_t *d, uint32_t n) { return ~crc32_more(0xFFFFFFFFu, d, n); }
 
+/* the render's time by stage (0.5, CPU): plat_ticks24 (24 a microsecond: one register read on the FM-1) around each,
+ * kept as a running mean in microseconds per block: SETUP shows it, the tests read it (cpuN). DRUMS: the kits and their
+ * mix; SYNTH: the voices on both cores (waiting for the second included) and their mix; FX IN: the inserts and Color
+ * (the drums' too); FX: the reverb and the delay; MASTER: the master bus; REST: the sequencer, the perform effects, the
+ * metronome, the stems and the output */
+enum { CS_DRUMS, CS_SYNTH, CS_FXIN, CS_FX, CS_MASTER, CS_REST, CS_TOTAL, CS_NUM };
+static uint32_t cs_t[CS_NUM];             /* this block's ticks */
+static float cs_us[CS_NUM];               /* the running means, us per block */
+#define CS_MARK(v) uint32_t v = plat_ticks24()
+
+/* GhettoMachine 0.5 (CPU): a track's insert and Color sleep once their input has been silent and their output too, for
+ * FXS_AFTER samples (their tails rung out): silence in, silence out, no work. The track's next sound wakes them at once
+ * (they pick up from silent lines). Silent: every sample under FXS_LEVEL (-120 dBFS) */
+#define FXS_LEVEL 1.0e-6f
+#define FXS_AFTER 4096u
+static uint32_t fxs_quiet[NTRK];          /* samples the chain has given silence for silence */
+static float fxs_peak(const float *a, const float *b, unsigned n)
+{
+    float m = 0.0f;
+    unsigned i;
+    for (i = 0; i < n; i++) {
+        float x = a[i] < 0.0f ? -a[i] : a[i], y = b[i] < 0.0f ? -b[i] : b[i];
+        if (x > m) m = x;
+        if (y > m) m = y;
+    }
+    return m;
+}
+static int fxs_asleep(int t, int in_quiet)  /* before the chain: 1 to skip it */
+{
+    if (!in_quiet)
+        fxs_quiet[t] = 0;
+    return in_quiet && fxs_quiet[t] >= FXS_AFTER;
+}
+static void fxs_after(int t, int in_quiet, int out_quiet, unsigned n)   /* after it: the quiet counted on */
+{
+    fxs_quiet[t] = in_quiet && out_quiet ? fxs_quiet[t] + n : 0u;
+}
+
 static void insert_process(int t, float *l, float *r, unsigned n)
 {
-    track_insert_process(&insert_rt[t-1], &proj.insert[t-1], l, r, n);
-    color_run(&color_rt[t], &proj.color[t], l, r, n);
+    CS_MARK(t0);
+    int q = fxs_peak(l, r, n) < FXS_LEVEL;
+    if (!fxs_asleep(t, q)) {
+        track_insert_process(&insert_rt[t-1], &proj.insert[t-1], l, r, n);
+        color_run(&color_rt[t], &proj.color[t], l, r, n);
+        fxs_after(t, q, fxs_peak(l, r, n) < FXS_LEVEL, n);
+    }
+    cs_t[CS_FXIN] += plat_ticks24() - t0;
 }
 
 static void insert_route(int t)
@@ -2801,6 +2845,9 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     uint32_t done = 0, i;
     int bar_at = -1;
     float gain = (float)master_q12 / 4096.0f, pk = peak, pkl = peak_l, pkr = peak_r;
+    CS_MARK(cs_start);
+    for (i = 0; i < CS_NUM; i++)
+        cs_t[i] = 0;
     if (n > APP_BLOCK)
         n = APP_BLOCK;
     if (STEMS) {                          /* a computer records the USB stems this block */
@@ -2942,10 +2989,21 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
                 chunk = m < 1.0f ? 1u : (uint32_t)m;
         }
         sync_drum_mutes();
+        CS_MARK(cs_d0);
         drums_render(proj.kit, buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, (int)chunk);
-        if (!track_is_muted(TR_DRUM) && color_active(&proj.color[TR_DRUM]))
-            color_run_drums(&color_rt[TR_DRUM], &color_drums_send, &proj.color[TR_DRUM],
-                            buf_l+done, buf_r+done, bus_rev+done, bus_dly+done, chunk);
+        cs_t[CS_DRUMS] += plat_ticks24() - cs_d0;
+        if (!track_is_muted(TR_DRUM) && color_active(&proj.color[TR_DRUM])) {   /* (asleep on silence: insert_process) */
+            int q = fxs_peak(buf_l + done, buf_r + done, chunk) < FXS_LEVEL &&
+                    fxs_peak(bus_rev + done, bus_dly + done, chunk) < FXS_LEVEL;
+            CS_MARK(cs_c0);
+            if (!fxs_asleep(TR_DRUM, q)) {
+                color_run_drums(&color_rt[TR_DRUM], &color_drums_send, &proj.color[TR_DRUM],
+                                buf_l+done, buf_r+done, bus_rev+done, bus_dly+done, chunk);
+                fxs_after(TR_DRUM, q, fxs_peak(buf_l + done, buf_r + done, chunk) < FXS_LEVEL &&
+                                      fxs_peak(bus_rev + done, bus_dly + done, chunk) < FXS_LEVEL, chunk);
+            }
+            cs_t[CS_FXIN] += plat_ticks24() - cs_c0;
+        }
         drum_mix(buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, chunk);
         if (STEMS && stems_on)            /* (the mix holds the drums alone until the synth comes in) */
             stem_put(TR_DRUM, buf_l + done, buf_r + done, done, chunk);
@@ -2960,7 +3018,12 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             }
             drum_pk = pk;
         }
-        synth_add(buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, chunk, done);
+        {   /* (the inserts run inside: counted as FX IN, taken out of SYNTH) */
+            uint32_t in0 = cs_t[CS_FXIN];
+            CS_MARK(cs_s0);
+            synth_add(buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, chunk, done);
+            cs_t[CS_SYNTH] += (plat_ticks24() - cs_s0) - (cs_t[CS_FXIN] - in0);
+        }
         if (sq.playing) {
             sq.bar_left -= (float)chunk;
             perf.roll_to -= (float)chunk;
@@ -2980,7 +3043,11 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             if (perf.on >> PF_WASH & 1u)
                 bus_rev[i] += d;
         }
-    fx_process(buf_l, buf_r, bus_rev, bus_dly, mix_out_l, mix_out_r, (int)n);   /* the reverb and the delay */
+    {
+        CS_MARK(cs_f0);
+        fx_process(buf_l, buf_r, bus_rev, bus_dly, mix_out_l, mix_out_r, (int)n);   /* the reverb and the delay */
+        cs_t[CS_FX] += plat_ticks24() - cs_f0;
+    }
     if (rec.state == RS_ARMED || rec.state == RS_REC)   /* sampling: the mix as it sounds, before the master */
         for (i = 0; i < n && (rec.state == RS_ARMED || rec.state == RS_REC); i++) {
             float m = 0.5f * (mix_out_l[i] + mix_out_r[i]);
@@ -2989,7 +3056,11 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             if (rec.state == RS_REC)
                 rec_frame(m > 1.0f ? 1.0f : m < -1.0f ? -1.0f : m);
         }
-    fx_master(mix_out_l, mix_out_r, (int)n, gain);   /* compressor, filter, MASTER (gliding), limiter */
+    {
+        CS_MARK(cs_m0);
+        fx_master(mix_out_l, mix_out_r, (int)n, gain);   /* compressor, filter, MASTER (gliding), limiter */
+        cs_t[CS_MASTER] += plat_ticks24() - cs_m0;
+    }
     if (perf.on & (1u << PF_STUT | 1u << PF_TAPE | 1u << PF_CRUSH) || perf.fade < 1.0f)
         pf_output(mix_out_l, mix_out_r, n);
     {
@@ -3034,6 +3105,15 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     peak = pk > pkl ? (pk > pkr ? pk : pkr) : (pkl > pkr ? pkl : pkr);
     peak_l = pkl;
     peak_r = pkr;
+    {   /* the stages' running means (about the last 50 blocks: 0.3 s) */
+        uint32_t tot = plat_ticks24() - cs_start, sum = 0;
+        for (i = 0; i < CS_REST; i++)
+            sum += cs_t[i];
+        cs_t[CS_REST] = tot > sum ? tot - sum : 0u;
+        cs_t[CS_TOTAL] = tot;
+        for (i = 0; i < CS_NUM; i++)
+            cs_us[i] += ((float)cs_t[i] * (1.0f / (float)PLAT_TICKS_PER_US) - cs_us[i]) * 0.02f;
+    }
 }
 
 void app_panic(void)
@@ -3216,6 +3296,7 @@ static struct {
     uint8_t trk;                          /* the track picked */
     uint8_t pad;                          /* the drum pad being edited */
     uint8_t color_page;
+    uint8_t setup_view;                   /* SETUP: 0 the clock and the sounds, 1 the CPU by stage (SELECT) */
     uint8_t spage;                        /* the step page, 0..7 */
     uint8_t seq_prev, seq_used;           /* a resize chord leaves the previous SEQ view alone */
     uint8_t epage;                        /* the EDIT page (four knobs each) */
@@ -6744,6 +6825,16 @@ static void input(void)
     if ((e = plat_enc(EN_SELECT)) != 0 && ui.page != PG_PICK) { /* SELECT: a held step's chance, the cursor, or the page within the page */
         if (ui.page == PG_COLOR) {
             ui.color_page = (uint8_t)clamp(ui.color_page+e,0,1);
+        } else if (ui.page == PG_SETUP) {   /* SETUP: SELECT turns to the CPU by stage and back */
+            char t[16];
+            ui.setup_view = (uint8_t)clamp(ui.setup_view + e, 0, 1);
+            t[0] = 0;
+            if (ui.setup_view) {
+                text_cat(t, "CPU ");
+                int_text((int32_t)plat_cpu_pct(), t + 4);
+                text_cat(t, "%");
+            }
+            app_say("SETUP", ui.setup_view ? t : "CLOCK, SOUNDS");
         } else if (inst && ui.page == PG_INSERT) {
             insert_select(ui.trk, e);
         } else if (ui.held_step >= 0 && !(inst && (ui.page == PG_EDIT || ui.page == PG_ENV || ui.page == PG_LFO))) {
@@ -8768,11 +8859,43 @@ static void page_home(void)               /* the scene grid: 16 patterns across 
     }
 }
 
+/* SETUP turned with SELECT (0.5, CPU): the render's time by stage (app_render's cs_us), each as a share of the time a
+ * block has (APP_BLOCK frames at 44.1 kHz), a bar and a number; the total, and the blocks that came late since the
+ * start. The synth's second core counts only as the first's wait for it */
+static void page_cpu(void)
+{
+    static const char *const NM[CS_NUM] = {"DRUMS", "SYNTH", "INSERT+COLOR", "REVERB+DELAY", "MASTER", "OTHER", "TOTAL"};
+    const float per = 100.0f * 44100.0f / (1.0e6f * (float)APP_BLOCK);   /* us a block -> % of its time */
+    char t[24], u[8];
+    int i;
+    t[0] = 0;
+    text_cat(t, "LATE ");
+    int_text((int32_t)plat_xruns(), u);
+    text_cat(t, u);
+    band_set(C_CREAM, "SETUP", "CPU BY STAGE", t, 0, 0);
+    rrect(3, 2, 234, BODY_H - 4, 6, C_PANEL);
+    for (i = 0; i < CS_NUM; i++) {
+        int y = 6 + i * 17, pct = (int)(cs_us[i] * per + 0.5f), w = pct > 100 ? 100 : pct;
+        cv_text(8, y - 2, &FONT_XS, NM[i], i == CS_TOTAL ? TH_TXT : C_TXT2);
+        cv_rect(104, y + 3, 100, 8, C_GRID);
+        if (w > 0)
+            cv_rect(104, y + 3, w, 8, i == CS_TOTAL && pct > 85 ? TH_RED : C_METER);
+        int_text(pct, u);
+        text_cat(u, "%");
+        text_r(232, y - 2, &FONT_XS, u, TH_TXT);
+    }
+    cards_of(KD_SETUP, 0);
+}
+
 static void page_setup(void)              /* SETUP: MIDI CLOCK; SOUNDS shared or per pattern, and which have their own */
 {
     static const char *const CL[3] = {"OFF: THE FM-1'S OWN TEMPO", "SENT: 24 A BEAT, START, STOP", "FOLLOWED: TEMPO, START, STOP"};
     int t, k, pp = sounds_pp();
-    band_set(C_CREAM, "SETUP", "CLOCK, SOUNDS", "HOME: NEXT", 0, 0);
+    if (ui.setup_view) {
+        page_cpu();
+        return;
+    }
+    band_set(C_CREAM, "SETUP", "CLOCK, SOUNDS", "SELECT: CPU", 0, 0);
     rrect(3, 2, 234, 40, 6, C_PANEL);
     cv_text(10, 4, &FONT_XS, "MIDI CLOCK (USB)", C_TXT2);
     cv_text(10, 20, &FONT_S, CL[proj.recq >> 2 & 3u], TH_TXT);
@@ -9320,6 +9443,7 @@ static int page_moves(void)               /* a page whose picture moves by itsel
     case PG_SEQ: return !inst;
     case PG_EDIT: return !inst || ui.epage == 0;
     case PG_SONG: return sq.playing;
+    case PG_SETUP: return ui.setup_view;
     case PG_MST: return ui.mstpage == 0 || ui.mstpage == 3 || ui.mstpage == 4 || ui.mstpage == 6 || ui.mstpage == 7;
     default: return 0;
     }
@@ -9822,6 +9946,14 @@ int app_expect(const char *what, int *got)
         for (s = 0; s < NTRK; s++)
             stem_pk[s][0] = stem_pk[s][1] = 0.0f;
         *got = 1;
+    } else if (!strncmp(what, "fxsleep", 7) && what[7] >= '1' && what[7] < '1' + NTRK && !what[8]) {
+        /* fxsleepN: track N's insert and Color asleep (silence in, silence out for FXS_AFTER samples) */
+        *got = fxs_quiet[what[7] - '1'] >= FXS_AFTER;
+    } else if (!strcmp(what, "setupview")) {   /* SETUP: 0 the clock and sounds, 1 the CPU by stage */
+        *got = ui.setup_view;
+    } else if (!strncmp(what, "cpu", 3) && what[3] >= '0' && what[3] < '0' + CS_NUM && !what[4]) {
+        /* cpuN: stage N's running mean, us x 10 per block (0 DRUMS 1 SYNTH 2 FX IN 3 FX 4 MASTER 5 REST 6 TOTAL) */
+        *got = (int)(cs_us[what[3] - '0'] * 10.0f + 0.5f);
     } else if (!strcmp(what, "wlit")) {   /* the white keys lit, a bit a key (white 1: 1) */
         *got = lit_white;
     } else if (!strcmp(what, "wdim")) {   /* the white keys glowing */

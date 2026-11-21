@@ -79,17 +79,24 @@ static void advance(track_insert_t *s)
 static const float hilbert[16] = {
     0.635117279f, 0.207729893f, 0.119964559f, 0.080853325f, 0.058114101f, 0.042976540f, 0.032090542f, 0.023907136f, 0.017613517f, 0.012740423f, 0.008993817f, 0.006174526f, 0.004136725f, 0.002765274f, 0.001962901f, 0.001642890f
 };
-static void shift(track_insert_t *s, unsigned ch, float x, float sr, float cr, float *out)
+__attribute__((noinline)) static void shift(track_insert_t *s, unsigned ch, float x, float sr, float cr, float *out)   /* (out of line: the shared loop stays as small as it was) */
 {
     float i = 0.f, q = 0.f, os = s->osc_s[ch], oc = s->osc_c[ch];
     unsigned k;
     s->ring[ch][s->pos] = quant(x);
     if (s->hist >= 62) {
         i = s->ring[ch][WRAP(s->pos-31)]*(1.f/16384.f);
-        for (k = 0; k < 16; k++) {
-            unsigned d = 2*k+1;
-            q += hilbert[k]*(s->ring[ch][WRAP(s->pos-31-d)]-s->ring[ch][WRAP(s->pos-31+d)]);
-        }
+        if (s->pos >= 62) {   /* (0.5, CPU: the window inside the ring, 94 % of the time: read it without wrapping) */
+            const int16_t *c = s->ring[ch] + s->pos - 31;
+            for (k = 0; k < 16; k++) {
+                unsigned d = 2*k+1;
+                q += hilbert[k]*(float)(c[-(int)d]-c[d]);
+            }
+        } else
+            for (k = 0; k < 16; k++) {
+                unsigned d = 2*k+1;
+                q += hilbert[k]*(s->ring[ch][WRAP(s->pos-31-d)]-s->ring[ch][WRAP(s->pos-31+d)]);
+            }
         q *= 1.f/16384.f;
     }
     *out = i*oc - q*os;
@@ -106,6 +113,43 @@ static float reson(track_insert_t *s, unsigned ch, unsigned k, float x, float co
     return z[0];
 }
 
+/* PHASER on its own (GhettoMachine 0.5, CPU): its allpass coefficient g = (w - 1) / (w + 1) at most every 16 samples,
+ * from the LFO's phase at the segment's ends, stepped linearly between: two divisions a sample saved (the LFO is a slow
+ * triangle, so g moves by under 0.1 % across a segment); otherwise the shared loop's PHASER, line for line */
+static void phaser(track_insert_t *s, float b, float c, float wet, float dp, float *l, float *r, unsigned n)
+{
+    unsigned i = 0, ch, k;
+    while (i < n) {
+        unsigned seg = n - i > 16u ? 16u : n - i, end = i + seg;
+        float g[2], gs[2], ph1 = s->phase + (float)seg * dp, inv = 1.f / (float)seg;
+        while (ph1 >= 1.f) ph1 -= 1.f;
+        for (ch = 0; ch < 2; ch++) {
+            float m0 = ch ? triangle(unit(s->phase+.25f)) : triangle(s->phase);
+            float m1 = ch ? triangle(unit(ph1+.25f)) : triangle(ph1);
+            float w0 = .18f + .155f * b * m0, w1 = .18f + .155f * b * m1;
+            g[ch] = (w0-1.f)/(w0+1.f);
+            gs[ch] = ((w1-1.f)/(w1+1.f) - g[ch]) * inv;
+        }
+        for (; i < end; i++) {
+            float in[2] = {l[i],r[i]}, out[2];
+            s->phase = unit(s->phase+dp);
+            for (ch = 0; ch < 2; ch++) {
+                float x = in[ch] + .68f*c*s->fb[ch];
+                for (k = 0; k < 4; k++) {
+                    float y = g[ch]*x + s->ap[ch][k];
+                    s->ap[ch][k] = x - g[ch]*y;
+                    x = y;
+                }
+                g[ch] += gs[ch];
+                s->fb[ch] = sat(x);
+                out[ch] = .5f * (in[ch] + x);
+            }
+            l[i] = in[0] + wet*(out[0]-in[0]);
+            r[i] = in[1] + wet*(out[1]-in[1]);
+        }
+    }
+}
+
 void track_insert_process(track_insert_t *s, const track_insert_param_t *p, float *l, float *r, unsigned n)
 {
     const float a = p->v[0] / 127.f, b = p->v[1] / 127.f, c = p->v[2] / 127.f, wet = p->v[3] / 127.f;
@@ -115,6 +159,10 @@ void track_insert_process(track_insert_t *s, const track_insert_param_t *p, floa
     unsigned i, ch;
     if (mode <= TI_OFF || mode >= TI_MODES || !wet)
         return;
+    if (mode == TI_PHASE) {
+        phaser(s, b, c, wet, dp, l, r, n);
+        return;
+    }
     if (mode == TI_SHIFT) {
         /* Signed coarse ±900Hz, fine ±25Hz, stereo offset ±15Hz. */
         const float coarse = (p->v[0]-64)*(900.f/64.f), fine = (p->v[1]-64)*(25.f/64.f);

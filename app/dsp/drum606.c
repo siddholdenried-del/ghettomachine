@@ -578,17 +578,27 @@ static void s6mt_init(d6_metal_t *m, uint32_t seed)
     m->wob_rng = s6_seed(s ^ 0x51D3B7A1u);
     s6_wn_init(&m->noise, s ^ 0xA511E9B3u);
     m->on = 0;
-    m->n = 0;
+    m->n = m->nplain = 0;
 }
 
 static void s6mt_trigger(d6_metal_t *m, const d6_hat_spec_t *sp, float decay_pct, float pitch)
 {
     float decay = s6_clamp(decay_pct, 0.0f, 1.0f), r = s6_clamp(pitch, 1.0f / 16.0f, 16.0f), sc, dur, f;
     int i;
-    m->n = D6_PARTIALS;
+    int np = 0, nb;
     m->bell = 0;
+    /* GhettoMachine (0.5, CPU): the sounding lines only, the plain ones first and the bells after them, so the render
+     * sums each kind in a loop of its own (no test per line per sample); the phases are drawn for every line in the
+     * spec's order, as before */
+    for (i = 0; i < D6_PARTIALS; i++)
+        if (sp->p[i].hz * r / S6_SR < S6MT_MUTED_RATIO && !sp->p[i].bell)
+            np++;
+    m->nplain = np;
+    nb = np;
+    np = 0;
     for (i = 0; i < D6_PARTIALS; i++) {
         float ratio = sp->p[i].hz * r / S6_SR, level = 1.0f, ph, w;
+        int j;
         if (ratio >= S6MT_MUTED_RATIO)
             level = 0.0f;
         else if (ratio > S6MT_FULL_RATIO) {
@@ -596,15 +606,19 @@ static void s6mt_trigger(d6_metal_t *m, const d6_hat_spec_t *sp, float decay_pct
             level = tp * tp * (3.0f - 2.0f * tp);
         }
         ph = (s6_bip(&m->phase_rng) + 1.0f) * 0.3f * S6_PI;   /* close enough to land as one hit */
-        w = m->inc[i] = level > 0.0f ? S6_2PI * ratio : 0.0f;
-        m->amp[i] = sp->p[i].amp * level;
-        if (sp->p[i].bell)
-            m->bell |= 1u << i;
-        m->k[i] = 2.0f * fm_sinf(w * 0.5f);
-        m->x[i] = fm_sinf(ph);
-        m->y[i] = fm_cosf(ph + w * 0.5f);   /* (cos(p) here would scale the line by 1/cos(w/2)) */
-        m->wob[i] = 0.0f;
+        m->ord[i] = 0xFFu;
+        if (!(level > 0.0f))
+            continue;
+        j = sp->p[i].bell ? nb++ : np++;
+        m->ord[i] = (uint8_t)j;
+        w = m->inc[j] = S6_2PI * ratio;
+        m->amp[j] = sp->p[i].amp * level;
+        m->k0[j] = m->k[j] = 2.0f * fm_sinf(w * 0.5f);
+        m->x[j] = fm_sinf(ph);
+        m->y[j] = fm_cosf(ph + w * 0.5f);   /* (cos(p) here would scale the line by 1/cos(w/2)) */
+        m->wob[j] = 0.0f;
     }
+    m->n = nb;
     m->bell_amt = fm_maxf(0.0f, sp->bell);
     m->bell_k = s6_decay_k(fm_maxf(0.005f, sp->bell_t));
     m->bell_env = 1.0f;
@@ -655,21 +669,32 @@ static float s6mt_process(d6_metal_t *m)
     }
     if (m->wob_drive > 0.0f && (m->frame % S6MT_RETUNE) == 0u) {   /* the slow walk, once per 32 samples */
         float step = m->wob_drive * S6MT_RETUNE_STEP, dk = m->wob_alpha * (float)S6MT_RETUNE;
-        for (i = 0; i < m->n; i++) {
-            m->wob[i] += step * s6_bip(&m->wob_rng) - dk * m->wob[i];
-            m->k[i] = 2.0f * fm_sinf(m->inc[i] * (1.0f + m->wob[i]) * 0.5f);
+        for (i = 0; i < D6_PARTIALS; i++) {   /* k = 2 sin(w (1 + wob) / 2), from its value at no wobble: the wobble is
+                                               * ~0.1 %, so the second-order Taylor step is exact to ~1e-9 (0.5: no sinf
+                                               * per line); the draws in the spec's order, as before (a muted line's too) */
+            float d, rn = s6_bip(&m->wob_rng);
+            int j = m->ord[i];
+            if (j == 0xFF)
+                continue;
+            m->wob[j] += step * rn - dk * m->wob[j];
+            d = m->inc[j] * m->wob[j];
+            /* cos(w / 2) from sin(w / 2) = k0 / 2 (w / 2 < pi / 2 for a sounding line): no table of it (RAM) */
+            m->k[j] = m->k0[j] + d * fm_sqrtf(1.0f - 0.25f * m->k0[j] * m->k0[j]) - 0.125f * d * d * m->k0[j];
         }
     }
     bell_gain = 1.0f + m->bell_amt * m->bell_env;
     m->bell_env = s6_flush(m->bell_env * m->bell_k);
-    for (i = 0; i < m->n; i++) {
+    for (i = 0; i < m->nplain; i++) {
         float nx = m->x[i] + m->k[i] * m->y[i];
         m->y[i] -= m->k[i] * nx;
         m->x[i] = nx;
-        if (m->bell & (1u << i))
-            bells += nx * m->amp[i];
-        else
-            plain += nx * m->amp[i];
+        plain += nx * m->amp[i];
+    }
+    for (; i < m->n; i++) {
+        float nx = m->x[i] + m->k[i] * m->y[i];
+        m->y[i] -= m->k[i] * nx;
+        m->x[i] = nx;
+        bells += nx * m->amp[i];
     }
     noise = s6_bq_fl(&m->n_lp, s6_bq(&m->n_hp, s6_wn(&m->noise)));
     m->att_env += m->att_k * (1.0f - m->att_env);
@@ -860,70 +885,13 @@ static d6_cf_t s6cp_core(d6_cp_t *c)
     return f;
 }
 
-static void s6cp_init(d6_cp_t *c, uint32_t seed)
+/* a core frame finished: the end fade, the saturation and the air, at the core's rate (GhettoMachine 0.5, CPU: these ran
+ * on every output frame, after the read-back; at the core's 22.05 kHz they cost half, and the air's 3 kHz highpass is
+ * set for that rate). Its time is the core frame's */
+static float s6cp_frame(d6_cp_t *c)
 {
-    c->rng = seed ? seed : 0x6D2B79F5u;
-    c->on = 0;
-}
-
-static void s6cp_trigger(d6_cp_t *c, float decay_pct, float pitch, float noise)
-{
-    float r = s6_clamp(fm_fabsf(pitch), 0.5f, 2.0f), want = 44100.0f * r, core;
-    int i;
-    noise = s6_clamp(noise, 0.0f, 1.0f);
-    c->decay = s6_clamp(decay_pct, 0.05f, 1.0f);
-    c->noise_gain = 2.0f * fm_minf(noise, 0.5f);
-    c->air = noise > 0.5f ? 2.0f * (noise - 0.5f) : 0.0f;
-    core = fm_minf(want, S6_SR);
-    c->step = core / S6_SR;
-    c->rate = core;
-    s6cp_configure(c, want / core);
-    for (i = 0; i < D6_CLAP_TAPS; i++)   /* prewarm */
-        s6cp_push(c, s6cp_gauss(&c->rng));
-    c->core_idx = 0;
-    if (c->step != 1.0f) {   /* pitched down: the core at its own rate, read back with a cubic */
-        c->f[0].full = c->f[0].dry = 0.0f;
-        for (i = 1; i < 4; i++)
-            c->f[i] = s6cp_core(c);
-        c->pos = 0.0f;
-    }
-    c->air_k = fm_expf(-S6_2PI * fm_minf(S6CP_AIR_HZ, 0.35f * S6_SR) / S6_SR);
-    c->air_in = c->air_out = 0.0f;
-    c->max = (uint32_t)(S6_SR * S6CP_DUR);
-    if ((float)c->max < S6_SR * S6CP_DUR)
-        c->max++;
-    c->idx = 0;
-    c->on = 1;
-}
-
-static inline float s6cp_hermite(float p0, float p1, float p2, float p3, float t)
-{
-    return 0.5f * (2.0f * p1 + (-p0 + p2) * t + (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t * t +
-                   (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t * t * t);
-}
-
-static float s6cp_process(d6_cp_t *c)
-{
-    d6_cf_t raw;
-    float time, fade = 1.0f, full, cal, sat;
-    if (!c->on)
-        return 0.0f;
-    if (c->step == 1.0f)
-        raw = s6cp_core(c);
-    else {
-        float t = c->pos;
-        raw.full = s6cp_hermite(c->f[0].full, c->f[1].full, c->f[2].full, c->f[3].full, t);
-        raw.dry = s6cp_hermite(c->f[0].dry, c->f[1].dry, c->f[2].dry, c->f[3].dry, t);
-        c->pos += c->step;
-        while (c->pos >= 1.0f) {
-            c->pos -= 1.0f;
-            c->f[0] = c->f[1];
-            c->f[1] = c->f[2];
-            c->f[2] = c->f[3];
-            c->f[3] = s6cp_core(c);
-        }
-    }
-    time = (float)c->idx / S6_SR;
+    d6_cf_t raw = s6cp_core(c);
+    float time = (float)(c->core_idx - 1u) / c->rate, fade = 1.0f, full, cal, sat;
     if (time > 0.290f) {
         float fp = fm_minf((time - 0.290f) / (S6CP_DUR - 0.290f), 1.0f), fb = 0.5f + 0.5f * fm_cosf(S6_PI * fp);
         fade = fb * fb * fb * fb;
@@ -943,9 +911,77 @@ static float s6cp_process(d6_cp_t *c)
         } else
             sat = dry + c->noise_gain * nz;
     }
+    return sat;
+}
+
+static void s6cp_init(d6_cp_t *c, uint32_t seed)
+{
+    c->rng = seed ? seed : 0x6D2B79F5u;
+    c->on = 0;
+}
+
+static void s6cp_trigger(d6_cp_t *c, float decay_pct, float pitch, float noise)
+{
+    float r = s6_clamp(fm_fabsf(pitch), 0.5f, 2.0f), want = 44100.0f * r, core;
+    int i;
+    noise = s6_clamp(noise, 0.0f, 1.0f);
+    c->decay = s6_clamp(decay_pct, 0.05f, 1.0f);
+    c->noise_gain = 2.0f * fm_minf(noise, 0.5f);
+    c->air = noise > 0.5f ? 2.0f * (noise - 0.5f) : 0.0f;
+    /* GhettoMachine (0.5, CPU): the core at 22.05 kHz at most, its colour filters squeezed to match (energy kept) and
+     * read back with the cubic, as a pitched-down clap is: the four filters hold under 1 % of their energy above 11 kHz,
+     * so the clap sounds the same at a quarter of the FIR work (half the frames, half the taps) */
+    core = fm_minf(want, 0.5f * S6_SR);
+    c->step = core / S6_SR;
+    c->rate = core;
+    s6cp_configure(c, want / core);
+    for (i = 0; i < D6_CLAP_TAPS; i++)   /* prewarm */
+        s6cp_push(c, s6cp_gauss(&c->rng));
+    c->core_idx = 0;
+    c->air_k = fm_expf(-S6_2PI * fm_minf(S6CP_AIR_HZ, 0.35f * c->rate) / c->rate);   /* (0.5: the core's rate) */
+    c->air_in = c->air_out = 0.0f;
+    if (c->step != 1.0f) {   /* the core at its own rate, read back with a cubic */
+        c->f[0].full = c->f[0].dry = 0.0f;
+        for (i = 1; i < 4; i++) {
+            c->f[i].full = s6cp_frame(c);
+            c->f[i].dry = 0.0f;
+        }
+        c->pos = 0.0f;
+    }
+    c->max = (uint32_t)(S6_SR * S6CP_DUR);
+    if ((float)c->max < S6_SR * S6CP_DUR)
+        c->max++;
+    c->idx = 0;
+    c->on = 1;
+}
+
+static inline float s6cp_hermite(float p0, float p1, float p2, float p3, float t)
+{
+    return 0.5f * (2.0f * p1 + (-p0 + p2) * t + (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t * t +
+                   (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t * t * t);
+}
+
+static float s6cp_process(d6_cp_t *c)
+{
+    float out;
+    if (!c->on)
+        return 0.0f;
+    if (c->step == 1.0f)
+        out = s6cp_frame(c);
+    else {   /* (0.5: the finished clap read back, one cubic; was the raw and the dry read back, then finished) */
+        out = s6cp_hermite(c->f[0].full, c->f[1].full, c->f[2].full, c->f[3].full, c->pos);
+        c->pos += c->step;
+        while (c->pos >= 1.0f) {
+            c->pos -= 1.0f;
+            c->f[0] = c->f[1];
+            c->f[1] = c->f[2];
+            c->f[2] = c->f[3];
+            c->f[3].full = s6cp_frame(c);
+        }
+    }
     if (++c->idx >= c->max)
         c->on = 0;
-    return s6_flush(sat * S6CP_TRIM);
+    return s6_flush(out * S6CP_TRIM);
 }
 
 /* ---- sd606_shape.h: the drive stage (9W9's distortion types) ------------ */

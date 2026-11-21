@@ -18,9 +18,10 @@ GhettoMachine, part of the BongWare firmware line engineered by BongTech, turns 
 > **Historical hardware test: 0.5** (first installed over USB on 20 Nov). The first recording from it clicked now and then, so
 > 0.5 now keeps a deeper USB buffer, MASTER no longer changes what a computer records, and the drum steps' beats glow
 > (1, 5, 9, 13): that build went on the FM-1 on 21 Nov, and a recording from it had no clicks. REC + GLO (erase the
-> track's part, to record it again) went on it the same day. The 808 brought up to the 909's level is in the source,
-> not on the FM-1 yet. 0.5 is 0.4 plus the USB stems. 0.4 is 0.3 plus the 303 generator, the new name and the boot screen's logo; 0.3 is 0.2 plus the performance
-> update (the scene grid onwards) and the synth update. 0.5 passes its simulator tests (1,569 checks, 39 more on the
+> track's part, to record it again) went on it the same day, and later the 808 brought up to the 909's level with the
+> Dungeon BBS screen. The CPU pass (SETUP's CPU view; a cheaper 606, Color and phaser; effects that sleep on silence) is
+> in the source, not on the FM-1 yet. 0.5 is 0.4 plus the USB stems. 0.4 is 0.3 plus the 303 generator, the new name and the boot screen's logo; 0.3 is 0.2 plus the performance
+> update (the scene grid onwards) and the synth update. 0.5 passes its simulator tests (2,136 checks, 39 more on the
 > synth itself and 48 on the master bus's sound). It reads a project saved by 0.2, 0.3 or 0.4.
 
 ## Installing it, and getting back
@@ -136,7 +137,7 @@ A very dense collection of long parts can exceed the fixed FM-1 project save slo
 
 Pick **DRUMS, T2, T3 or T4**, then tap **FX** through Reverb, Delay, Delay 2 and Filter to reach that track's **COLOR**. On the first page, **K1 AMOUNT** blends the processed sound and **K4 COLOR** switches ON/BYPASS. Turn **SELECT** right for Modules: K1 **WEAR** (signal-gated hiss and crackle), K2 **WOW** (stereo wow and flutter), K3 **DIGITAL** (reduced rate and resolution), K4 **DROPOUT** (brief tape dips). Turn SELECT left for Amount and Bypass. While on Color, use **ALGORITHM** to pick a different track.
 
-Each track has its own strip and stored settings. On instruments, Color follows the track's insert, and comes before pan, shared sends and that track's USB stem. On drums, the preweighted reverb and delay feeds get the same Color timing without changing individual pad send levels. The master bus controls and chain are unchanged. Muting a track clears its Color history, not effects already ringing in the shared reverb or delay. A bypassed strip leaves samples unchanged. Projects made before Color load with all four strips bypassed.
+Each track has its own strip and stored settings. On instruments, Color follows the track's insert, and comes before pan, shared sends and that track's USB stem. On drums, the preweighted reverb and delay feeds get the same Color timing without changing individual pad send levels. The master bus controls and chain are unchanged. Muting a track clears its Color history, not effects already ringing in the shared reverb or delay. A bypassed strip leaves samples unchanged. Projects made before Color load with all four strips bypassed. A track's Color and its insert **sleep** once silence has gone through them for about 0.1 s (their tails rung out): they take no processor time until the track's next sound, which wakes them at once.
 
 ### Instrument insert effects
 
@@ -154,7 +155,8 @@ Pick **T2, T3 or T4**, then hold **SEL** and tap **FX**. Turn **SELECT** to choo
 | Micro Pitch | Detune depth | Delay | Stereo width |
 | Resonator | Tuning | Decay | Color/second resonance |
 
-Each track can run one insert at a time. It processes the instrument's stereo signal before mixer pan, the shared reverb/delay sends, and the USB stem. Mute clears the insert's own tail immediately; shared effects already fed by it can still ring out. Inserts are track-wide project settings, not per-pattern locks; older saves start with each insert OFF. Freq Shift adds or subtracts the same number of Hz from each frequency, rather than transposing by a musical interval; at low frequencies the hardware-friendly Hilbert filter has weaker rejection of the opposite sideband.
+Each track can run one insert at a time. It processes the instrument's stereo signal before mixer pan, the shared reverb/delay sends, and the USB stem. Mute clears the insert's own tail immediately; shared effects already fed by it can still ring out. Inserts are track-wide project settings, not per-pattern locks; older saves start with each insert OFF. Freq Shift adds or subtracts the same number of Hz from each frequency, rather than transposing by a musical interval; at low frequencies the hardware-friendly Hilbert filter has weaker rejection of the opposite sideband. An insert sleeps on
+silence as Color does.
 
 ### The 303 generator (ACID)
 
@@ -499,6 +501,10 @@ Press HOME on the SONG page.
   pattern keeps T2–T4's sounds and the drums' kit. A track moving to another pattern (a scene, a clip, the song, a
   follow action) takes that pattern's sound; a pattern with none yet takes the sound that's playing. So pattern 1 can
   be a 909 with a soft pad and pattern 2 an 808 with an acid bass. The grid shows which patterns have their own.
+- **SELECT: CPU.** Turn SELECT to see where the processor's time goes, live: **DRUMS**, **SYNTH**, **INSERT+COLOR**,
+  **REVERB+DELAY**, **MASTER**, **OTHER** and the **TOTAL**, each as a share of the time the FM-1 has for each block of
+  sound, and **LATE**: the blocks that weren't ready in time since it started (each a glitch). The synth's second core
+  counts only as the time the first waits for it. Turn SELECT back for the clock and the sounds.
 
 ## What is kept, and where
 
@@ -531,9 +537,12 @@ the sound saved with the pattern it's on.
 
 ## Not in 0.5
 
-- CPU load on the FM-1 hasn't been measured yet, with or without the master bus's stages. If it's short, voices drop
-  first. A voice using FM, the shaper or the matrix takes about one and a half times a plain one's time (measured on
-  the Mac, in the simulator).
+- CPU on the FM-1: SETUP's CPU view shows the load by stage. If it runs short, voices drop first. A voice using FM,
+  the shaper or the matrix takes about one and a half times a plain one's time (measured on the Mac). Since 21 Nov (the CPU pass) the
+  606's clap renders at 22.05 kHz (its filters hold under 1 % of their energy above 11 kHz: it sounds the same at a third
+  of the work), its hats and cymbal skip a sine per line per 32 samples, Color skips an inaudible DIGITAL and works out
+  WOW's delays every 16 samples, the phaser its coefficients every 16, and a silent track's Color and insert sleep: a
+  busy scene costs about a fifth less, and a quiet one two-thirds less (counted in instructions on the Mac).
 - The first recording of the stems from the FM-1 had each track on its own pair, but the USB buffer ran dry about a
   dozen times in 9 seconds, each a click in the recording (not in the FM-1's own sound). 0.5 now keeps a deeper buffer
   (about 6 ms more delay); recorded from on 21 Nov with MASTER at 0, it had no clicks and the master pair kept its

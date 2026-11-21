@@ -66,7 +66,28 @@ static void run(color_state_t *s, color_sends_t *send, const color_params_t *p,
     dg = (float)(1u << (15-(int)(11.f*digital)));
     dgi = 1.f/dg;
     hold = 1+(int)(digital*digital*24.f);
-    for (i = 0; i < n; i++) {
+    /* GhettoMachine 0.5 (CPU): DIGITAL that changes nothing a 16-bit output could show (a hold of one sample, and steps so
+     * fine that the blend moves a sample by under half a 16-bit step: the default 23 is 2^-14 steps, blended 18 %) is
+     * left out (it cost a quarter of Color's work) */
+    if (hold == 1 && digital * (.5f * dgi) < (1.f/65536.f))
+        digital = 0.f;
+    for (i = 0; i < n; ) {
+    /* GhettoMachine 0.5 (CPU): WOW's two delay times worked out at most every 16 samples, exactly from the LFOs' phases
+     * at the segment's ends, and stepped linearly between them (the LFOs are triangles: straight between their corners,
+     * so this is the per-sample value except within 16 samples of a corner): no triangles per sample */
+    unsigned seg = n - i > 16u ? 16u : n - i, end = i + seg;
+    float da = 0.f, db = 0.f, dda = 0.f, ddb = 0.f;
+    if (wow) {
+        float s1 = unit(s->slow + (float)seg * (.57f/44100.f)), f1 = unit(s->fast + (float)seg * (7.7f/44100.f));
+        float wa = tri(s->slow), fl = tri(s->fast), wb = tri(s1), fm = tri(f1), inv = 1.f / (float)seg;
+        da = 63.f+wow*(45.f*wa+8.f*fl);
+        db = 63.f+wow*(41.f*wa+9.f*tri(unit(s->fast+.13f)));
+        dda = (63.f+wow*(45.f*wb+8.f*fm) - da) * inv;
+        ddb = (63.f+wow*(41.f*wb+9.f*tri(unit(f1+.13f))) - db) * inv;
+        s->slow = s1;
+        s->fast = f1;
+    }
+    for (; i < end; i++) {
         float x = l[i], y = r[i], a = x, b = y;
         float xrv = send ? rev[i] : 0.f, xdl = send ? dly[i] : 0.f, ar = xrv, ad = xdl;
         float v = .5f*(absf(x)+absf(y)), gate, dt = 1.f;
@@ -74,17 +95,14 @@ static void run(color_state_t *s, color_sends_t *send, const color_params_t *p,
         s->envelope += (v > s->envelope ? .02f : .001f)*(v-s->envelope);
         gate = limit((s->envelope-.001f)*40.f);
         if (wow) {
-            float wa = tri(s->slow), fl = tri(s->fast);
-            float da = 63.f+wow*(45.f*wa+8.f*fl);
-            float db = 63.f+wow*(41.f*wa+9.f*tri(unit(s->fast+.13f)));
             a = shift(s,s->ring[0],x,da); b = shift(s,s->ring[1],y,db);
             if (send) {
                 float d = .5f*(da+db);
                 ar = shift(s,send->ring[0],xrv,d);
                 ad = shift(s,send->ring[1],xdl,d);
             }
-            s->slow = unit(s->slow+(.57f/44100.f));
-            s->fast = unit(s->fast+(7.7f/44100.f));
+            da += dda;
+            db += ddb;
             s->pos = (uint16_t)((s->pos+1)&(COL_RING-1));
             if (s->valid < COL_RING-1) s->valid++;
         }
@@ -128,6 +146,7 @@ static void run(color_state_t *s, color_sends_t *send, const color_params_t *p,
         }
         l[i] = x+amount*(a-x); r[i] = y+amount*(b-y);
         if (send) { rev[i] = xrv+amount*(ar-xrv); dly[i] = xdl+amount*(ad-xdl); }
+    }
     }
 }
 void color_run(color_state_t *s, const color_params_t *p, float *l, float *r, unsigned n)
