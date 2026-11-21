@@ -132,20 +132,20 @@
   "site": "https://ghettomachine.bongcult.com",
   "source": {
     "emscripten": "7.0.0+777e6e5db7b4990bcaeb1b9998ed642cc84e6629",
-    "emulator_build_commit": "8313dc37c348024e7bbad3cec61a1833068d6dec",
-    "feature_source": "8313dc37c348024e7bbad3cec61a1833068d6dec",
+    "emulator_build_commit": "dd25239027303d792eccbb70bc936eb6f4a949b9",
+    "feature_source": "dd25239027303d792eccbb70bc936eb6f4a949b9",
     "felucca_bsp": "2a5af3dfc8bccb92e37d48a3e7e0bf9a5827e51f",
     "fm1_base": "7337375c15e9db26f23b0c68a1db61429add2f48",
-    "provenance": "Browser development build from the exact clean source of the third CPU pass: the render staggered over the FM-1's two cores a block apart (the reverb, delay and master bus on the second; one core in the browser, the same sound), the CPU view's peaks, and kit knobs loaded a pad at a time.",
-    "remote_main_predecessor": "bbf8783e144c00309dfe715b387d0627b0e86e37",
+    "provenance": "Browser development build from the exact clean source of the budgets: each section's share of the FM-1's processor (drums 20%, synth 30%, effects 25%; they act on the FM-1's measured times, not in the browser), shed voices fading in 10 ms, the CPU view's budget marks, the processor read out to a screen reader, and a cheaper 606 clap hit.",
+    "remote_main_predecessor": "bd2cda5aedd47a8607b89a5da150a5498cd08e6a",
     "repository": "https://github.com/siddholdenried-del/ghettomachine",
-    "runtime_tree": "fe6b30bb4aba3a250f68e2980a8aafc172f760cc"
+    "runtime_tree": "148391f6a9628bdcf0d99bf1cfb9303d3af38921"
   },
   "targets": {
     "device": {
-      "application_bytes": 568004,
-      "build_from": "8313dc37c348024e7bbad3cec61a1833068d6dec",
-      "build_id": "F821554D",
+      "application_bytes": 570308,
+      "build_from": "dd25239027303d792eccbb70bc936eb6f4a949b9",
+      "build_id": "35BB7933",
       "build_status": "linked-and-packaged",
       "downloads": [],
       "flashed": false,
@@ -158,12 +158,12 @@
       "hardware_tested": false,
       "package_bytes": 616099,
       "package_identity": "FM-1_800",
-      "package_sha256": "8f651720b23b683c7a621f545c63b28b9e2585315c4a9f14adbdab410efa1efe",
+      "package_sha256": "b9d407f6b924e690dd667dc608e5c11063b87ddee75c01dd1f70e966577214f1",
       "pool_guard_bytes": 8192,
       "pool_limit_bytes": 344064,
       "pool_used_bytes": 335064,
       "ram_limit_bytes": 98304,
-      "ram_used_bytes": 95732,
+      "ram_used_bytes": 95860,
       "status": "not-distributed",
       "tested_for_this_release": false
     },
@@ -193,7 +193,7 @@
       "identity": "GHETTOMACHINE DEV",
       "path": "emu/app.wasm",
       "platform": "browser",
-      "sha256": "2e25f0044c3ed6c20bbec4f844841aee6b3de9cd0893731277d3f522f9bb61db"
+      "sha256": "bf26fd8d8f464f35deefe7e213a7b02d2ea522fde8584267fbd263ec2439d6f9"
     }
   ]
 }
