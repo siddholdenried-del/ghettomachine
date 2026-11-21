@@ -1232,7 +1232,26 @@ void syn_half(uint32_t h)
 
 static volatile float trk_pk[SYN_TRACKS];   /* each track's peak in the mix since the screen last looked */
 static float trk_l[SYN_TRACKS][SYN_CTL], trk_r[SYN_TRACKS][SYN_CTL];   /* the last block, each track alone */
+static float trk_send[SYN_TRACKS][SYN_CTL];
+static syn_insert_fn trk_insert[SYN_TRACKS];
 static uint32_t trk_used;                 /* bit t: track t sounded in it */
+
+void syn_cut_track(int t)
+{
+    int i;
+    if (t < 1 || t >= SYN_TRACKS)
+        return;
+    for (i = 0; i < NVOICE; i++)
+        if (vx[i].trk == t) {
+            vx[i].trk = 0;
+            vx[i].astage = vx[i].fstage = vx[i].mstage = 0;
+            vv[i].active = 0;
+        }
+    tk[t].nstack = 0;
+    used_m[0][t] = used_m[1][t] = used_lr[0][t] = used_lr[1][t] = 0;
+    trk_used &= ~(1u << t);
+    trk_pk[t] = 0.0f;
+}
 
 const float *syn_track(int t, int side)
 {
@@ -1241,39 +1260,66 @@ const float *syn_track(int t, int side)
     return side ? trk_r[t] : trk_l[t];
 }
 
-void syn_mix(float *l, float *r, float *rev, float *dly)
+void syn_set_insert(int t, syn_insert_fn fn)
 {
-    const float g = 1.0f / 36000.0f;      /* one voice of a typical sound near -12 dBFS (the drums peak near -5) */
+    if (t >= 1 && t < SYN_TRACKS)
+        trk_insert[t] = fn;
+}
+
+void syn_mix_repack(float *l, float *r, float *rev, float *dly)
+{
     int k, t;
     for (k = 0; k < SYN_CTL; k++)
         l[k] = r[k] = rev[k] = dly[k] = 0.0f;
+    for (t = 1; t < SYN_TRACKS; t++)
+        if (trk_used >> t & 1u)
+            for (k = 0; k < SYN_CTL; k++) {
+                l[k] += trk_l[t][k];
+                r[k] += trk_r[t][k];
+                rev[k] += trk_send[t][k] * (mix[t].rs * (1.f/36000.f));
+                dly[k] += trk_send[t][k] * (mix[t].ds * (1.f/36000.f));
+            }
+}
+
+void syn_mix(float *l, float *r, float *rev, float *dly)
+{
+    const float g = 1.0f / 36000.0f;      /* one voice of a typical sound near -12 dBFS */
+    int k, t;
     trk_used = 0;
     for (t = 1; t < SYN_TRACKS; t++) {
         int m0 = used_m[0][t], m1 = used_m[1][t], s0 = used_lr[0][t], s1 = used_lr[1][t];
-        float pl = mix[t].pl * g, pr = mix[t].pr * g, rs = mix[t].rs * g, ds = mix[t].ds * g, pk = trk_pk[t];
-        if (!(m0 | m1 | s0 | s1))
+        syn_insert_fn fn = trk_insert[t];
+        float pl = mix[t].pl * g, pr = mix[t].pr * g, pk = trk_pk[t];
+        if (!(m0 | m1 | s0 | s1) && !fn)
             continue;
         trk_used |= 1u << t;
         for (k = 0; k < SYN_CTL; k++) {
             float m = (float)((m0 ? acc_m[0][t][k] : 0) + (m1 ? acc_m[1][t][k] : 0));
             float ul = (float)((s0 ? acc_l[0][t][k] : 0) + (s1 ? acc_l[1][t][k] : 0));
             float ur = (float)((s0 ? acc_r[0][t][k] : 0) + (s1 ? acc_r[1][t][k] : 0));
-            float send = m + 0.5f * (ul + ur), a = (m + ul) * pl, b = (m + ur) * pr;
-            trk_l[t][k] = a;
-            trk_r[t][k] = b;
-            l[k] += a;
-            r[k] += b;
-            rev[k] += send * rs;
-            dly[k] += send * ds;
-            a = a < 0.0f ? -a : a;
-            b = b < 0.0f ? -b : b;
-            if (a > pk)
-                pk = a;
-            if (b > pk)
-                pk = b;
+            trk_l[t][k] = (m + ul) * (fn ? g : pl);
+            trk_r[t][k] = (m + ur) * (fn ? g : pr);
+            if (!fn)
+                trk_send[t][k] = m + 0.5f * (ul + ur);
+        }
+        if (fn) {
+            fn(t, trk_l[t], trk_r[t], SYN_CTL);
+            for (k = 0; k < SYN_CTL; k++) {
+                trk_send[t][k] = (trk_l[t][k] + trk_r[t][k]) * (0.5f * 36000.f);
+                trk_l[t][k] *= mix[t].pl;
+                trk_r[t][k] *= mix[t].pr;
+            }
+        }
+        for (k = 0; k < SYN_CTL; k++) {
+            float a = trk_l[t][k], b = trk_r[t][k];
+            a = a < 0.f ? -a : a;
+            b = b < 0.f ? -b : b;
+            if (a > pk) pk = a;
+            if (b > pk) pk = b;
         }
         trk_pk[t] = pk;
     }
+    syn_mix_repack(l, r, rev, dly);
 }
 
 float syn_peak(int t)

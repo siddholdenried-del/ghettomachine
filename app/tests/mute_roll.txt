@@ -1,0 +1,35 @@
+# Track mute cancels an already-running ROLL snapshot; unmute waits for fresh playback input.
+wait 600
+tap HOME
+wait 10
+tap PLAY
+wait 10
+key 10 down
+wait 25
+expect pfon 1
+expect rolls >0
+expect stem1 >-650
+key 1 down
+wait 20
+key 1 up
+wait 25
+expect tmute 1
+expect stemreset 1
+wait 200
+expect stem1 -1200
+key 1 down
+wait 20
+key 1 up
+wait 25
+expect tmute 0
+expect pfon 1
+expect stemreset 1
+wait 300
+expect rolls >0
+expect stem1 -1200
+key 10 up
+wait 20
+expect pfon 0
+# Normal sequence playback comes back (regular kick repeats every 4 steps).
+wait 560
+expect stem1 >-650

@@ -16,6 +16,7 @@
  * The engines are behind dsp/drums.h and dsp/synth.h (their own units). */
 #include "dsp/drums.h"
 #include "dsp/synth.h"
+#include "dsp/track_insert.h"
 #include "dsp/fx.h"
 #include "dsp/uimath.h"
 #include "logo.h"                       /* tools/gen_logo.py: the boot screen's logo */
@@ -24,27 +25,37 @@
 
 #define NPADS DRUMS_NPADS
 #define NPAT 16
-#define NSTEPS 64
+#define NSTEPS 128
+#define OLD_STEPS 64
+#define STEP_WORDS (NSTEPS / 32)
 #define NPOTS 12                          /* knob positions kept per pad (the engines have at most 11) */
 #define NLOCKS 16                         /* per drum part: a step's chance or a knob locked for one pad's step */
+#define LK_KIT606 0x40u                    /* 606 locks keep their own pots */
 #define LK_KIT808 0x80u                   /* lock_t.param: the 808's knob (else the 909's) */
 #define LK_PROB 0x7Fu                     /* lock_t.param: the step's chance, either kit */
 #define NTRK 4                            /* tracks: the drums, then T2..T4 */
 #define NINST 3                           /* instrument tracks */
 #define TR_DRUM 0
 #define NCHORD 4                          /* notes a step holds */
+#define NCHORDS 16                        /* chord ID shares a byte with held-key inversion */
 #define GATE_DEF 6                        /* a new step's gate: 6/8 of a step */
-#define GATE_MAX 255                      /* the longest: 31.9 steps, nearly 2 bars at 1/16 (LEGATO ties up to it) */
+#define GATE_MAX (NSTEPS * 8)             /* 128 steps, still edited in eighths of one step */
 #define NKEYS 27
 #define KEY_NOTE0 53                      /* key 0 (F3) at octave 0 */
 #define PROJ_MAGIC 0x31544745u            /* "EGT1": fm1-eight 0.1's project; another magic loads the default project */
-#define PROJ_VERSION 3                    /* 3: 0.4's (the 303 generator's settings after the rest); 2: 0.3's (64
-                                           * parameters a sound, 7-byte steps), loaded as it is, the generator unset;
-                                           * 1: 0.1, 0.2 and its performance update's, converted (project_load_v1) */
+#define PROJ_VERSION 5                    /* track insert settings; formats 1-4 remain readable */
 #define EIGHT_VERSION "0.4"
 #define NSONG 32                          /* the song chain's entries */
 #define NUSER 16                          /* user sounds (T2..T4) */
 #define NUKIT 8                           /* user kits (the drums) */
+#define DPRESET_606 (2 + NUKIT)           /* append; keep every old user kit ID */
+#define DPRESET_COUNT (DPRESET_606 + 1)
+static int dpreset_factory(int i) { return i >= 0 && i < 2 ? i : i == DPRESET_606 ? KIT_606 : -1; }
+static int kit_factory(int i) { return i == KIT_606 ? DPRESET_606 : i; }
+static int dpreset_user(int i) { return i >= 2 && i < DPRESET_606; }
+static int dpreset_display(int i) { return i == DPRESET_606 ? 2 : dpreset_user(i) ? i + 1 : i; }
+static int dpreset_id(int i) { return i == 2 ? DPRESET_606 : i > 2 ? i - 1 : i; }
+
 
 /* ------------------------------------------------------------------ project --- */
 enum { RATE_16, RATE_8, RATE_32, RATE_16T, RATE_8T, NRATES };
@@ -59,10 +70,10 @@ typedef struct {
 } lock_t;
 
 typedef struct {                          /* the drum track's part of a pattern */
-    uint32_t hit[NPADS][2];               /* step bits: steps 0..31, 32..63 */
-    uint32_t acc[2];                      /* accented steps */
+    uint32_t hit[NPADS][STEP_WORDS];       /* 32 steps per word */
+    uint32_t acc[STEP_WORDS];                      /* accented steps */
     uint16_t mute;                        /* a bit per pad: muted in this pattern (the MUTE page) */
-    uint8_t len;                          /* 1..64 */
+    uint8_t len;                          /* 1..128 */
     uint8_t rate;                         /* RATE_* */
     uint8_t nlk, rsv[3];                  /* locks in use */
     lock_t lk[NLOCKS];
@@ -71,8 +82,8 @@ typedef struct {                          /* the drum track's part of a pattern 
 typedef struct {                          /* an instrument step (format 1 had a spare byte more: nstep_v1_t) */
     uint8_t note[NCHORD];                 /* MIDI notes, packed from the first; note[0] == 0: the step is off */
     uint8_t vel;                          /* 1..127 */
-    uint8_t gate;                         /* eighths of a step, 1..GATE_MAX */
     uint8_t prob;                         /* chance, 5..100 % */
+    uint16_t gate;                        /* eighths of a step, 1..GATE_MAX */
 } nstep_t;
 
 /* a 303's marks in the steps' spare top bits (0.4; no file before has them set): the velocity's, an accent; the
@@ -153,12 +164,12 @@ typedef struct {                          /* a part's 303 generator (the ACID pa
 
 typedef struct {
     uint32_t magic;
-    uint8_t kit;                          /* KIT_909 / KIT_808 */
+    uint8_t kit;                          /* KIT_909 / KIT_808 / KIT_606 */
     uint8_t pat;                          /* the pattern playing and edited */
     uint8_t swing;                        /* 50..75 % */
     uint8_t tmute;                        /* a bit per track: muted (HOME + pad keys 1-4) */
     uint16_t bpm10;                       /* tempo x10: 600..2400 */
-    uint8_t dpreset;                      /* the drums' preset: 0 909, 1 808, 2.. a user kit */
+    uint8_t dpreset;                      /* 0=909, 1=808, 2..9=user kits, 10=606 */
     uint8_t version;                      /* PROJ_VERSION */
     track_t tr[NINST];
     lfo_t lfo[NTRK];
@@ -177,15 +188,43 @@ typedef struct {
         uint8_t pat, bars;                /* a pattern (0..15) for 1..16 bars */
     } song[NSONG];
     pattern_t p[NPAT];
-    uint8_t pots[KIT_NUM][NPADS + 1][NPOTS];   /* each kit's knobs: pads, then the kit */
+    uint8_t pots[2][NPADS + 1][NPOTS];   /* each kit's knobs: pads, then the kit */
     /* appended in 0.2's performance update: a project saved before it loads, these zeroed (project_load) */
     psound_t psnd[NPAT][NINST];           /* SOUNDS PER PATTERN: each pattern's T2..T4 sound */
     uint8_t pkit[NPAT];                   /* and its drum kit: the preset + 1 (0: none yet) */
     uint8_t follow[NPAT];                 /* a scene's follow action: bits 0-2 OFF NEXT PREV FIRST RANDOM, 3-6 bars - 1 */
     /* appended in 0.4 (format 3): a format-2 file (0.3's) loads, these zeroed */
     gen_t gen[NPAT][NINST];               /* each part's 303 generator */
+    uint8_t pots606[NPADS + 1][NPOTS];    /* appended in format 4; legacy prefix and tail stay fixed */
+    track_insert_param_t insert[NINST];  /* format 5: track-wide inserts, one per instrument */
 } project_t;
-#define PROJ_V2_SIZE ((uint32_t)offsetof(project_t, gen))   /* format 2's file: all before gen */
+/* Freeze the persisted 64-step layouts; legacy files end before the 606 pots. */
+typedef struct {
+    uint32_t hit[NPADS][2], acc[2];
+    uint16_t mute;
+    uint8_t len, rate, nlk, rsv[3];
+    lock_t lk[NLOCKS];
+} dpart_old_t;
+typedef struct {
+    uint8_t note[NCHORD], vel, gate, prob;
+} nstep_old_t;
+_Static_assert(sizeof(nstep_old_t) == 7u && sizeof(nstep_t) == 8u, "stable legacy and format-4 step layouts");
+typedef struct {
+    nstep_old_t st[OLD_STEPS];
+    uint8_t len, rate, nlk, rsv;
+    ilock_t lk[NILOCKS];
+} ipart_old_t;
+typedef struct { dpart_old_t d; ipart_old_t t[NINST]; } pattern_old_t;
+#define PROJ_PREFIX ((uint32_t)offsetof(project_t, p))
+#define PROJ_TAIL ((uint32_t)offsetof(project_t, pots))
+#define PROJ_TAIL_BYTES (sizeof(project_t) - PROJ_TAIL)
+#define OLD_TAIL (PROJ_PREFIX + NPAT * sizeof(pattern_old_t))
+#define PROJ_LEGACY_TAIL_BYTES ((uint32_t)offsetof(project_t, pots606) - PROJ_TAIL)
+#define PROJ_V3_SIZE (OLD_TAIL + PROJ_LEGACY_TAIL_BYTES)
+#define PROJ_V2_SIZE (PROJ_V3_SIZE - sizeof(((project_t *)0)->gen))
+#define PROJ_CAPACITY (8u * 4096u - PLAT_FILE_HEAD)
+#define PROJ_META (PROJ_PREFIX + PROJ_TAIL_BYTES)
+#define PROJ_V4_TAIL_BYTES (((offsetof(project_t, insert) + 3u) & ~3u) - PROJ_TAIL)
 
 /* project format 1 (0.1, 0.2 and 0.2's performance update), frozen: a file saved by them is read a part at a time
  * into format 2 (project_load_v1). Its sounds had 26 parameters, its steps a spare byte; 0.2 saved it up to psnd */
@@ -194,12 +233,12 @@ typedef struct {
     uint8_t vel, gate, prob, rsv;
 } nstep_v1_t;
 typedef struct {
-    nstep_v1_t st[NSTEPS];
+    nstep_v1_t st[OLD_STEPS];
     uint8_t len, rate, nlk, rsv;
     ilock_t lk[NILOCKS];
 } ipart_v1_t;
 typedef struct {
-    dpart_t d;
+    dpart_old_t d;
     ipart_v1_t t[NINST];
 } pattern_v1_t;
 typedef struct {
@@ -234,7 +273,7 @@ typedef struct {
         uint8_t pat, bars;
     } song[NSONG];
     pattern_v1_t p[NPAT];
-    uint8_t pots[KIT_NUM][NPADS + 1][NPOTS];
+    uint8_t pots[2][NPADS + 1][NPOTS];
     psound_v1_t psnd[NPAT][NINST];
     uint8_t pkit[NPAT];
     uint8_t follow[NPAT];
@@ -249,22 +288,31 @@ _Static_assert(PROJ_V2_SIZE == 31544u, "format 2 as 0.3 saved it");
 
 /* the project's file: two copies of 32 KiB at the start of the data area (plat_file_*) */
 static const plat_file_t PROJ_FILE = {0x97000u, 0x9F000u, 8u * 4096u};
-_Static_assert(sizeof(project_t) <= 8u * 4096u - PLAT_FILE_HEAD, "the project must fit its file");
+_Static_assert(PROJ_V3_SIZE == 32120u, "format 3 as 0.4 saved it");
 
 static project_t proj PLAT_POOL;
+/* The FM-1 linker has distinct BSS/POOL budgets. Balance six fixed delay
+ * channels between them; no flash or sampler memory is borrowed. */
+static track_insert_t insert_rt[NINST];
+static int16_t insert_ring[(NINST * 2) - 1][TI_DELAY];
+static int16_t insert_pool[TI_DELAY] PLAT_POOL;
+static uint8_t (*kit_pots(int k))[NPOTS] { return k == KIT_606 ? proj.pots606 : proj.pots[k]; }
+static void kit606_defaults(void)
+{
+    for (int pad = 0; pad <= NPADS; ++pad)
+        for (int i = 0; i < NPOTS; ++i) {
+            const x0x_param_t *p = drums_param(KIT_606, pad, i);
+            proj.pots606[pad][i] = p ? p->def : 0;
+        }
+}
 static uint8_t dirty;                     /* changed since the last save: SAVE is lit */
 
 /* the screen's meters, written where the sound is made (the audio interrupt), read and let go by the screen */
 static volatile float pad_hit[NPADS];     /* a pad's last hit (its velocity), until the screen has shown it */
 static volatile float drum_pk;            /* the drums' peak in the mix since the screen looked */
-static void pad_fire(int pad, float vel)  /* a drum pad sounds: the kit, and the screen's flash */
-{
-    drums_trigger(proj.kit, pad, vel);
-    if (pad >= 0 && pad < NPADS && vel > pad_hit[pad])
-        pad_hit[pad] = vel;
-}
 
 static inline int bit_get(const uint32_t *b, int s) { return (int)(b[s >> 5] >> (s & 31) & 1u); }
+static inline void bit_clear(uint32_t *b, int s) { b[s >> 5] &= ~(1u << (s & 31)); }
 static inline void bit_flip(uint32_t *b, int s) { b[s >> 5] ^= 1u << (s & 31); }
 static inline void bit_set(uint32_t *b, int s) { b[s >> 5] |= 1u << (s & 31); }
 /* the scene grid (HOME): the 16 patterns' four parts are 16 x 4 clips. clip[t]: the pattern whose part track t plays,
@@ -293,16 +341,62 @@ static void clips_all(int n)
 }
 static pattern_t *cur(void) { return &proj.p[proj.pat]; }
 static dpart_t *dcur(void) { return &proj.p[fill_on ? (clip_of(TR_DRUM) + 1) % NPAT : clip_of(TR_DRUM)].d; }
+static uint16_t drum_mutes_applied;
+/* Mutes cancel the current ROLL snapshot; a fresh ROLL hold can replay it. */
+static uint16_t roll_inhibit_pads;
+static uint8_t roll_inhibit_tracks;
+
+static int track_is_muted(int tr) { return (int)(proj.tmute >> tr & 1u); }
+
+static int drum_lane_muted(int pad)
+{
+    return track_is_muted(TR_DRUM) || (dcur()->mute >> pad & 1u);
+}
+
+/* Same lock as the DSP: refresh after a pattern/FILL change as well as the UI.
+ * Only rising edges cut a voice. Turning a mute off cannot resume a tail. */
+static void sync_drum_mutes(void)
+{
+    uint16_t mask = track_is_muted(TR_DRUM) ? (uint16_t)((1u << NPADS) - 1u) : dcur()->mute;
+    uint16_t cut = mask & (uint16_t)~drum_mutes_applied;
+    int pad;
+    if (mask == drum_mutes_applied)
+        return;
+    drum_mutes_applied = mask;
+    roll_inhibit_pads |= cut;
+    for (pad = 0; cut && pad < NPADS; pad++)
+        if (cut >> pad & 1u) {
+            drums_cut_pad(pad);
+            pad_hit[pad] = 0.0f;
+        }
+}
+
+static void pad_fire(int pad, float vel)
+{
+    if (pad < 0 || pad >= NPADS || drum_lane_muted(pad))
+        return;
+    drums_trigger(proj.kit, pad, vel);
+    if (vel > pad_hit[pad])
+        pad_hit[pad] = vel;
+}
 static ipart_t *ipart(int tr) { return &proj.p[clip_of(tr)].t[tr - 1]; }   /* tr 1..3 */
 static track_t *tset(int tr) { return &proj.tr[tr - 1]; }
 static uint8_t *part_len(int tr) { return tr == TR_DRUM ? &dcur()->len : &ipart(tr)->len; }
 static uint8_t *part_rate(int tr) { return tr == TR_DRUM ? &dcur()->rate : &ipart(tr)->rate; }
 
+static int drum_row_used(const uint32_t *bits)
+{
+    int i;
+    for (i = 0; i < STEP_WORDS; i++)
+        if (bits[i])
+            return 1;
+    return 0;
+}
 static int dpart_empty(const dpart_t *d)
 {
     int i;
     for (i = 0; i < NPADS; i++)
-        if (d->hit[i][0] | d->hit[i][1])
+        if (drum_row_used(d->hit[i]))
             return 0;
     return 1;
 }
@@ -480,7 +574,7 @@ static int step_locked(const dpart_t *p, int step, int pad)
     return 0;
 }
 
-static int lk_param(int kit, int i) { return (kit == KIT_808 ? (int)LK_KIT808 : 0) | i; }
+static int lk_param(int kit, int i) { return (kit == KIT_606 ? (int)LK_KIT606 : kit == KIT_808 ? (int)LK_KIT808 : 0) | i; }
 
 /* the default project: a beat in pattern 1, the rest empty; T2 a mono bass an octave down, T3 a pluck, T4 a pad */
 static void project_default(void)
@@ -554,7 +648,7 @@ static void pots_from_engines(void)
     for (k = 0; k < KIT_NUM; k++)
         for (pad = 0; pad <= NPADS; pad++)
             for (i = 0; i < NPOTS; i++)
-                proj.pots[k][pad][i] = (uint8_t)(i < drums_nparams(k, pad) ? drums_get(k, pad, i) : 0);
+                kit_pots(k)[pad][i] = (uint8_t)(i < drums_nparams(k, pad) ? drums_get(k, pad, i) : 0);
 }
 
 static void pots_apply(void)              /* (the lock held, or the interrupt) */
@@ -565,7 +659,7 @@ static void pots_apply(void)              /* (the lock held, or the interrupt) *
             for (pad = 0; pad <= NPADS; pad++)
                 for (i = 0; i < drums_nparams(k, pad) && i < NPOTS; i++)
                     if (param_is_switch_sound(drums_param(k, pad, i)) == (pass == 0))
-                        drums_set(k, pad, i, proj.pots[k][pad][i]);
+                        drums_set(k, pad, i, kit_pots(k)[pad][i]);
 }
 
 static void pots_to_engines(void)
@@ -600,20 +694,40 @@ static void track_shape(int t)           /* a SAMPLER track's start, end, loop a
     plat_unlock(f);
 }
 
-static uint32_t crc32_of(const uint8_t *d, uint32_t n)   /* zlib's CRC-32 */
+static uint32_t crc32_more(uint32_t c, const uint8_t *d, uint32_t n)
 {
-    uint32_t c = 0xFFFFFFFFu, k;
+    uint32_t k;
     while (n--) {
         c ^= *d++;
         for (k = 0; k < 8u; k++)
             c = c >> 1 ^ (0xEDB88320u & (0u - (c & 1u)));
     }
-    return ~c;
+    return c;
+}
+static uint32_t crc32_of(const uint8_t *d, uint32_t n) { return ~crc32_more(0xFFFFFFFFu, d, n); }
+
+static void insert_process(int t, float *l, float *r, unsigned n)
+{
+    track_insert_process(&insert_rt[t-1], &proj.insert[t-1], l, r, n);
+}
+
+static void insert_route(int t)
+{
+    const track_insert_param_t *p = &proj.insert[t-1];
+    syn_set_insert(t, (p->mode != TI_OFF && p->v[3] && !(proj.tmute >> t & 1u)) ? insert_process : 0);
 }
 
 static void project_check(void)           /* a loaded project's values kept in range */
 {
     int i, t, s, n;
+    for (t = 0; t < NINST; t++) {
+        track_insert_param_t *p = &proj.insert[t];
+        if (p->mode >= TI_MODES)
+            track_insert_default(p, TI_OFF);
+        for (i = 0; i < 4; i++)
+            p->v[i] = (uint8_t)clamp(p->v[i], 0, 127);
+    }
+
     for (i = 0; i < NPAT; i++) {
         dpart_t *d = &proj.p[i].d;
         if (d->len < 1 || d->len > NSTEPS)
@@ -637,7 +751,7 @@ static void project_check(void)           /* a loaded project's values kept in r
                     continue;
                 }
                 st->vel = (uint8_t)((st->vel & NS_ACC) | (uint32_t)clamp(ns_vel(st), 1, 127));
-                st->gate = (uint8_t)clamp(st->gate, 1, GATE_MAX);
+                st->gate = (uint16_t)clamp(st->gate, 1, GATE_MAX);
                 st->prob = (uint8_t)((st->prob & NS_SLIDE) | (uint32_t)clamp(ns_prob(st), 5, 100));
             }
         }
@@ -664,7 +778,7 @@ static void project_check(void)           /* a loaded project's values kept in r
         proj.tr[t].arp_oct = (uint8_t)clamp(proj.tr[t].arp_oct, 1, 4);
         proj.tr[t].arp_gate = (uint8_t)clamp(proj.tr[t].arp_gate, 5, 100);
         proj.tr[t].arp_latch &= 1u;
-        proj.tr[t].chord = (uint8_t)(proj.tr[t].chord < 12u ? proj.tr[t].chord : 0u);
+        proj.tr[t].chord = (uint8_t)(proj.tr[t].chord < NCHORDS ? proj.tr[t].chord : 0u);
         proj.tr[t].chord_inv &= 3u;
     }
     for (t = 0; t < NTRK; t++) {
@@ -747,15 +861,15 @@ static void project_check(void)           /* a loaded project's values kept in r
             for (k = 0; k < SP_NUM; k++)
                 q->snd[k] = (int8_t)clamp(q->snd[k], syn_param(k)->min, syn_param(k)->max);
         }
-        if (proj.pkit[i] > 2u + NUKIT)
+        if (proj.pkit[i] > DPRESET_COUNT)
             proj.pkit[i] = 0;
         if ((proj.follow[i] & 7u) > 4u)
             proj.follow[i] = 0;
         proj.follow[i] &= 0x7Fu;
     }
     proj.version = PROJ_VERSION;
-    if (proj.dpreset >= 2 + NUKIT)
-        proj.dpreset = proj.kit;
+    if (proj.dpreset >= DPRESET_COUNT)
+        proj.dpreset = (uint8_t)kit_factory(proj.kit);
     if (proj.song_n > NSONG)
         proj.song_n = 0;
     proj.song_on &= 1u;
@@ -768,14 +882,18 @@ static void project_check(void)           /* a loaded project's values kept in r
 static void psnd_fetch_all(void);
 static void psnd_store_all(void);
 
-/* the file's format: 2 (this one's), 1 (0.2's, whole or up to psnd), 0 none / neither */
+/* Identify the persisted layout without treating a legacy project as a current RAM struct. */
 static int proj_file_format(void)
 {
     int sz = plat_file_size(&PROJ_FILE);
     uint8_t ver = 0;
     if (sz < (int)offsetof(project_t, tr) || plat_file_read(&PROJ_FILE, offsetof(project_t, version), &ver, 1) != 0)
         return 0;
-    if (sz == (int)sizeof proj && ver == PROJ_VERSION)
+    if (sz >= (int)PROJ_META && sz <= (int)PROJ_CAPACITY && ver == PROJ_VERSION)
+        return 5;
+    if (sz >= (int)(PROJ_PREFIX + PROJ_V4_TAIL_BYTES) && sz <= (int)PROJ_CAPACITY && ver == 4)
+        return 4;
+    if (sz == (int)PROJ_V3_SIZE && ver == 3)
         return 3;
     if (sz == (int)PROJ_V2_SIZE && ver == 2)
         return 2;
@@ -840,6 +958,56 @@ static int psound_from_v1(int p, int t, psound_t *d)   /* format 1's pattern p, 
     return 0;
 }
 
+static int read_old_drums(uint32_t at, dpart_t *d)
+{
+    dpart_old_t old;
+    int pad, w, i;
+    if (plat_file_read(&PROJ_FILE, at, &old, sizeof old) != 0)
+        return -1;
+    for (w = 0; w < 2; w++) {
+        d->acc[w] = old.acc[w];
+        for (pad = 0; pad < NPADS; pad++)
+            d->hit[pad][w] = old.hit[pad][w];
+    }
+    d->mute = old.mute; d->len = old.len; d->rate = old.rate; d->nlk = old.nlk;
+    for (i = 0; i < NLOCKS; i++)
+        d->lk[i] = old.lk[i];
+    return 0;
+}
+
+static int project_load_v23(int fmt)
+{
+    static ipart_old_t old;
+    int i, t, k;
+    if (plat_file_read(&PROJ_FILE, 0, &proj, PROJ_PREFIX) ||
+        plat_file_read(&PROJ_FILE, OLD_TAIL, proj.pots, fmt == 2 ? PROJ_V2_SIZE - OLD_TAIL : PROJ_LEGACY_TAIL_BYTES))
+        return -1;
+    for (i = 0; i < NPAT; i++) {
+        uint32_t at = PROJ_PREFIX + (uint32_t)i * sizeof(pattern_old_t);
+        if (read_old_drums(at, &proj.p[i].d))
+            return -1;
+        for (t = 0; t < NINST; t++) {
+            ipart_t *d = &proj.p[i].t[t];
+            if (plat_file_read(&PROJ_FILE, at + offsetof(pattern_old_t, t) + (uint32_t)t * sizeof old,
+                               &old, sizeof old))
+                return -1;
+            d->len = old.len; d->rate = old.rate; d->nlk = old.nlk;
+            for (k = 0; k < NILOCKS; k++)
+                d->lk[k] = old.lk[k];
+            for (k = 0; k < OLD_STEPS; k++) {
+                int n;
+                for (n = 0; n < NCHORD; n++) d->st[k].note[n] = old.st[k].note[n];
+                d->st[k].vel = old.st[k].vel;
+                d->st[k].prob = old.st[k].prob;
+                d->st[k].gate = old.st[k].gate;
+            }
+        }
+    }
+    return 0;
+}
+
+#include "project_codec.h"
+
 /* a format-1 file into proj (cleared first), a part at a time from the flash: 0 read */
 static int project_load_v1(void)
 {
@@ -855,14 +1023,14 @@ static int project_load_v1(void)
         return -1;                        /* lfo .. song: bytes, laid out alike (the padding after them differs) */
     for (i = 0; i < NPAT; i++) {
         uint32_t at = V1_OFF(p) + (uint32_t)i * sizeof(pattern_v1_t);
-        if (plat_file_read(&PROJ_FILE, at, &proj.p[i].d, sizeof(dpart_t)) != 0)
+        if (read_old_drums(at, &proj.p[i].d) != 0)
             return -1;
         for (t = 0; t < NINST; t++) {
             ipart_t *d = &proj.p[i].t[t];
             if (plat_file_read(&PROJ_FILE, at + (uint32_t)offsetof(pattern_v1_t, t) + (uint32_t)t * sizeof ip, &ip,
                                sizeof ip) != 0)
                 return -1;
-            for (k = 0; k < NSTEPS; k++) {
+            for (k = 0; k < OLD_STEPS; k++) {
                 int n;
                 for (n = 0; n < NCHORD; n++)
                     d->st[k].note[n] = ip.st[k].note[n];
@@ -895,13 +1063,14 @@ static int project_load(void)
 {
     int fmt = proj_file_format(), r = -1;
     uint32_t i;
+    dirty = 0;
     for (i = 0; i < sizeof proj; i++)
         ((uint8_t *)&proj)[i] = 0;
-    if (fmt == 3) {
-        r = plat_file_read(&PROJ_FILE, 0, &proj, sizeof proj);
-    } else if (fmt == 2) {                /* 0.3's: the same up to the generator's settings, which stay unset */
-        r = plat_file_read(&PROJ_FILE, 0, &proj, PROJ_V2_SIZE);
-        proj.version = PROJ_VERSION;
+    kit606_defaults();
+    if (fmt >= 4) {
+        r = project_decode(plat_file_data(&PROJ_FILE), (uint32_t)plat_file_size(&PROJ_FILE), fmt);
+    } else if (fmt >= 2) {
+        r = project_load_v23(fmt);
     } else if (fmt == 1) {
         r = project_load_v1();
     }
@@ -925,21 +1094,15 @@ static void locks_release(void);
 
 static int project_save(void)             /* main loop, stopped (each erase stops the sound) */
 {
-    const uint8_t *src = (const uint8_t *)&proj;
-    uint32_t size = sizeof proj, off, n, f = plat_lock();
+    uint32_t f = plat_lock();
+    int result;
     locks_release();                      /* the knobs' own values, not a lock's or the LFO's */
     plat_unlock(f);
     pots_from_engines();
     psnd_store_all();                     /* SOUNDS PER PATTERN: each track's sound with the pattern it's on */
-    if (plat_file_begin(&PROJ_FILE, size) != 0)
-        return -1;
-    for (off = 0; off < size; off += n) {
-        n = size - off < 4096u ? size - off : 4096u;
-        if (plat_file_write(&PROJ_FILE, off, src + off, n) != 0)
-            return -1;
-    }
-    if (plat_file_commit(&PROJ_FILE, size, crc32_of(src, size)) != 0)
-        return -1;
+    result = project_encode();
+    if (result != 0)
+        return result;
     dirty = 0;
     return 0;
 }
@@ -1253,20 +1416,22 @@ static int user_save(void) { return plat_store_save(OBJ_USER, &user, sizeof user
  * tracks keep one sound whatever the pattern */
 static int sounds_pp(void) { return (int)(proj.recq >> 6 & 1u); }
 
-static void kit_raw(int i)                /* the drums' preset i: 909, 808 or a user kit (the lock held / interrupt) */
+static void kit_raw(int i)                /* a factory preset or a user kit (lock held / interrupt) */
 {
-    int r, c;
-    if (i >= 2) {
+    int r, c, factory = dpreset_factory(i);
+    if (dpreset_user(i)) {
         const ukit_t *u = &user.kit[i - 2];
-        if (i >= 2 + NUKIT || !u->used)
+        if (!u->used || u->kit >= KIT_NUM)
             return;
         for (r = 0; r <= NPADS; r++)
             for (c = 0; c < NPOTS; c++)
-                proj.pots[u->kit][r][c] = u->pots[r][c];
+                kit_pots(u->kit)[r][c] = u->pots[r][c];
         proj.kit = u->kit;
         pots_apply();
+    } else if (factory >= 0) {
+        proj.kit = (uint8_t)factory;
     } else {
-        proj.kit = (uint8_t)i;
+        return;
     }
     proj.dpreset = (uint8_t)i;
 }
@@ -1358,13 +1523,15 @@ static void psnd_fetch_all(void)          /* loading: the focused pattern's soun
         psnd_fetch(t, proj.pat);
     if (proj.pkit[proj.pat] && proj.pkit[proj.pat] - 1 != proj.dpreset) {
         int i = proj.pkit[proj.pat] - 1, r, c;
-        if (i >= 2 && i < 2 + NUKIT && user.kit[i - 2].used) {
+        if (dpreset_user(i) && user.kit[i - 2].used && user.kit[i - 2].kit < KIT_NUM) {
             for (r = 0; r <= NPADS; r++)
                 for (c = 0; c < NPOTS; c++)
-                    proj.pots[user.kit[i - 2].kit][r][c] = user.kit[i - 2].pots[r][c];
+                    kit_pots(user.kit[i - 2].kit)[r][c] = user.kit[i - 2].pots[r][c];
             proj.kit = user.kit[i - 2].kit;
-        } else if (i < 2) {
-            proj.kit = (uint8_t)i;
+        } else if (dpreset_factory(i) >= 0) {
+            proj.kit = (uint8_t)dpreset_factory(i);
+        } else {
+            return;
         }
         proj.dpreset = (uint8_t)i;
     }
@@ -1506,12 +1673,13 @@ enum { AM_OFF, AM_UP, AM_DOWN, AM_UPDOWN, AM_RANDOM, AM_ORDER, NARPMODES };
 static const char *const ARP_MODE_NAME[NARPMODES] = {"OFF", "UP", "DOWN", "UP+DOWN", "RANDOM", "AS PLAYED"};
 /* chord mode (ARP 2): a key plays a chord built on it, up to NCHORD notes (what a step holds), inverted by moving its
  * lowest notes up an octave; recorded as a chord */
-#define NCHORDS 12
 static const char *const CHORD_NAME[NCHORDS] = {"OFF", "MAJ", "MIN", "7", "MAJ7", "MIN7", "SUS2", "SUS4", "DIM", "AUG",
-                                                "5", "OCT"};
-static const int8_t CHORD_IV[NCHORDS][4] = {{0, -1}, {0, 4, 7, -1}, {0, 3, 7, -1}, {0, 4, 7, 10}, {0, 4, 7, 11},
-                                            {0, 3, 7, 10}, {0, 2, 7, -1}, {0, 5, 7, -1}, {0, 3, 6, -1}, {0, 4, 8, -1},
-                                            {0, 7, -1}, {0, 12, -1}};
+                                                "5", "OCT", "MIN9", "MAJ9", "7#9", "7SUS4"};
+static const int8_t CHORD_IV[NCHORDS][NCHORD] = {
+    {0, -1}, {0, 4, 7, -1}, {0, 3, 7, -1}, {0, 4, 7, 10}, {0, 4, 7, 11},
+    {0, 3, 7, 10}, {0, 2, 7, -1}, {0, 5, 7, -1}, {0, 3, 6, -1}, {0, 4, 8, -1},
+    {0, 7, -1}, {0, 12, -1}, {0, 3, 10, 14}, {0, 4, 11, 14}, {0, 4, 10, 15}, {0, 5, 7, 10}
+};
 static const char *const INV_NAME[4] = {"ROOT", "1ST", "2ND", "3RD"};
 
 static int chord_of(int spec, int root, int *out)   /* spec: chord | inversion << 4; the notes, how many */
@@ -1643,7 +1811,7 @@ static void arp_tick(int t, uint32_t n)   /* audio interrupt: n samples on */
 {
     int i;
     float step;
-    if (!tset(t)->arp_mode)
+    if (track_is_muted(t) || !tset(t)->arp_mode)
         return;
     for (i = arp[t].n - 1; i >= 0; i--)   /* a step's notes end with its gate */
         if (arp[t].life[i] >= 0 && (arp[t].life[i] -= (int32_t)n) <= 0)
@@ -1716,9 +1884,9 @@ static void locks_apply(const dpart_t *p, int step, int pad)
     int i;
     for (i = 0; i < p->nlk; i++) {
         const lock_t *l = &p->lk[i];
-        int k = l->param & 0x7F;
+        int k = l->param & 0x3F;
         if (l->step != step || l->pad != pad || l->param == LK_PROB || k >= NPOTS ||
-            (l->param & LK_KIT808 ? KIT_808 : KIT_909) != proj.kit)
+            (l->param & LK_KIT606 ? KIT_606 : l->param & LK_KIT808 ? KIT_808 : KIT_909) != proj.kit)
             continue;
         if (!(ovr_mask[pad] >> k & 1u))
             ovr_base[pad][k] = (uint8_t)drums_get(proj.kit, pad, k);
@@ -1812,6 +1980,18 @@ static float step_samples(int tr, int step)
 {
     float base = base_step(tr), sw = (float)proj.swing * 0.01f;   /* a pair of steps keeps its length */
     return (step & 1) ? 2.0f * base * (1.0f - sw) : 2.0f * base * sw;
+}
+
+/* Duration through the actual swung step clock, including odd-length
+ * wraps. Sum alternating long/short steps in O(1), then the fractional step. */
+static int32_t note_gate_samples(int tr, int step, int len, int gate)
+{
+    int whole = gate / 8, first = whole < len - step ? whole : len - step;
+    int after = whole - first, last = (step + whole) % len;
+    int swing_units = (first & 1) * ((step & 1) ? -1 : 1) + (len & 1) * (after / len) + (after % len & 1);
+    float base = base_step(tr), delta = (proj.swing - 50) * .02f * base;
+    return (int32_t)(base * whole + delta * swing_units +
+                     (gate & 7) * .125f * (base + ((last & 1) ? -delta : delta)));
 }
 
 static float bar_samples(void) { return 4.0f * 44100.0f * 60.0f / ((float)proj.bpm10 * 0.1f); }
@@ -1928,7 +2108,7 @@ static void seq_inst(int tr)              /* audio interrupt: an instrument part
     if ((proj.tmute >> tr & 1u) || (ns_prob(s) < 100 && (int)rnd100() >= ns_prob(s)))
         return;
     ilocks_apply(tr, p, next);
-    gate = (int32_t)((float)s->gate * 0.125f * sq.t[tr].dur);
+    gate = note_gate_samples(tr, next, p->len, s->gate);
     marks = (s->vel & NS_ACC) ? SN_ACCENT : 0;   /* a 303's marks: on any sound (a slide: the chord's first note) */
     for (i = 0; i < NCHORD && s->note[i]; i++) {
         if (ts->arp_mode)                 /* arpeggiated: the notes are the arpeggiator's, for the gate */
@@ -1948,9 +2128,9 @@ static void roll_fire(void)               /* ROLL: each track's step as it was p
     perf.rolls++;
     const dpart_t *d = dcur();
     int st = perf.roll_step[TR_DRUM] % (d->len ? d->len : 1);
-    if (clip[TR_DRUM] >= 0 && !(proj.tmute & 1u))
+    if (clip[TR_DRUM] >= 0 && !((proj.tmute | roll_inhibit_tracks) & 1u))
         for (pad = 0; pad < NPADS; pad++)
-            if (bit_get(d->hit[pad], st) && !(d->mute >> pad & 1u)) {
+            if (bit_get(d->hit[pad], st) && !((d->mute | roll_inhibit_pads) >> pad & 1u)) {
                 float v = bit_get(d->acc, st) ? 1.0f : DRUMS_VEL_NORMAL;
                 pad_fire(pad, v);
                 if (pad == 0)
@@ -1960,7 +2140,7 @@ static void roll_fire(void)               /* ROLL: each track's step as it was p
         const ipart_t *p = ipart(t);
         const nstep_t *s = &p->st[perf.roll_step[t] % (p->len ? p->len : 1)];
         int i;
-        if (clip[t] < 0 || (proj.tmute >> t & 1u) || !s->note[0])
+        if (clip[t] < 0 || ((proj.tmute | roll_inhibit_tracks) >> t & 1u) || !s->note[0])
             continue;
         for (i = 0; i < NCHORD && s->note[i]; i++)
             syn_note_on(t, s->note[i], (float)ns_vel(s) / 127.0f, (int32_t)(perf.roll_len * 0.6f), tset(t)->type == TY_MONO);
@@ -2247,6 +2427,8 @@ static void midi_in(void)                 /* audio interrupt */
             if (on && pad >= 0)
                 pad_fire(pad, d2 >= 127u ? 1.0f : (float)d2 / 127.0f);
         } else if (tr > 0 && d1 > 0u) {
+            if (on && track_is_muted(tr))
+                continue;
             if (tset(tr)->arp_mode) {
                 if (on || off)
                     arp_key(tr, (int)d1, (int)d2, on);
@@ -2516,6 +2698,8 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         uint8_t w = perf.want, up = (uint8_t)(w & ~perf.on), down = (uint8_t)(perf.on & ~w);
         if (up >> PF_ROLL & 1u) {
             int t;
+            roll_inhibit_tracks = proj.tmute;
+            roll_inhibit_pads = dcur()->mute;
             for (t = 0; t < NTRK; t++)
                 perf.roll_step[t] = (int8_t)(sq.t[t].step < 0 ? 0 : sq.t[t].step);
             perf.roll_to = 0.0f;
@@ -2640,6 +2824,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             if (m < (float)chunk)
                 chunk = m < 1.0f ? 1u : (uint32_t)m;
         }
+        sync_drum_mutes();
         drums_render(proj.kit, buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, (int)chunk);
         drum_mix(buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, chunk);
         if (STEMS && stems_on)            /* (the mix holds the drums alone until the synth comes in) */
@@ -2739,6 +2924,7 @@ void app_panic(void)
 
 void app_init(void)
 {
+    int t;
     drums_init();
     syn_init();
     lfo_init();
@@ -2752,6 +2938,11 @@ void app_init(void)
     syn_pool(pool_max);
     user_load();
     project_load();
+    for (t = 1; t < NTRK; t++) {
+        track_insert_bind(&insert_rt[t-1], insert_ring[(t-1)*2],
+                          t < NINST ? insert_ring[(t-1)*2+1] : insert_pool);
+        insert_route(t);
+    }
     bank_scan();
     seq_reset_tracks();
     sq.queued = -1;
@@ -2761,23 +2952,29 @@ void app_init(void)
 /* a snapshot is a whole pattern (all four tracks) */
 #define NUNDO 8
 typedef struct { pattern_t p; gen_t g[NINST]; uint8_t idx; } snap_t;   /* (the parts' generators with them) */
-static snap_t undo_s[NUNDO] PLAT_POOL, redo_s[NUNDO] PLAT_POOL;
+/* The total can never exceed NUNDO: a new edit drops redo, and undo/redo
+ * each move one item. Grow the stacks from opposite ends of one pool. */
+static snap_t history[NUNDO] PLAT_POOL;
 static int undo_n, redo_n;
 static uint32_t undo_t, undo_kind;
 
-static void undo_push_to(snap_t *s, int *n, uint8_t idx)
+static void undo_capture(snap_t *s, uint8_t idx)
 {
-    int i;
-    if (*n == NUNDO) {                    /* full: the oldest goes */
-        for (i = 1; i < NUNDO; i++)
-            s[i - 1] = s[i];
-        (*n)--;
+    s->p = proj.p[idx];
+    for (int i = 0; i < NINST; i++)
+        s->g[i] = proj.gen[idx][i];
+    s->idx = idx;
+}
+
+static void undo_push(uint8_t idx)
+{
+    redo_n = 0;                          /* edits invalidate the future */
+    if (undo_n == NUNDO) {
+        for (int i = 1; i < NUNDO; i++)
+            history[i - 1] = history[i]; /* discard the oldest past state */
+        undo_n--;
     }
-    s[*n].p = proj.p[idx];
-    for (i = 0; i < NINST; i++)
-        s[*n].g[i] = proj.gen[idx][i];
-    s[*n].idx = idx;
-    (*n)++;
+    undo_capture(&history[undo_n++], idx);
 }
 
 /* before an edit of the current pattern: a snapshot, unless the same kind of edit (a knob turned on, notes
@@ -2787,31 +2984,51 @@ static void undo_mark(uint32_t kind)
 {
     uint32_t now = plat_ms();
     if (!(kind && kind == undo_kind && now - undo_t < 1000u))
-        undo_push_to(undo_s, &undo_n, (uint8_t)edit_pat());
+        undo_push((uint8_t)edit_pat());
     undo_kind = kind;
     undo_t = now;
     redo_n = 0;
     dirty = 1;
 }
 
+/* At capacity the opposing stacks touch. Exchange the active pattern and
+ * the boundary snapshot in place using one byte of scratch, not a new slot. */
+static void undo_swap(void *live, void *saved, size_t len)
+{
+    unsigned char *a = live, *b = saved;
+    for (size_t i = 0; i < len; i++) {
+        unsigned char old = a[i];
+        a[i] = b[i];
+        b[i] = old;
+    }
+}
+
 static void undo_step(int redo)
 {
-    snap_t *from = redo ? redo_s : undo_s, *to = redo ? undo_s : redo_s;
-    int *nf = redo ? &redo_n : &undo_n, *nt = redo ? &undo_n : &redo_n, i;
+    snap_t *from, *to;
     uint32_t f;
     uint8_t idx;
-    if (*nf == 0) {
+    if (redo ? redo_n == 0 : undo_n == 0) {
         app_say(redo ? "REDO" : "UNDO", "NOTHING");
         return;
     }
-    idx = from[*nf - 1].idx;
-    undo_push_to(to, nt, idx);
+    from = &history[redo ? NUNDO - redo_n : undo_n - 1];
+    to = &history[redo ? undo_n : NUNDO - redo_n - 1];
+    idx = from->idx;
+    if (from != to)
+        undo_capture(to, idx);
     f = plat_lock();
-    proj.p[idx] = from[*nf - 1].p;
-    for (i = 0; i < NINST; i++)
-        proj.gen[idx][i] = from[*nf - 1].g[i];
+    if (from == to) {
+        undo_swap(&proj.p[idx], &from->p, sizeof from->p);
+        undo_swap(proj.gen[idx], from->g, sizeof from->g);
+    } else {
+        proj.p[idx] = from->p;
+        for (int i = 0; i < NINST; i++)
+            proj.gen[idx][i] = from->g[i];
+    }
     plat_unlock(f);
-    (*nf)--;
+    undo_n += redo ? 1 : -1;
+    redo_n += redo ? -1 : 1;
     undo_kind = 0;
     dirty = 1;
     app_say(redo ? "REDO" : "UNDO", "");
@@ -2819,9 +3036,9 @@ static void undo_step(int redo)
 
 /* ------------------------------------------------------------------------ UI --- */
 enum { PG_SEQ, PG_EDIT, PG_MUTE, PG_HOME, PG_KIT, PG_KEYS, PG_ENV, PG_LFO, PG_ARP, PG_MIX, PG_FX, PG_SONG, PG_MST, PG_SETUP,
-       PG_GEN };
+       PG_GEN, PG_PICK, PG_INSERT };
 static const char *const PAGE_NAME[] = {"STEPS", "EDIT", "MUTE", "PATTERNS", "KIT", "KEYS", "ENV", "LFO", "ARP", "MIXER",
-                                        "FX", "SONG", "MASTER", "SETUP", "ACID"};
+                                        "FX", "SONG", "MASTER", "SETUP", "ACID", "PICK NOTES", "INSERT"};
 #define NGENPAGE 3                        /* the 303 generator's (SEQ after STEPS, T2..T4): ACID, NOTES, LINE (SELECT) */
 static const char *const TRK_NAME[NTRK] = {"DRUMS", "T2", "T3", "T4"};
 static const char *const TYPE_NAME[NTYPES] = {"MONO", "POLY", "SAMPLER"};
@@ -2870,14 +3087,15 @@ static const uint8_t WK[16] = PLAT_WHITE_KEYS, BK[11] = PLAT_BLACK_KEYS;
 #define C_RED RGB(232, 76, 60)
 #define C_GREEN RGB(90, 210, 130)
 #define C_MUTEBG RGB(70, 18, 14)
-static const uint16_t KIT_RGB[KIT_NUM] = {RGB(255, 120, 40), RGB(70, 160, 255)};
+static const uint16_t KIT_RGB[KIT_NUM] = {RGB(255, 120, 40), RGB(70, 160, 255), RGB(192, 124, 232)};
 static const uint16_t TRK_RGB[NTRK] = {0, RGB(90, 210, 130), RGB(185, 125, 255), RGB(245, 205, 60)};
 
 static struct {
     uint8_t page;
     uint8_t trk;                          /* the track picked */
     uint8_t pad;                          /* the drum pad being edited */
-    uint8_t spage;                        /* the step page, 0..3 */
+    uint8_t spage;                        /* the step page, 0..7 */
+    uint8_t seq_prev, seq_used;           /* a resize chord leaves the previous SEQ view alone */
     uint8_t epage;                        /* the EDIT page (four knobs each) */
     uint8_t envpage;                      /* an instrument track's ENV page: 0 the amp's, 1 the filter's, 2 MOD ENV */
     uint8_t lfopage, arppage;             /* the LFO's pages (LFO 1, its MORE; an instrument's LFO 2, MATRIX); ARP's 0, 1 */
@@ -2907,11 +3125,16 @@ static struct {
     uint32_t msg_until;
     uint32_t keys, btn;
     uint8_t edit_used, save_used, sel_used, rec_used;   /* EDIT / SAVE / SEL / REC held as a modifier: no tap */
+    uint32_t gate_t;
+    int8_t gate_dir;
+    uint8_t gate_run;
     int8_t held_step;                     /* a step held (white key down on the step pages), -1 none */
     uint8_t held_key, held_was_on, held_used;   /* its key; on before the press; a knob or SELECT used on it */
     uint32_t last_ticks;
     uint8_t redraw;
     /* instrument tracks */
+    int8_t pick_oct;                      /* independent of the track's playable octave */
+    uint8_t pick_step, pick_clip;        /* index / original clip while PICK NOTES is open */
     uint8_t last_note[NTRK];              /* the note a new step gets */
     uint8_t key_note[NKEYS], key_trk[NKEYS];   /* a key down: the note it plays, on which track (0: none) */
     uint8_t key_mode[NKEYS];              /* 1: live-recorded (key_step), 2: step-recorded */
@@ -3074,10 +3297,12 @@ static void pad_play(int pad, uint32_t vel)   /* a pad played by hand: heard, se
 {
     float v = vel >= 127u ? 1.0f : (float)vel / 127.0f;
     uint32_t f = plat_lock();
-    locks_apply(dcur(), -1, pad);         /* no step's locks; the drums' LFO, if it moves this pad */
-    pad_fire(pad, v);
-    if (pad == 0)
-        fx_key(proj.kit, v);
+    if (!drum_lane_muted(pad)) {
+        locks_apply(dcur(), -1, pad);     /* no step's locks; the drums' LFO, if it moves this pad */
+        pad_fire(pad, v);
+        if (pad == 0)
+            fx_key(proj.kit, v);
+    }
     plat_unlock(f);
     plat_midi_send(0x09u | 0x99u << 8 | (uint32_t)PAD_GM[pad] << 16 | (vel ? vel : 1u) << 24, TO_USB);
     if (ui.rec && (sq.playing || (ck.count > 0 && ck.count <= (int32_t)(bar_samples() * 0.125f)))) {
@@ -3240,13 +3465,17 @@ static void held_clear(void)              /* a step held + OCT-: its chance and 
 
 static void mute_toggle(int pad)
 {
-    dpart_t *p = dcur();
+    dpart_t *p;
     uint32_t f;
+    int muted;
     undo_mark(0);
     f = plat_lock();
+    p = dcur();
     p->mute ^= (uint16_t)(1u << pad);
+    muted = (int)(p->mute >> pad & 1u);
+    sync_drum_mutes();
     plat_unlock(f);
-    app_say(drums_pad_name(proj.kit, pad), (p->mute >> pad & 1u) ? "MUTED" : "ON");
+    app_say(drums_pad_name(proj.kit, pad), muted ? "MUTED" : "ON");
 }
 
 /* ------------------------------------------------------ the instrument tracks --- */
@@ -3255,12 +3484,20 @@ static int track_note(int tr)             /* the note a new step gets: the last 
     return ui.last_note[tr] ? ui.last_note[tr] : 60 + 12 * tset(tr)->oct;
 }
 
+static void step_stamp(int tr, nstep_t *s)
+{
+    const track_t *t = tset(tr);
+    int i, note[NCHORD], n = chord_of(t->chord | t->chord_inv << 4, track_note(tr), note);
+    for (i = 0; i < n; i++)
+        nstep_add(s, note[i], 100);
+}
+
 static void preview(int tr, const nstep_t *s)   /* a step heard by itself (stopped): its notes for one step */
 {
     int i, mono = tset(tr)->type == TY_MONO;
     uint32_t f;
     int32_t gate;
-    if (sq.playing || !s->note[0])
+    if (sq.playing || !s->note[0] || track_is_muted(tr))
         return;
     gate = (int32_t)((float)s->gate * 0.125f * base_step(tr));
     f = plat_lock();
@@ -3310,7 +3547,7 @@ static void live_rec_off(int key, int tr)  /* the key let go: the step's gate is
     g = clamp((int32_t)((float)held / base_step(tr) * 8.0f + 0.5f), 1, GATE_MAX);
     f = plat_lock();
     if (p->st[s].note[0])
-        p->st[s].gate = (uint8_t)g;
+        p->st[s].gate = (uint16_t)g;
     plat_unlock(f);
 }
 
@@ -3370,7 +3607,9 @@ static void quantize(void)
         dpart_t *p = dcur();
         int pad;
         for (pad = 0; pad <= NPADS; pad++) {
-            uint32_t *bits = pad < NPADS ? p->hit[pad] : p->acc, old[2] = {bits[0], bits[1]};
+            uint32_t *bits = pad < NPADS ? p->hit[pad] : p->acc, old[STEP_WORDS];
+            int word;
+            for (word = 0; word < STEP_WORDS; word++) old[word] = bits[word];
             for (s = 0; s < len; s++)
                 if (bit_get(old, s))
                     bits[s >> 5] &= ~(1u << (s & 31));
@@ -3446,14 +3685,14 @@ static void legato(void)
     for (s = 0; s < len; s++)
         if (p->st[s].note[0]) {
             if (prev >= 0)
-                p->st[prev].gate = (uint8_t)clamp((s - prev) * 8 + 1, 1, GATE_MAX);
+                p->st[prev].gate = (uint16_t)clamp((s - prev) * 8 + 1, 1, GATE_MAX);
             else
                 first = s;
             prev = s;
             n++;
         }
     if (prev >= 0)                        /* the last: round the loop to the first */
-        p->st[prev].gate = (uint8_t)clamp((first + len - prev) * 8 + 1, 1, GATE_MAX);
+        p->st[prev].gate = (uint16_t)clamp((first + len - prev) * 8 + 1, 1, GATE_MAX);
     plat_unlock(f);
     int_text(n, t);
     text_cat(t, n == 1 ? " NOTE" : " NOTES");
@@ -3473,11 +3712,12 @@ static void part_erase(void)
     f = plat_lock();
     if (tr == TR_DRUM) {
         dpart_t *p = &proj.p[n].d;
+        int word;
         for (s = 0; s < NPADS; s++) {
-            p->hit[s][0] = p->hit[s][1] = 0;
+            for (word = 0; word < STEP_WORDS; word++) p->hit[s][word] = 0;
             sq.skip_once[s] = -1;
         }
-        p->acc[0] = p->acc[1] = 0;
+        for (word = 0; word < STEP_WORDS; word++) p->acc[word] = 0;
         p->nlk = 0;
         locks_release();                  /* a knob a lock held: its own value again */
         ck.pre_pads = 0;
@@ -3524,14 +3764,16 @@ static void note_down(int key)            /* a key on the KEYS (or EDIT) page of
     ui.key_chord[key] = (uint8_t)(ts->chord | ts->chord_inv << 4);
     nc = chord_of(ui.key_chord[key], note, cn);
     f = plat_lock();
-    for (i = 0; i < nc; i++) {
-        if (ts->arp_mode)
-            arp_key(tr, cn[i], vel, 1);
-        else
-            syn_note_on(tr, cn[i], (float)vel / 127.0f, -1, ts->type == TY_MONO);
+    if (!track_is_muted(tr)) {
+        for (i = 0; i < nc; i++) {
+            if (ts->arp_mode)
+                arp_key(tr, cn[i], vel, 1);
+            else
+                syn_note_on(tr, cn[i], (float)vel / 127.0f, -1, ts->type == TY_MONO);
+        }
+        if (!ts->arp_mode)
+            lfo_note(tr);
     }
-    if (!ts->arp_mode)
-        lfo_note(tr);
     plat_unlock(f);
     for (i = 0; i < nc; i++)
         plat_midi_send(0x09u | (0x90u | (uint32_t)tr) << 8 | (uint32_t)cn[i] << 16 | (uint32_t)vel << 24, TO_USB);
@@ -3614,7 +3856,7 @@ static void istep_down(int k)
             nstep_clear(&p->st[s]);
             ilock_clear_step(p, s);
         } else {
-            nstep_add(&p->st[s], track_note(tr), 100);
+            step_stamp(tr, &p->st[s]);
         }
         plat_unlock(f);
         return;
@@ -3626,10 +3868,70 @@ static void istep_down(int k)
     if (!ui.held_was_on) {
         undo_mark(0);
         f = plat_lock();
-        nstep_add(&p->st[s], track_note(tr), 100);
+        step_stamp(tr, &p->st[s]);
         plat_unlock(f);
     }
     preview(tr, &p->st[s]);
+}
+
+static void pick_leave(void)
+{
+    ui.page = PG_SEQ;
+    ui.redraw = 1;
+}
+
+static void pick_open(void)
+{
+    ui.pick_step = (uint8_t)ui.held_step;
+    ui.pick_clip = (uint8_t)clip_of(ui.trk);
+    ui.pick_oct = tset(ui.trk)->oct;
+    ui.held_step = -1;                   /* releasing the trigger key must not clear the step */
+    ui.page = PG_PICK;
+    ui.msg_until = 0;                    /* make the mode and target step obvious immediately */
+}
+
+static int pick_pitch(int key)
+{
+    return KEY_NOTE0 + key + 12 * ui.pick_oct;
+}
+
+static int pick_is_selected(const nstep_t *s, int pitch)
+{
+    int i;
+    for (i = 0; i < NCHORD && s->note[i]; i++)
+        if (s->note[i] == pitch)
+            return 1;
+    return 0;
+}
+
+static void pick_toggle(int key)
+{
+    int tr = ui.trk, step = ui.pick_step, pitch = pick_pitch(key), i, count;
+    ipart_t *p = &proj.p[ui.pick_clip].t[tr - 1];
+    nstep_t *s = &p->st[step];
+    uint32_t f;
+    if (clip_of(tr) != ui.pick_clip || step >= p->len) {
+        pick_leave();
+        return;
+    }
+    count = nstep_count(s);
+    for (i = 0; i < count && s->note[i] != pitch; i++) {}
+    if (i == NCHORD) {
+        app_say("4 NOTES MAX", "TAP A LIT NOTE TO REMOVE");
+        return;
+    }
+    undo_mark(0);
+    f = plat_lock();
+    if (i == count) {
+        nstep_add(s, pitch, 100);
+    } else {
+        for (; i < count - 1; i++)
+            s->note[i] = s->note[i + 1];
+        s->note[count - 1] = 0;
+    }
+    plat_unlock(f);
+    preview(tr, s);                      /* no audition while transport plays */
+    ui.redraw = 1;
 }
 
 static void istep_up(int k)
@@ -3650,6 +3952,26 @@ static void istep_up(int k)
     ui.redraw = 1;
 }
 
+/* Fine detents always edit one eighth of a step. A burst snaps to
+ * musical bar boundaries for this track division, so eight bars don't
+ * take 1024 detents. Reset on a new step or on a different held knob. */
+static int gate_edit(int gate, int rate, int32_t e)
+{
+    static const int per_bar[NRATES] = {128, 64, 256, 192, 96};
+    uint32_t now = plat_ms();
+    int dir = e < 0 ? -1 : 1, moves = clamp(e < 0 ? -e : e, 1, 8);
+    if (ui.gate_dir != dir || now - ui.gate_t > 85u) ui.gate_run = 0;
+    ui.gate_t = now;
+    ui.gate_dir = (int8_t)dir;
+    ui.gate_run = (uint8_t)clamp(ui.gate_run + moves, 0, 3);
+    if (ui.gate_run < 3) return clamp(gate + e, 1, GATE_MAX);
+    {
+        int bar = per_bar[rate];
+        int snap = dir > 0 ? (gate / bar + moves) * bar : ((gate - 1) / bar - moves + 1) * bar;
+        return clamp(snap, 1, GATE_MAX);
+    }
+}
+
 static void iheld_knob(int k, int32_t e)  /* a step held: K1 its notes (the chord moves), K2 velocity, K3 gate */
 {
     int tr = ui.trk, i, lo = 127, hi = 0;
@@ -3660,6 +3982,7 @@ static void iheld_knob(int k, int32_t e)  /* a step held: K1 its notes (the chor
         return;
     if (!ui.held_used)
         undo_mark(0);
+    if (!ui.held_used || k != 2) ui.gate_run = 0;
     ui.held_used = 1;
     f = plat_lock();
     if (k == 0) {
@@ -3674,8 +3997,7 @@ static void iheld_knob(int k, int32_t e)  /* a step held: K1 its notes (the chor
         int v = clamp(ns_vel(s) + ((s->vel & NS_ACC) ? 1 : 0) + e, 1, 128);
         s->vel = (uint8_t)(v > 127 ? 127u | NS_ACC : (uint32_t)v);
     } else {
-        int st = (e > 0 ? s->gate >= 16 : s->gate > 16) ? 8 : 1;   /* over 2 steps: a step a detent */
-        s->gate = (uint8_t)clamp(s->gate + e * st, 1, GATE_MAX);
+        s->gate = (uint16_t)gate_edit(s->gate, ipart(tr)->rate, e);
     }
     plat_unlock(f);
     if (k == 0) {
@@ -3737,7 +4059,7 @@ static void iheld_len(void)               /* a step held + OCT+: its length as a
         s->gate = GATE_HALF;
         m = 0;
     } else if (m == 1) {
-        s->gate = (uint8_t)whole_gate(p, ui.held_step);
+        s->gate = (uint16_t)whole_gate(p, ui.held_step);
     } else {
         s->gate = GATE_SLIDE;
         s->prob |= NS_SLIDE;
@@ -3942,13 +4264,17 @@ static void preset_name(int i, char *t)
     int_text(i - syn_presets() + 1, u);
     text_cat(t, u);
 }
-static int dpreset_ok(int i) { return i == 0 || i == 1 || (i >= 2 && i < 2 + NUKIT && user.kit[i - 2].used); }
+static int dpreset_ok(int display)
+{
+    int i = dpreset_id(display);
+    return dpreset_factory(i) >= 0 || (dpreset_user(i) && user.kit[i - 2].used && user.kit[i - 2].kit < KIT_NUM);
+}
 static void dpreset_name(int i, char *t)
 {
     char u[4];
     t[0] = 0;
-    if (i < 2) {
-        text_cat(t, i ? "808" : "909");
+    if (dpreset_factory(i) >= 0) {
+        text_cat(t, drums_kit_name(dpreset_factory(i)));
         return;
     }
     text_cat(t, "USER KIT ");
@@ -3998,31 +4324,31 @@ static void preset_turn(int32_t e)        /* PRESETS on an instrument track: its
 
 static void kit_turn(int32_t e)           /* PRESETS on the drums: 909, 808, the user kits */
 {
-    int i = preset_step(proj.dpreset, e, 2 + NUKIT, dpreset_ok), r, c;
+    int i = dpreset_id(preset_step(dpreset_display(proj.dpreset), e, DPRESET_COUNT, dpreset_ok)), r, c;
     char t[16];
     uint32_t f = plat_lock();
     locks_release();                      /* the old kit's knobs back to their own values first */
     plat_unlock(f);
-    if (i >= 2) {                         /* a user kit: its kit, and all its knobs */
+    if (dpreset_user(i)) {                /* a user kit: its kit, and all its knobs */
         const ukit_t *u = &user.kit[i - 2];
         pots_from_engines();              /* (the other kit's knobs as they are) */
         for (r = 0; r <= NPADS; r++)
             for (c = 0; c < NPOTS; c++)
-                proj.pots[u->kit][r][c] = u->pots[r][c];
+                kit_pots(u->kit)[r][c] = u->pots[r][c];
         f = plat_lock();
         proj.kit = u->kit;
         plat_unlock(f);
         pots_to_engines();
     } else {
         f = plat_lock();
-        proj.kit = (uint8_t)i;
+        proj.kit = (uint8_t)dpreset_factory(i);
         plat_unlock(f);
     }
     proj.dpreset = (uint8_t)i;
     dirty = 1;
     ui.epage = 0;
     dpreset_name(i, t);
-    app_say(t, i >= 2 ? (proj.kit == KIT_808 ? "808" : "909") : "");
+    app_say(t, dpreset_user(i) ? drums_kit_name(proj.kit) : "");
 }
 
 static void save_target(int32_t e)        /* SAVE held + PRESETS: the user slot that letting go of SAVE saves to */
@@ -4032,7 +4358,7 @@ static void save_target(int32_t e)        /* SAVE held + PRESETS: the user slot 
     if (s < 0) {                          /* the first turn: where the sound came from, else the first empty slot */
         if (inst && tset(ui.trk)->preset >= syn_presets())
             s = tset(ui.trk)->preset - syn_presets();
-        else if (!inst && proj.dpreset >= 2)
+        else if (!inst && dpreset_user(proj.dpreset))
             s = proj.dpreset - 2;
         else
             for (s = 0, k = n - 1; k >= 0; k--)
@@ -4080,7 +4406,7 @@ static void save_user(void)               /* SAVE let go after choosing a slot: 
         u->kit = proj.kit;
         for (r = 0; r <= NPADS; r++)
             for (c = 0; c < NPOTS; c++)
-                u->pots[r][c] = proj.pots[proj.kit][r][c];
+                u->pots[r][c] = kit_pots(proj.kit)[r][c];
         proj.dpreset = (uint8_t)(2 + s);
         dpreset_name(proj.dpreset, t);
     }
@@ -4762,6 +5088,9 @@ static void track_pick(int tr)
 {
     tr = clamp(tr, 0, NTRK - 1);
     if (tr != ui.trk) {
+        if (tr == TR_DRUM && ui.page == PG_INSERT) ui.page = PG_SEQ;
+        if (ui.page == PG_PICK)
+            pick_leave();
         /* between the drums and an instrument track: the track's own page (its keys play), unless on EDIT or
          * HOME; between instrument tracks the page stays */
         if ((tr == TR_DRUM) != (ui.trk == TR_DRUM) && ui.page != PG_EDIT && ui.page != PG_HOME && ui.page != PG_LFO &&
@@ -4774,7 +5103,7 @@ static void track_pick(int tr)
         ui.spage = 0;
         ui.epage = 0;
     }
-    app_say(TRK_NAME[tr], tr == TR_DRUM ? (proj.kit == KIT_808 ? "808" : "909") : TYPE_NAME[tset(tr)->type]);
+    app_say(TRK_NAME[tr], tr == TR_DRUM ? drums_kit_name(proj.kit) : TYPE_NAME[tset(tr)->type]);
 }
 
 static int edit_pat(void) { return clip_of(ui.trk); }
@@ -4914,18 +5243,28 @@ static void reload_sound(void)            /* SAVE + OCT-: the track's sound (the
         return;
     }
     if (tr == TR_DRUM) {
-        static uint8_t pots[KIT_NUM][NPADS + 1][NPOTS];
-        if (plat_file_read(&PROJ_FILE, fmt == 2 ? (uint32_t)offsetof(project_t, pots) : V1_OFF(pots), pots,
+        static uint8_t pots[2][NPADS + 1][NPOTS], saved606[NPADS + 1][NPOTS];
+        const uint32_t fmt4_606_off = PROJ_PREFIX + (uint32_t)offsetof(project_t, pots606) - PROJ_TAIL;
+        if (fmt >= 4 && plat_file_read(&PROJ_FILE, fmt4_606_off, saved606, sizeof saved606) != 0)
+            return;
+        if (plat_file_read(&PROJ_FILE, fmt >= 4 ? PROJ_PREFIX : fmt >= 2 ? OLD_TAIL : V1_OFF(pots), pots,
                            sizeof pots) != 0)
             return;
         f = plat_lock();
         locks_release();
         {
             int k, r, c;
-            for (k = 0; k < KIT_NUM; k++)
+            for (k = 0; k < 2; k++)
                 for (r = 0; r <= NPADS; r++)
                     for (c = 0; c < NPOTS; c++)
-                        proj.pots[k][r][c] = pots[k][r][c];
+                        kit_pots(k)[r][c] = pots[k][r][c];
+            if (fmt >= 4) {
+                for (r = 0; r <= NPADS; r++)
+                    for (c = 0; c < NPOTS; c++)
+                        kit_pots(KIT_606)[r][c] = saved606[r][c];
+            } else {
+                kit606_defaults();
+            }
         }
         pots_apply();
         plat_unlock(f);
@@ -4934,13 +5273,13 @@ static void reload_sound(void)            /* SAVE + OCT-: the track's sound (the
         static psound_t q;
         track_t *ts = tset(tr);
         int k;
-        if (fmt == 2 ? plat_file_read(&PROJ_FILE, (uint32_t)((uint8_t *)&proj.tr[tr - 1] - (uint8_t *)&proj), &t,
+        if (fmt >= 2 ? plat_file_read(&PROJ_FILE, (uint32_t)((uint8_t *)&proj.tr[tr - 1] - (uint8_t *)&proj), &t,
                                       sizeof t) != 0
                      : track_from_v1(tr - 1, &t) != 0)
             return;
         q.used = 0;
-        if (sounds_pp() && fmt == 2)
-            plat_file_read(&PROJ_FILE, (uint32_t)((uint8_t *)&proj.psnd[clip_of(tr)][tr - 1] - (uint8_t *)&proj), &q,
+        if (sounds_pp() && fmt >= 2)
+            plat_file_read(&PROJ_FILE, (fmt >= 4 ? PROJ_PREFIX : OLD_TAIL) + (uint32_t)((uint8_t *)&proj.psnd[clip_of(tr)][tr - 1] - (uint8_t *)proj.pots), &q,
                            sizeof q);
         else if (sounds_pp() && sz == (int)sizeof(project_v1_t) && psound_from_v1(clip_of(tr), tr - 1, &q) != 0)
             q.used = 0;
@@ -5008,16 +5347,42 @@ static void nudge(int32_t e)              /* HOME, SEL + SELECT while playing: t
     app_say("NUDGE", s);
 }
 
+/* Set under the audio lock. Future notes follow the mask; old voices, arp
+ * material and the unused portion of the current synth block are removed.
+ * The shared FX/output history is intentionally not flushed. */
+static void set_track_mutes(uint8_t mask)
+{
+    uint32_t f = plat_lock();
+    uint8_t cut = mask & (uint8_t)~proj.tmute;
+    int t;
+    proj.tmute = mask;
+    roll_inhibit_tracks |= cut;
+    sync_drum_mutes();
+    if (cut & 1u)
+        drum_pk = 0.0f;
+    for (t = 1; t < NTRK; t++)
+        if (cut >> t & 1u) {
+            arp_clear(t);
+            sq.slid[t] = 0;
+            syn_cut_track(t);
+            track_insert_reset(&insert_rt[t-1]);
+        }
+    for (t = 1; t < NTRK; t++) insert_route(t);
+    if ((cut & 0x0Eu) && syn_at < SYN_CTL)
+        syn_mix_repack(syn_l, syn_r, syn_rv, syn_dl);
+    plat_unlock(f);
+}
+
 static void solo(int tr)                  /* HOME, a track key + OCT+: only it heard; again: as before */
 {
     if (ui.solo_trk == tr) {
-        proj.tmute = ui.solo_save;
+        set_track_mutes(ui.solo_save);
         ui.solo_trk = -1;
         app_say(TRK_NAME[tr], "SOLO OFF");
     } else {
         if (ui.solo_trk < 0)
             ui.solo_save = proj.tmute;
-        proj.tmute = (uint8_t)(0x0Fu & ~(1u << tr));
+        set_track_mutes((uint8_t)(0x0Fu & ~(1u << tr)));
         ui.solo_trk = (int8_t)tr;
         app_say(TRK_NAME[tr], "SOLO");
     }
@@ -5037,7 +5402,7 @@ static int home_trkkey(void)              /* HOME: the track key held (the lowes
 
 static void track_mute(int tr)            /* HOME + pad keys 1-4 */
 {
-    proj.tmute ^= (uint8_t)(1u << tr);
+    set_track_mutes((uint8_t)(proj.tmute ^ (1u << tr)));
     dirty = 1;
     app_say(TRK_NAME[tr], (proj.tmute >> tr & 1u) ? "MUTED" : "ON");
 }
@@ -5131,8 +5496,7 @@ static void pattern_copy_to(int n)        /* the whole pattern, all four tracks 
     int i;
     if (n == proj.pat)
         return;
-    undo_push_to(undo_s, &undo_n, (uint8_t)n);
-    redo_n = 0;
+    undo_push((uint8_t)n);
     f = plat_lock();
     proj.p[n] = *cur();
     for (i = 0; i < NINST; i++)
@@ -5150,7 +5514,10 @@ static void do_save(void)
         app_say("SAVE", "WHEN STOPPED");
         return;
     }
-    app_say(project_save() != 0 ? "SAVE FAILED" : "SAVED", "");
+    {
+        int r = project_save();
+        app_say(r == -2 ? "PROJECT TOO LARGE" : r ? "SAVE FAILED" : "SAVED", r == -2 ? "OLD SAVE KEPT" : "");
+    }
 }
 
 static void page_button(int page)         /* a page's button: its page, or (pressed again) the track's own */
@@ -5277,7 +5644,7 @@ static void gen_make(const gen_t *g, int len, nstep_t *out)   /* the part's firs
             int k = 1;
             while (s + k < len && !on[s + k])
                 k++;
-            st->gate = (uint8_t)(8 * k - 1 > GATE_MAX ? GATE_MAX : 8 * k - 1);
+            st->gate = (uint16_t)(8 * k - 1 > GATE_MAX ? GATE_MAX : 8 * k - 1);
         } else {
             st->gate = GATE_HALF;
         }
@@ -5517,6 +5884,55 @@ static void rec_knob(int k, int32_t e)    /* REC held: K1 the metronome, K2 the 
     dirty = 1;
 }
 
+static void insert_select(int tr, int e)
+{
+    track_insert_param_t *p = &proj.insert[tr-1];
+    int mode = clamp(p->mode + e, TI_OFF, TI_MODES - 1);
+    if (mode != p->mode) {
+        uint32_t f = plat_lock();
+        track_insert_default(p, mode);
+        track_insert_reset(&insert_rt[tr-1]);
+        insert_route(tr);
+        plat_unlock(f);
+        dirty = 1;
+    }
+    app_say("INSERT", track_insert_name(mode));
+}
+
+static void insert_text(const track_insert_param_t *p, int k, char *text)
+{
+    int n = p->v[k];
+    if (p->mode == TI_SHIFT && k < 3) {
+        static const int scale[3] = {900, 25, 15};
+        int_text((n-64)*scale[k]/64, text);
+        text_cat(text, " HZ");
+    } else if (k == 3) {
+        int_text(n*100/127, text);
+        text_cat(text, "%");
+    } else {
+        int_text(n, text);
+    }
+}
+
+static void insert_knob(int tr, int k, int e)
+{
+    track_insert_param_t *p = &proj.insert[tr-1];
+    char value[8];
+    int v = clamp(p->v[k] + e, 0, 127);
+    if (!p->mode || v == p->v[k])
+        return;
+    {
+        uint32_t f = plat_lock();
+        if (k == 3 && (!p->v[3] || !v)) track_insert_reset(&insert_rt[tr-1]);
+        p->v[k] = (uint8_t)v;
+        insert_route(tr);
+        plat_unlock(f);
+    }
+    dirty = 1;
+    insert_text(p, k, value);
+    app_say(track_insert_label(p->mode, k), value);
+}
+
 static void knob(int k, int32_t e)        /* KNOB 1..4 (k 0..3) on the page shown */
 {
     int inst = ui.trk != TR_DRUM;
@@ -5566,6 +5982,8 @@ static void knob(int k, int32_t e)        /* KNOB 1..4 (k 0..3) on the page show
         song_knob(k, e);
     } else if (ui.page == PG_MIX) {
         mix_knob(k, e);
+    } else if (inst && ui.page == PG_INSERT) {
+        insert_knob(ui.trk, k, e);
     } else if (ui.page == PG_FX) {
         fx_knob(k, e);
     } else if (ui.page == PG_MST) {
@@ -5584,6 +6002,75 @@ static void knob(int k, int32_t e)        /* KNOB 1..4 (k 0..3) on the page show
     ui.redraw = 1;
 }
 
+/* SEQ + octave doubles the selected clip's active loop or truncates it.
+ * Preflight locks: never repeat the notes but silently drop their automation. */
+static void part_resize(int up)
+{
+    int tr = ui.trk, i, k, count = 0;
+    pattern_t *pat = &proj.p[clip_of(tr)];
+    dpart_t *d = &pat->d;
+    ipart_t *p = tr == TR_DRUM ? 0 : &pat->t[tr - 1];
+    uint8_t *len = p ? &p->len : &d->len;
+    int old = *len, newlen = up ? old * 2 : old / 2;
+    uint32_t f;
+    char t[16];
+    if (up && newlen > NSTEPS) {
+        app_say("DOUBLE PART", "MAX 128 STEPS");
+        return;
+    }
+    if (!up && old == 1) {
+        app_say("HALVE PART", "MIN 1 STEP");
+        return;
+    }
+    if (up) {
+        int locks = p ? p->nlk : d->nlk;
+        for (i = 0; i < locks; i++)
+            count += (p ? p->lk[i].step : d->lk[i].step) < old;
+        if (count * 2 > (p ? NILOCKS : NLOCKS)) {
+            app_say("DOUBLE PART", "TOO MANY LOCKS");
+            return;
+        }
+    }
+    undo_mark(0);
+    f = plat_lock();
+    if (p) {
+        for (i = 0, k = 0; i < p->nlk; i++)
+            if (p->lk[i].step < (up ? old : newlen)) p->lk[k++] = p->lk[i];
+        p->nlk = (uint8_t)k;
+        for (i = 0; up && i < k; i++) {
+            ilock_t c = p->lk[i];
+            c.step = (uint8_t)(c.step + old);
+            p->lk[p->nlk++] = c;
+        }
+        for (i = up ? old : newlen; i < NSTEPS; i++)
+            if (i < newlen) p->st[i] = p->st[i - old];
+            else nstep_clear(&p->st[i]);
+    } else {
+        for (i = 0, k = 0; i < d->nlk; i++)
+            if (d->lk[i].step < (up ? old : newlen)) d->lk[k++] = d->lk[i];
+        d->nlk = (uint8_t)k;
+        for (i = 0; up && i < k; i++) {
+            lock_t c = d->lk[i];
+            c.step = (uint8_t)(c.step + old);
+            d->lk[d->nlk++] = c;
+        }
+        for (k = 0; k <= NPADS; k++) {
+            uint32_t *row = k < NPADS ? d->hit[k] : d->acc;
+            for (i = up ? old : newlen; i < NSTEPS; i++)
+                if (i < newlen && bit_get(row, i - old)) bit_set(row, i);
+                else bit_clear(row, i);
+        }
+    }
+    *len = (uint8_t)newlen;
+    if (ui.spage * 16 >= newlen) ui.spage = (uint8_t)((newlen - 1) / 16);
+    if (ui.cursor[tr] >= newlen) ui.cursor[tr] = (uint8_t)(newlen - 1);
+    plat_unlock(f);
+    int_text(newlen, t);
+    text_cat(t, " STEPS");
+    app_say(up ? "DOUBLE PART" : "HALVE PART", t);
+    ui.redraw = 1;
+}
+
 static void input(void)
 {
     uint32_t keys, btn = plat_buttons(), k, pressed, released, kp, kr;
@@ -5595,6 +6082,8 @@ static void input(void)
     released = ~btn & ui.btn;
     ui.btn = btn;                         /* (step_down reads SEQ from it) */
     inst = ui.trk != TR_DRUM;
+    if (ui.page == PG_PICK && clip_of(ui.trk) != ui.pick_clip)
+        pick_leave();
     if (pressed)                          /* a button: the knob card turned last stands out no more */
         ui.knob_k = -1;
 
@@ -5615,11 +6104,22 @@ static void input(void)
             rec_arm();
         }
     }
+    if (pressed >> B_SEQ & 1u) {
+        ui.seq_prev = ui.page;
+        ui.seq_used = 0;
+    }
     if ((pressed >> B_OCTDN & 1u) || (pressed >> B_OCTUP & 1u)) {
         int up = (int)(pressed >> B_OCTUP & 1u);
         if ((btn >> B_SAVE & 1u) && !up) {   /* SAVE + OCT-: the track's sound as last saved */
             ui.save_used = 1;
             reload_sound();
+        } else if (ui.page == PG_PICK && !(btn & ((1u << B_EDIT) | (1u << B_REC)))) {
+            ui.pick_oct = (int8_t)clamp(ui.pick_oct + (up ? 1 : -1), -3, 3);
+        } else if ((btn >> B_SEQ & 1u) && ui.seq_prev != PG_PICK && !(btn >> B_REC & 1u) &&
+                   !(btn >> B_EDIT & 1u) && !(btn >> B_SAVE & 1u) && ui.held_step < 0) {
+            ui.seq_used = 1;
+            ui.page = ui.seq_prev;
+            part_resize(up);
         } else if (ui.page == PG_HOME && home_trkkey() >= 0) {   /* HOME, a track key held: OCT- stops it, OCT+ solo */
             int tk = home_trkkey();
             ui.tkey_used |= (uint8_t)(1u << tk);
@@ -5659,6 +6159,7 @@ static void input(void)
             undo_mark(0);
             f = plat_lock();
             dcur()->mute = 0;
+            sync_drum_mutes();
             plat_unlock(f);
             app_say("ALL PADS", "ON");
         } else if (inst && ui.page == PG_GEN) {   /* the 303 generator: OCT+ a new line, OCT- a few steps changed */
@@ -5667,7 +6168,7 @@ static void input(void)
             else
                 gen_mutate();
         } else if (inst && (ui.page == PG_KEYS || ui.page == PG_EDIT || ui.page == PG_ENV || ui.page == PG_LFO ||
-                            ui.page == PG_ARP || ui.page == PG_MIX || ui.page == PG_FX || ui.page == PG_MST)) {
+                            ui.page == PG_ARP || ui.page == PG_MIX || ui.page == PG_FX || ui.page == PG_MST || ui.page == PG_INSERT)) {
             octave(up);
         } else if (ui.page == PG_SEQ || ui.page == PG_EDIT) {
             ui.spage = (uint8_t)clamp(ui.spage + (up ? 1 : -1), 0, npages() - 1);
@@ -5688,9 +6189,11 @@ static void input(void)
             ui.epage = (uint8_t)(ui.epage + 1 < drum_epages() ? ui.epage + 1 : 0);
         }
     }
-    if (pressed >> B_SEQ & 1u) {          /* the steps; on an instrument track, again: the 303 generator (the page of it
+    if ((pressed >> B_SEQ & 1u) && !ui.seq_used) {      /* the steps; on an instrument track, again: the 303 generator (the page of it
                                            * shown last; SELECT its other), then back to the keys */
-        if (!inst || (ui.page != PG_SEQ && ui.page != PG_GEN))
+        if (ui.page == PG_PICK)
+            pick_leave();
+        else if (!inst || (ui.page != PG_SEQ && ui.page != PG_GEN))
             ui.page = PG_SEQ;
         else
             ui.page = (uint8_t)(ui.page == PG_SEQ ? PG_GEN : PG_KEYS);
@@ -5805,6 +6308,10 @@ static void input(void)
     if (pressed >> B_ARP & 1u) {          /* T2..T4's arpeggiator */
         if (!inst) {
             app_say("ARP", "ON T2-T4");
+        } else if (ui.page == PG_PICK) {
+            pick_leave();
+        } else if (ui.page == PG_SEQ && ui.held_step >= 0) {
+            pick_open();
         } else if (ui.page != PG_ARP) {
             ui.page = PG_ARP;
         } else if (!ui.arppage) {
@@ -5815,7 +6322,12 @@ static void input(void)
         }
     }
     if (pressed >> B_FX & 1u) {           /* the FX: REVERB, DELAY, DELAY 2, FILTER, then back */
-        if (ui.page != PG_FX) {
+        if ((btn >> B_SEL & 1u) && inst) {
+            ui.sel_used = 1;
+            ui.page = ui.page == PG_INSERT ? (uint8_t)home_page(ui.trk) : PG_INSERT;
+        } else if (ui.page == PG_INSERT) {
+            ui.page = (uint8_t)home_page(ui.trk);
+        } else if (ui.page != PG_FX) {
             ui.page = PG_FX;
         } else if (ui.fxpage < NFXPAGE - 1) {
             ui.fxpage++;
@@ -5862,6 +6374,8 @@ static void input(void)
             }
         } else if (!inst) {
             step_down((int)k);
+        } else if (ui.page == PG_PICK) {
+            pick_toggle((int)key);
         } else if (ui.page == PG_SEQ) {
             istep_down((int)k);
         } else {
@@ -5887,7 +6401,13 @@ static void input(void)
         }
         if (!(kp & bit))
             continue;
-        if ((ui.btn >> B_SEL & 1u) && k < NTRK) {   /* SEL held + pad keys 1-4: the track */
+        if (!inst && (ui.btn >> B_ENV & 1u) &&
+            (ui.page == PG_SEQ || ui.page == PG_EDIT || ui.page == PG_MUTE)) {
+            /* ENV + a black key directly mutes that lane, including when
+             * ENV was pressed from MUTE and has just returned to the editor. */
+            pad_pick((int)k);
+            mute_toggle((int)k);
+        } else if ((ui.btn >> B_SEL & 1u) && k < NTRK) {   /* SEL held + pad keys 1-4: the track */
             ui.sel_used = 1;
             track_pick((int)k);
             inst = ui.trk != TR_DRUM;
@@ -5907,7 +6427,9 @@ static void input(void)
                 mute_toggle((int)k);
             else
                 pad_play((int)k, touch_vel(key));
-        } else if (ui.page == PG_SEQ) {   /* pad keys 1-4: the step page */
+        } else if (ui.page == PG_PICK) {
+            pick_toggle((int)key);
+        } else if (ui.page == PG_SEQ) {   /* black keys 1-8: the step page */
             if ((int)k < npages()) {
                 ui.spage = (uint8_t)k;
                 ui.spage_t = plat_ms();
@@ -5931,8 +6453,10 @@ static void input(void)
     if ((e = plat_enc(EN_ALGO)) != 0)     /* ALGORITHM: the track */
         track_pick(ui.trk + e);
     inst = ui.trk != TR_DRUM;
-    if ((e = plat_enc(EN_SELECT)) != 0) { /* SELECT: a held step's chance, the cursor, or the page within the page */
-        if (ui.held_step >= 0 && !(inst && (ui.page == PG_EDIT || ui.page == PG_ENV || ui.page == PG_LFO))) {
+    if ((e = plat_enc(EN_SELECT)) != 0 && ui.page != PG_PICK) { /* SELECT: a held step's chance, the cursor, or the page within the page */
+        if (inst && ui.page == PG_INSERT) {
+            insert_select(ui.trk, e);
+        } else if (ui.held_step >= 0 && !(inst && (ui.page == PG_EDIT || ui.page == PG_ENV || ui.page == PG_LFO))) {
             /* (there: pages to lock on) */
             if (inst)
                 iheld_chance(e);
@@ -5979,7 +6503,7 @@ static void input(void)
         ui.redraw = 1;
     }
     for (k = 0; k < 4u; k++)
-        if ((e = plat_enc(EN_K1 + (int)k)) != 0)
+        if ((e = plat_enc(EN_K1 + (int)k)) != 0 && ui.page != PG_PICK)
             knob((int)k, e);
 
     if (keys != ui.keys || pressed || released)
@@ -6049,7 +6573,7 @@ static void lights(void)
                     bk |= 1u << BK[k];  /* playing pads lit, muted ones dark */
             } else if ((int)k == ui.pad) {
                 bk |= 1u << BK[k];
-            } else if (p->hit[k][0] | p->hit[k][1]) {
+            } else if (drum_row_used(p->hit[k])) {
                 dimk |= 1u << BK[k];
             }
         }
@@ -6065,18 +6589,24 @@ static void lights(void)
             if (sq.playing && s == st)
                 wk ^= 1u << WK[k];
         }
-        for (k = 0; k < 4u; k++)         /* pad keys 1-4: the step pages */
+        for (k = 0; k < NSTEPS / 16u; k++) /* black keys 1-8: the step pages */
             if ((int)k == ui.spage)
                 bk |= 1u << BK[k];
             else if ((int)k < npages())
                 dimk |= 1u << BK[k];
+    } else if (ui.page == PG_PICK) {      /* the physical keys and drawing both show selected pitches */
+        const nstep_t *s = &proj.p[ui.pick_clip].t[tr - 1].st[ui.pick_step];
+        for (k = 0; k < NKEYS; k++)
+            if (pick_is_selected(s, pick_pitch((int)k)))
+                wk |= 1u << k;
+        dimk = 1u << 7 | 1u << 19;        /* the Cs anchor the pitch window */
     } else {                              /* the keys: held ones lit, the Cs dim */
         wk = ui.keys & 0x7FFFFFFu;
         dimk = 1u << 7 | 1u << 19;
     }
     if (ui.page != PG_KEYS)
-        b |= 1u << (ui.page == PG_SEQ || ui.page == PG_GEN ? B_SEQ : ui.page == PG_EDIT ? B_EDIT : ui.page == PG_MUTE || ui.page == PG_ENV ? B_ENV
-                    : ui.page == PG_LFO ? B_LFO : ui.page == PG_ARP ? B_ARP : ui.page == PG_FX ? B_FX
+        b |= 1u << (ui.page == PG_SEQ || ui.page == PG_GEN || ui.page == PG_PICK ? B_SEQ : ui.page == PG_EDIT ? B_EDIT : ui.page == PG_MUTE || ui.page == PG_ENV ? B_ENV
+                    : ui.page == PG_LFO ? B_LFO : ui.page == PG_ARP ? B_ARP : ui.page == PG_FX || ui.page == PG_INSERT ? B_FX
                     : ui.page == PG_HOME || ui.page == PG_SONG || ui.page == PG_SETUP ? B_HOME : B_GLO);
     if (sq.playing)
         b |= LED_PLAY_GREEN;
@@ -6491,7 +7021,7 @@ static void strip(void)                   /* four cells in one hard-edged grid, 
 
 /* ---- each kind of page's four knobs */
 enum { KD_SEQ, KD_HELD, KD_DRUM, KD_KIT, KD_INST, KD_ENV, KD_LFO, KD_ARP, KD_MIX, KD_FX, KD_MST, KD_SONG, KD_REC, KD_PF,
-       KD_SETUP, KD_FOLLOW, KD_GEN };
+       KD_SETUP, KD_FOLLOW, KD_GEN, KD_INSERT };
 
 static int fx_mid(int i)                  /* a two-way FX knob's middle, or -1 */
 {
@@ -6505,6 +7035,13 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
     t[0] = 0;
     c->on = 0;
     switch (kind) {
+    case KD_INSERT: {
+        const track_insert_param_t *p = &proj.insert[tr-1];
+        if (!p->mode) return 0;
+        insert_text(p, k, t);
+        card_put(c, track_insert_label(p->mode, k), t, p->v[k], 0, 127, p->mode == TI_SHIFT && k < 3 ? 64 : -1);
+        return 1;
+    }
     case KD_SEQ: {
         static const char *const N[4] = {"LENGTH", "RATE", "SWING", "TEMPO"};
         if (k == 0) {
@@ -7207,7 +7744,7 @@ static void hits_take(void)
 /* ---- the pages */
 static void kit_band(const char *title, const char *ctx, int npg, int pg)
 {
-    band_set(KIT_RGB[proj.kit], proj.kit == KIT_808 ? "808" : "909", title, ctx, npg, pg);
+    band_set(KIT_RGB[proj.kit], drums_kit_name(proj.kit), title, ctx, npg, pg);
 }
 
 static void steps_text(char *t)           /* "STEPS 17-32" */
@@ -7226,9 +7763,12 @@ static void page_steps(void)              /* the drums' grid: 11 pads and the ac
 {
     dpart_t *p = dcur();
     int row, k, st = sq.t[TR_DRUM].step;
-    char t[24];
+    char t[24], hint[28];
     steps_text(t);
-    kit_band(t, drums_pad_name(proj.kit, ui.pad), npages(), ui.spage);
+    hint[0] = 0;
+    text_cat(hint, drums_pad_name(proj.kit, ui.pad));
+    text_cat(hint, drum_lane_muted(ui.pad) ? " MUTED / ENV+PAD" : " / MUTE: ENV+PAD");
+    kit_band(t, hint, npages(), ui.spage);
     hits_take();
     for (row = 0; row < NPADS + 1; row++) {
         int y = row * 11, muted = row < NPADS && (p->mute >> row & 1u), sel = row == ui.pad;
@@ -7269,9 +7809,25 @@ static void page_roll(void)               /* an instrument part: its notes, pitc
     int tr = ui.trk, st = sq.t[tr].step, k, i, s, lo = 127, hi = 0, rows, rh, top, n, H = BODY_H - 6;
     ipart_t *p = ipart(tr);
     uint16_t col = TRK_RGB[tr];
-    char t[24], u[24];
+    char t[24], u[40], note[8];
+    const track_t *ts = tset(tr);
     steps_text(t);
-    sound_name(tr, u);
+    if (ui.held_step >= 0 && ui.held_step < p->len) {
+        u[0] = 0;
+        text_cat(u, "HOLD + ARP: PICK NOTES");
+    } else {
+        note_text(track_note(tr), note);
+        upper(note);
+        u[0] = 0;
+        text_cat(u, "STAMP ");
+        text_cat(u, note);
+        if (ts->chord) {
+            text_cat(u, " ");
+            text_cat(u, CHORD_NAME[ts->chord]);
+            text_cat(u, " ");
+            text_cat(u, INV_NAME[ts->chord_inv & 3u]);
+        }
+    }
     band_set(col, TRK_NAME[tr], t, u, npages(), ui.spage);
     for (s = 0; s < p->len; s++)
         for (i = 0; i < NCHORD && p->st[s].note[i]; i++) {
@@ -7501,6 +8057,52 @@ static void page_keys(void)               /* an instrument track's KEYS page: wh
     cards_of(KD_SEQ, 0);
 }
 
+static void page_pick(void)
+{
+    int tr = ui.trk, i, w;
+    const nstep_t *s = &proj.p[ui.pick_clip].t[tr - 1].st[ui.pick_step];
+    uint16_t col = TRK_RGB[tr];
+    char t[24] = "STEP ", u[8], notes[32] = "";
+    int_text(ui.pick_step + 1, u);
+    text_cat(t, u);
+    band_set(col, TRK_NAME[tr], "PICK NOTES", t, 0, 0);
+    for (i = 0; i < NCHORD && s->note[i]; i++) {
+        if (i)
+            text_cat(notes, " ");
+        note_text(s->note[i], u);
+        upper(u);
+        text_cat(notes, u);
+    }
+    cv_text(6, 3, &FONT_S, notes[0] ? notes : "REST", TH_FG);
+    t[0] = 0;
+    int_text(i, t);
+    text_cat(t, "/4");
+    text_r(234, 3, &FONT_S, t, TH_FG);
+    cv_text(6, 24, &FONT_XS, "TAP KEY: ADD / REMOVE", TH_FG);
+    text_r(234, 24, &FONT_XS, "OCT: SHIFT", C_TXT2);
+    for (i = 0; i < 16; i++) {
+        int pitch = pick_pitch(WK[i]), on = pick_is_selected(s, pitch);
+        rrect(i * 15, 43, 14, 55, 2, on ? col : C_TILET);
+        if (on)
+            cv_rect(i * 15 + 5, 88, 4, 4, C_WHITE2);
+        if (i == 0 || pitch % 12 == 0 || i == 15) {
+            note_text(pitch, u);
+            upper(u);
+            cv_text(i * 15 + 1, 100, &FONT_T, u, C_TXT2);
+        }
+    }
+    for (i = 0; i < 11; i++) {
+        int key = BK[i], on = pick_is_selected(s, pick_pitch(key));
+        for (w = 0; w < 16 && WK[w] != key - 1; w++) {}
+        rrect(w * 15 + 9, 43, 11, 35, 2, on ? col : C_INK);
+        if (on)
+            cv_rect(w * 15 + 12, 69, 5, 4, C_WHITE2);
+    }
+    cv_text(6, 114, &FONT_T, "ARP / SEQ: BACK TO STEPS", TH_FG);
+    for (i = 0; i < NCHORD; i++)
+        cards[i].on = 0;                 /* the player is tapping musical keys, not adjusting knobs */
+}
+
 static void page_dedit(void)              /* the drums' EDIT page: the pad, its steps and hits, all its knobs */
 {
     int idx[NPOTS], n = edit_params(proj.kit, ui.pad, idx), np = (n + 3) / 4, k, hs = ui.held_step;
@@ -7663,7 +8265,7 @@ static void page_lfo(void)                /* the track's LFO: its shape, where i
     t[0] = 0;
     text_cat(t, "TO ");
     text_cat(t, d);
-    band_set(col, tr == TR_DRUM ? (proj.kit == KIT_808 ? "808" : "909") : TRK_NAME[tr],
+    band_set(col, tr == TR_DRUM ? drums_kit_name(proj.kit) : TRK_NAME[tr],
              tr == TR_DRUM ? (pg ? "LFO MORE" : "LFO") : LFO_PAGE_NAME[pg], t, lfo_pages(tr), pg);
     rrect(4, 4, 232, 124, 6, C_PANEL);
     cv_rect(10, 64, 220, 1, C_GRID);
@@ -7763,14 +8365,14 @@ static void page_mute(void)               /* the drums' pads: on or muted in thi
     dpart_t *p = dcur();
     int k;
     uint16_t kc = KIT_RGB[proj.kit];
-    kit_band("MUTE", "PAD KEYS: MUTE  OCT+: ALL ON", 0, 0);
+    kit_band("LANE MUTE", track_is_muted(TR_DRUM) ? "DRUM TRACK MUTED" : "PAD KEYS: MUTE  OCT+: ALL ON", 0, 0);
     hits_take();
     for (k = 0; k < NPADS; k++) {
         int x = 3 + (k % 4) * 59, y = 2 + (k / 4) * 44, muted = (int)(p->mute >> k & 1u);
         uint16_t bg = muted ? C_PANEL : hit[k] > 0.05f ? mix565(C_TILE, C_WHITE2, (int)(hit[k] * 200.0f)) : C_TILE;
         rrect(x, y, 56, 40, 6, bg);
         cv_text(x + 7, y + 3, &FONT_B, drums_pad_name(proj.kit, k), muted ? C_TXT2 : hit[k] > 0.5f ? C_INK : C_TILET);
-        cv_text(x + 7, y + 21, &FONT_S, muted ? "OFF" : "ON", muted ? TH_RED : C_TILET2);
+        cv_text(x + 7, y + 21, &FONT_S, muted ? "MUTE" : "ON", muted ? TH_RED : C_TILET2);
         if (k == ui.pad)
             rrect(x + 36, y + 6, 12, 12, 6, kc);
     }
@@ -7805,7 +8407,7 @@ static void page_home(void)               /* the scene grid: 16 patterns across 
         uint16_t tc = trk_rgb(t);
         /* the track: its name, muted or stopped, its level */
         rrect(1, y, 29, 27, 4, muted || clip[t] < 0 ? C_PANEL : tc);
-        text_c(15, y + 1, &FONT_S, t == TR_DRUM ? (proj.kit == KIT_808 ? "808" : "909") : TRK_NAME[t],
+        text_c(15, y + 1, &FONT_S, t == TR_DRUM ? drums_kit_name(proj.kit) : TRK_NAME[t],
                muted ? TH_RED : C_INK);
         h = db_h(lvl[t], 23, 48.0f);
         cv_rect(4, y + 21, 23, 3, muted || clip[t] < 0 ? C_GRID : mix565(tc, C_INK, 90));
@@ -7916,7 +8518,7 @@ static void page_mix(void)                /* the mixer: a strip a track, its met
         if (t == ui.trk)                  /* the track picked: selected */
             frame(x, 2, 56, 128, C_VIOLET);
         rrect(x + 4, 6, 48, 18, 4, muted ? C_GRID : col);
-        text_c(x + 28, 7, &FONT_S, t == TR_DRUM ? (proj.kit == KIT_808 ? "808" : "909") : TRK_NAME[t],
+        text_c(x + 28, 7, &FONT_S, t == TR_DRUM ? drums_kit_name(proj.kit) : TRK_NAME[t],
                muted ? TH_RED : C_INK);
         h = db_h(lvl[t], 92, 48.0f);      /* the meter, -48..0 dBFS */
         rrect(x + 6, 30, 8, 92, 3, C_GRID);
@@ -8310,6 +8912,18 @@ static void page_rec(void)                /* REC held: the metronome, the count-
     cards_of(KD_REC, 0);
 }
 
+static void page_insert(void)
+{
+    const track_insert_param_t *p = &proj.insert[ui.trk-1];
+    band_set(trk_rgb(ui.trk), TRK_NAME[ui.trk], "INSERT", track_insert_name(p->mode), 0, 0);
+    rrect(4, 4, 232, 124, 6, C_PANEL);
+    cv_text(12, 16, &FONT_M, track_insert_name(p->mode), C_INK);
+    cv_text(12, 56, &FONT_S, "SELECT: EFFECT / OFF", C_INK);
+    cv_text(12, 80, &FONT_XS, "PRE-SEND + USB STEM", TH_FG);
+    cv_text(12, 101, &FONT_XS, "FX: BACK", TH_FG);
+    cards_of(KD_INSERT, 0);
+}
+
 /* the page now: its band's text and its knobs set, its picture drawn (the canvas begun and blitted by the caller) */
 static void page(void)
 {
@@ -8324,6 +8938,7 @@ static void page(void)
     case PG_LFO: page_lfo(); break;
     case PG_MIX: page_mix(); break;
     case PG_FX: page_fx(); break;
+    case PG_INSERT: page_insert(); break;
     case PG_MST: page_mst(); break;
     case PG_ARP: page_arp(); break;
     case PG_MUTE: page_mute(); break;
@@ -8337,6 +8952,7 @@ static void page(void)
         break;
     case PG_KEYS: page_keys(); break;
     case PG_GEN: page_gen(); break;
+    case PG_PICK: page_pick(); break;
     default: inst ? page_roll() : page_steps(); break;
     }
 }
@@ -8399,9 +9015,8 @@ static void speak(void)                   /* a screen reader that has just start
     ann_tick(plat_ms());
 }
 
-/* the boot screen: GHETTO / MACHINE in Sedgwick Ave Display, BONGTECH under it, on paper. gen_logo.py drew both
- * parts (alpha 0..15, two pixels a byte); the platform calls this once at power-on, before app_ui_init. Drawn in
- * strips of 48 rows, so any canvas size will do. */
+/* Boot screen: two text masks and the supplied paletted art on paper. The
+ * platform calls this at power-on before app_ui_init, drawn in 48-row strips. */
 static void logo_part(const uint8_t *a, int32_t x0, int32_t y0, int32_t w, int32_t h, int32_t top, int32_t n,
                       uint16_t c)
 {
@@ -8432,10 +9047,28 @@ static void logo_part(const uint8_t *a, int32_t x0, int32_t y0, int32_t w, int32
     }
 }
 
+static void logo_art(int32_t top, int32_t n)
+{
+    int32_t y, x;
+    for (y = top; y < top + n; y++) {
+        const uint8_t *row;
+        uint16_t *out;
+        if (y < LOGO_ART_Y || y >= LOGO_ART_Y + LOGO_ART_H)
+            continue;
+        row = LOGO_ART + (y - LOGO_ART_Y) * (LOGO_ART_W / 2);
+        out = cv_px + (y - top) * 240 + LOGO_ART_X;
+        for (x = 0; x < LOGO_ART_W; x += 2) {
+            uint8_t pair = row[x / 2];
+            out[x] = swap16(LOGO_ART_RGB[pair >> 4]);
+            out[x+1] = swap16(LOGO_ART_RGB[pair & 15u]);
+        }
+    }
+}
+
 void app_splash(void)
 {
-    const uint16_t paper = C_CANVAS;      /* (Dungeon BBS: the graffiti in bone on the dark, BONGTECH pale violet) */
-    const int32_t top = LOGO_NAME_Y, bot = LOGO_TAG_Y + LOGO_TAG_H;
+    const uint16_t paper = C_CANVAS;      /* preserve Dungeon BBS behind the supplied art */
+    const int32_t top = LOGO_NAME_Y, bot = LOGO_ART_Y + LOGO_ART_H;
     int32_t y, n;
     lcd_fill(0, 0, 240, 240, paper);
     for (y = top; y < bot; y += n) {
@@ -8443,6 +9076,7 @@ void app_splash(void)
         cv_begin(240, (uint32_t)n, paper);
         logo_part(LOGO_NAME, LOGO_NAME_X, LOGO_NAME_Y, LOGO_NAME_W, LOGO_NAME_H, y, n, APP_SPLASH_RGB);
         logo_part(LOGO_TAG, LOGO_TAG_X, LOGO_TAG_Y, LOGO_TAG_W, LOGO_TAG_H, y, n, C_FOCUS);
+        logo_art(y, n);
         cv_blit(0, (uint32_t)y);
     }
     lcd_sync();
@@ -8629,18 +9263,38 @@ static const nstep_t *expect_step(const char *what, int skip)   /* "XXXN_S...": 
     const char *u = strchr(what + skip, '_');
     if (tr < 2 || tr > NTRK || !u)
         return 0;
-    return &ipart(tr - 1)->st[(atoi(u + 1) - 1) & 63];
+    return &ipart(tr - 1)->st[(atoi(u + 1) - 1) & (NSTEPS - 1)];
 }
 
 int app_expect(const char *what, int *got)
 {
     dpart_t *p = dcur();
     const nstep_t *ns;
-    if (!strcmp(what, "projfmt")) {       /* the saved file's format: 3 this one's, 2 0.3's, 1 0.2's (converted as it
-                                           * loads), 0 none */
+    if (!strncmp(what, "insert", 6)) {
+        int t = atoi(what + 6) - 2;
+        const char *u = strchr(what, '_');
+        if (t < 0 || t >= NINST) return 0;
+        *got = u ? proj.insert[t].v[atoi(u+1) & 3] : proj.insert[t].mode;
+    } else if (!strcmp(what, "projfmt")) {       /* saved format, or 0 if none */
         *got = proj_file_format();
-    } else if (!strcmp(what, "projsize")) {   /* the project's bytes (its file holds 32736) */
+    } else if (!strcmp(what, "projsize")) {   /* bytes in RAM (not the packed saved size) */
         *got = (int)sizeof proj;
+    } else if (!strcmp(what, "seed_dense")) { /* simulator only: exercise an incompressible project through SAVE */
+        uint32_t rng = 0x579C0219u;
+        int i, j, k, m;
+        for (i = 0; i < NPAT; i++) for (j = 0; j < NINST; j++) {
+            ipart_t *d = &proj.p[i].t[j];
+            uint8_t *b = (uint8_t *)d->st;
+            for (k = 0; k < NSTEPS; k++) for (m = 0; m < (int)sizeof(nstep_t); m++) {
+                rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5;
+                *b++ = (uint8_t)((rng & 0x7Fu) | 1u);
+            }
+            d->len = NSTEPS;
+        }
+        dirty = 1;
+        *got = 1;
+    } else if (!strcmp(what, "savedsize")) {
+        *got = plat_file_size(&PROJ_FILE);
     } else if (!strcmp(what, "splash")) {     /* the boot screen drawn now (a shot straight after sees it) */
         app_splash();
         *got = 1;
@@ -8897,7 +9551,7 @@ int app_expect(const char *what, int *got)
         const char *u = strchr(what, '_'), *v = u ? strchr(u + 1, '_') : 0;
         if (tr < 1 || tr >= NTRK || !v)
             return 0;
-        j = ilock_find(ipart(tr), (atoi(u + 1) - 1) & 63, atoi(v + 1));
+        j = ilock_find(ipart(tr), (atoi(u + 1) - 1) & (NSTEPS - 1), atoi(v + 1));
         *got = j >= 0 ? ipart(tr)->lk[j].val : -1000;
     } else if (!strncmp(what, "inlk", 4)) {  /* inlkN: track N's locks in this pattern */
         int tr = atoi(what + 4) - 1;
@@ -8963,21 +9617,21 @@ int app_expect(const char *what, int *got)
     } else if (!strncmp(what, "hit", 3)) { /* hitP_S: pad P, step S (1-based) */
         int pad = atoi(what + 3);
         const char *u = strchr(what, '_');
-        *got = u ? bit_get(p->hit[pad % NPADS], (atoi(u + 1) - 1) & 63) : -1;
+        *got = u ? bit_get(p->hit[pad % NPADS], (atoi(u + 1) - 1) & (NSTEPS - 1)) : -1;
     } else if (!strncmp(what, "prob", 4)) { /* probP_S: pad P's step S chance, % */
         int pad = atoi(what + 4), i;
         const char *u = strchr(what, '_');
-        i = u ? lock_find(p, (atoi(u + 1) - 1) & 63, pad % NPADS, LK_PROB) : -1;
+        i = u ? lock_find(p, (atoi(u + 1) - 1) & (NSTEPS - 1), pad % NPADS, LK_PROB) : -1;
         *got = i >= 0 ? p->lk[i].val : 100;
     } else if (!strncmp(what, "lock", 4)) {   /* lockP_S_I: pad P's step S, knob I locked to (-1: none) */
         int pad = atoi(what + 4), s, k, i;
         const char *u = strchr(what, '_'), *v = u ? strchr(u + 1, '_') : 0;
-        s = u ? (atoi(u + 1) - 1) & 63 : 0;
+        s = u ? (atoi(u + 1) - 1) & (NSTEPS - 1) : 0;
         k = v ? atoi(v + 1) : 0;
         i = lock_find(p, s, pad % NPADS, lk_param(proj.kit, k));
         *got = i >= 0 ? p->lk[i].val : -1;
     } else if (!strncmp(what, "acc", 3))  /* accS */
-        *got = bit_get(p->acc, (atoi(what + 3) - 1) & 63);
+        *got = bit_get(p->acc, (atoi(what + 3) - 1) & (NSTEPS - 1));
     else if (!strncmp(what, "pot", 3)) {  /* potP_I: the kit's pad P, parameter I */
         int pad = atoi(what + 3);
         const char *u = strchr(what, '_');

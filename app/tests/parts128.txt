@@ -1,0 +1,145 @@
+# Host simulator: double/halve through physical controls, eighth step bank, and save/reboot.
+wait 600
+expect len 16
+press SEQ
+tap OCT+
+tap OCT+
+tap OCT+
+release SEQ
+wait 30
+expect len 128
+expect hit0_65 1
+expect hit1_125 1
+expect acc121 1
+press SEQ
+tap OCT+
+release SEQ
+wait 30
+expect len 128
+# The guard is not an edit: undo now returns all the way to 64.
+press EDIT
+tap OCT-
+release EDIT
+wait 30
+expect len 64
+expect hit0_65 0
+press EDIT
+tap OCT+
+release EDIT
+wait 30
+expect len 128
+# T2: insert a note on steps 16 and 64 before doubling.
+turn ALGO 1
+wait 30
+expect trk 2
+tap SEQ
+wait 30
+spin K1 48
+wait 30
+key 26 down
+wait 30
+key 26 up
+wait 30
+key 8 down
+wait 30
+key 8 up
+wait 30
+key 26 down
+wait 30
+key 26 up
+wait 30
+expect note2_64 >0
+press SEQ
+tap OCT+
+release SEQ
+wait 30
+expect page 0
+expect ilen2 128
+expect note2_80 >0
+expect note2_128 >0
+expect nsteps2 4
+# The eighth direct bank is black key 8; halve clears the second half and undo restores it.
+key 17 down
+wait 30
+key 17 up
+wait 30
+press SEQ
+tap OCT-
+release SEQ
+wait 30
+expect ilen2 64
+expect note2_128 0
+press EDIT
+tap OCT-
+release EDIT
+wait 30
+expect ilen2 128
+expect note2_128 >0
+# Reach simultaneous maximum parts on all tracks and save/reboot.
+turn ALGO 1
+wait 30
+expect trk 3
+expect page 0
+key 1 down
+wait 30
+key 1 up
+wait 30
+key 0 down
+wait 30
+key 0 up
+wait 30
+press SEQ
+tap OCT+
+tap OCT+
+tap OCT+
+release SEQ
+wait 30
+expect ilen3 128
+expect note3_113 >0
+turn ALGO 1
+wait 30
+expect trk 4
+expect page 0
+key 1 down
+wait 30
+key 1 up
+wait 30
+key 0 down
+wait 30
+key 0 up
+wait 30
+press SEQ
+tap OCT+
+tap OCT+
+tap OCT+
+release SEQ
+wait 30
+expect ilen4 128
+expect note4_113 >0
+tap SAVE
+wait 400
+expect dirty 0
+expect projfmt 5
+expect savedsize <32737
+reboot
+wait 600
+expect len 128
+expect hit0_65 1
+expect hit1_125 1
+expect ilen2 128
+expect note2_128 >0
+expect ilen3 128
+expect note3_113 >0
+expect ilen4 128
+expect note4_113 >0
+# A larger-than-slot project must not erase or replace the preceding committed slot.
+expect seed_dense 1
+tap SAVE
+wait 400
+expect dirty 1
+expect projfmt 5
+reboot
+wait 600
+expect dirty 0
+expect note2_128 >0
+expect nsteps2 4

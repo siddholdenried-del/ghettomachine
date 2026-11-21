@@ -108,7 +108,7 @@ peakreset
 wait 200
 expect stem3 -1200
 expect peak_db_min -75
-# ---- solo T2 (HOME, its key + OCT+): the other tracks muted, the drums' stem quiet after its last hit has rung out
+# ---- solo T2 (HOME, its key + OCT+): the other tracks hard-muted; the drums' stem goes silent without ringing out
 tap HOME
 wait 30
 key 3 down
@@ -120,10 +120,10 @@ wait 30
 expect solo 2
 expect tmute 13
 expect stemreset 1
-wait 1500
-expect stem1 >-1200
-wait 500
-expect stem1 <-900
+wait 30
+expect stem1 -1200
+wait 1970
+expect stem1 -1200
 key 3 down
 wait 30
 tap OCT+

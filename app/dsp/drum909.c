@@ -500,6 +500,22 @@ void drum909_trigger(drum909_t *d, int voice, float vel)
     }
 }
 
+/* Silence one lane before the next render, preserving pots and other voices. */
+void drum909_cut(drum909_t *d, int voice)
+{
+    switch (voice) {
+    case DR_BD: case DR_SD: d->bt[voice].mute = 0; break;
+    case DR_LT: case DR_MT: case DR_HT: d->tom[voice - DR_LT].mute = 0; break;
+    case DR_RS: d->rim.mute = 0; break;
+    case DR_CP: d->clap.mute = 0; break;
+    case DR_CH: case DR_OH: case DR_CR: case DR_RD:
+        d->smp[voice - DR_CH].mute = 0;
+        d->smp[voice - DR_CH].playing = 0;
+        break;
+    default: break;
+    }
+}
+
 /* ===================================================================== */
 /* Rendering                                                              */
 /* ===================================================================== */

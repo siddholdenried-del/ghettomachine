@@ -2,10 +2,10 @@
 
 The BongTech GhettoMachine turns the M-VAVE FM-1 into a four-track groovebox:
 
-- **Drums:** a 909 or an 808 kit, every pad editable.
+- **Drums:** a 909, 808 or 606 kit, with editable sounds.
 - **T2, T3, T4:** instrument tracks. Each is a MONO synth, a POLY synth or a SAMPLER.
-- **One sequencer** of up to 64 steps a track, 16 patterns, and a song chain.
-- **An LFO on every track,** an arpeggiator on T2–T4, and per-step locks.
+- **One sequencer** of up to 128 steps a track, 16 patterns, and a song chain.
+- **An LFO on every track,** an arpeggiator and one optional insert effect on T2–T4, and per-step locks.
 - **A mixer**, a reverb, a tempo delay, and **a master bus with a mastering chain**: EQ, compressor, tape saturation,
   stereo width and a limiter, with presets and a loudness meter.
 - **Made to be played live:** a scene grid (each track on its own pattern), seven perform keys (roll, fill, stutter,
@@ -44,7 +44,7 @@ route still works for getting M-VAVE's firmware back.
 | Control | What it does |
 | --- | --- |
 | **ALGORITHM** | Picks the track: DRUMS, T2, T3, T4. Or hold **SEL** and press pad keys 1–4. |
-| **PRESETS** | The drums' kit (909, 808, your kits), or an instrument track's sound. |
+| **PRESETS** | The drums' kit (909, 808, 606, your kits), or an instrument track's sound. |
 | **SELECT** | Turns the page within a page, moves a cursor, or sets a held step's chance. |
 | **K1–K4** | The four knobs of the page on screen. |
 | **PLAY** | Starts and stops. |
@@ -61,7 +61,7 @@ route still works for getting M-VAVE's firmware back.
 The screen follows Bong Cult's Dungeon BBS look: a near-black canvas, bone text and thin rules, square corners.
 **Violet marks what is selected** (the knob you're turning, the page you're on, the pad, slot or song entry picked),
 **acid green is only for live readings** (the meters), and each section keeps its own colour for its name and for
-what it draws: the drums orange (909) or blue (808); T2 green, T3 purple, T4 yellow; HOME, SONG and the mixer bone;
+what it draws: the drums orange (909), blue (808) or violet (606); T2 green, T3 purple, T4 yellow; HOME, SONG and the mixer bone;
 FX cyan; the master bus rose. Labels are in condensed capitals; the counters and the line under the title are in a
 monospace face. Three parts, top to bottom:
 
@@ -87,9 +87,9 @@ monospace face. Three parts, top to bottom:
 ## The drum track
 
 - **Pads:** the 11 black keys are BD, SD, LT, MT, HT, RS, CP, CH, OH and CR/RD (909) or CY/CB (808). Pressing one picks it
-  and plays it.
+  and plays it. On 606, black keys 4, 6 and 11 are silent; key 10 is CY. Steps on a silent lane are retained when switching kits.
 - **Steps (SEQ):** the 16 white keys are the picked pad's steps. Press an empty step to light it; press and let go of a
-  lit one to clear it. OCT− / OCT+ or SELECT move through step pages up to 64. The beats, steps 1, 5, 9 and 13 of the
+  lit one to clear it. OCT− / OCT+ or SELECT move through step pages up to 128. The beats, steps 1, 5, 9 and 13 of the
   page, glow dimly while they're empty, and the screen's grid gives them a darker column, so a bar is easy to count.
   - Hold **SEQ** and press steps: accents.
   - Hold a step and turn **SELECT**: its chance (100 % to 5 %).
@@ -99,21 +99,48 @@ monospace face. Three parts, top to bottom:
   the 808 played a groove about 12 dB quieter). The 808's accent is stronger than the 909's, as on a real 808: about
   6 dB against 3; the KIT page's Accent sets it.
   - Hold a step and turn a knob: that value for that step only (a lock). Held step + OCT− clears its locks.
-- **ENV:** the MUTE page. Pad keys mute pads in this pattern. OCT+ unmutes them all.
+- **ENV:** the LANE MUTE page. Tap a black pad key to toggle that drum lane in this pattern, or hold **ENV** and tap a pad from the drum editor. The grid shows each lane as ON or MUTE. OCT+ unmutes them all. Muting cuts a ringing hit immediately; unmuting waits for a new hit.
 - **Knobs on the steps page:** LENGTH and RATE of this track's part, SWING and TEMPO.
+
+Hold **SEQ** and tap **OCT+** to repeat the selected track’s part into a second half, or **OCT−** to keep its first half (rounding an odd length down). This copies notes, accents, chance and locks without changing the track’s rate. The second half is erased on halving. A full repeat is blocked if it would exceed 128 steps or the part’s lock capacity. **EDIT + OCT−** undoes, **EDIT + OCT+** redoes. On instrument STEPS, black keys 1–8 pick the available banks of 16.
+
+On instrument STEPS, hold a step and turn **K3 GATE**. Slow turns edit in eighths of a step; a fast turn snaps to whole bars at the selected rate. A note can hold for up to 128 steps.
+
+A very dense collection of long parts can exceed the fixed FM-1 project save slot. If SAVE reports **PROJECT TOO LARGE**, the previous save is kept and the current edits stay in memory. Shorten or clear unused parts before saving again.
 
 ## The instrument tracks (T2–T4)
 
 - **KEYS** (their home page): all 27 keys play. OCT− / OCT+ move the octave.
-- **Steps (SEQ):** the screen shows the notes, pitch upward. The white keys are steps; pad keys 1–4 pick the step page.
-  - Press an empty step: it gets the last note you played.
-  - Hold a step: **K1** moves its note (or chord), **K2** sets velocity, **K3** sets gate (up to almost 32 steps, two bars at 1/16;
-    over 2 steps it moves a whole step a click),
+- **Steps (SEQ):** the screen shows the notes, pitch upward. The white keys are steps; black keys 1–8 pick an available bank.
+  - Tap an empty step to insert the last note you played, or stamp the selected chord and inversion on that root. The
+    screen shows what it will stamp. Tap a filled step to clear it.
+  - Hold a step and press **ARP** to open **PICK NOTES**. Tap any white or black key to add that pitch; tap a lit key
+    to remove it. A step holds up to four notes. **OCT− / OCT+** shift the picker's range without changing the track's
+    playing octave. Press **ARP** or **SEQ** to get back to STEPS.
+  - Hold a step: **K1** moves its note (or chord), **K2** sets velocity, **K3** sets gate (up to 128 steps; slow eighth-step edits, fast musical-bar snaps),
     **SELECT** sets chance.
 - **Recording (REC):**
   - **While playing:** what you play goes to the nearest step, with its gate from how long you held it.
   - **While stopped, on KEYS:** step recording. A note or a chord goes into the cursor's step, and the cursor moves on
     when you let go. SELECT moves the cursor, to leave a rest.
+
+### Instrument insert effects
+
+Pick **T2, T3 or T4**, then hold **SEL** and tap **FX**. Turn **SELECT** to choose the effect. **K1–K3** shape it; **K4 MIX** blends dry and effected signal (zero bypasses without losing the other knob values). Turn SELECT to **OFF** to remove the effect; selecting a new mode starts it at its defaults. Tap **FX** to leave this screen; plain FX from another page still opens the shared reverb, delay and filter.
+
+| Insert | K1 | K2 | K3 |
+| --- | --- | --- | --- |
+| Phaser | Sweep rate | Sweep depth | Feedback |
+| Trem / Pan | Sweep rate | Depth | Tremolo to stereo auto-pan |
+| Chorus | Modulation rate | Depth | Stereo width |
+| Flanger | Modulation rate | Depth | Feedback |
+| Comb | Tuning | Feedback | Damping |
+| Env Filter | Base cutoff | Level sensitivity | Resonance |
+| Freq Shift | Signed coarse Hz | Fine Hz | Opposite stereo offsets |
+| Micro Pitch | Detune depth | Delay | Stereo width |
+| Resonator | Tuning | Decay | Color/second resonance |
+
+Each track can run one insert at a time. It processes the instrument's stereo signal before mixer pan, the shared reverb/delay sends, and the USB stem. Mute clears the insert's own tail immediately; shared effects already fed by it can still ring out. Inserts are track-wide project settings, not per-pattern locks; older saves start with each insert OFF. Freq Shift adds or subtracts the same number of Hz from each frequency, rather than transposing by a musical interval; at low frequencies the hardware-friendly Hilbert filter has weaker rejection of the opposite sideband.
 
 ### The 303 generator (ACID)
 
@@ -246,8 +273,10 @@ On STEPS an accented note has a white bar over it and a slide a mark at its end.
 
 Press **ARP** twice (page 2) on T2–T4:
 
-- **K2 CHORD:** OFF, MAJ, MIN, 7, MAJ7, MIN7, SUS2, SUS4, DIM, AUG, 5 (power chord), OCT. Each key then plays that chord
+- **K2 CHORD:** OFF, MAJ, MIN, 7, MAJ7, MIN7, SUS2, SUS4, DIM, AUG, 5 (power chord), OCT, MIN9, MAJ9, 7#9, 7SUS4. Each key then plays that chord
   built on it. The page shows the chord on a keyboard; the KEYS page's band shows which chord is on.
+  MIN9 and MAJ9 leave out the fifth for house and garage stabs; 7#9 is a four-note altered voicing for funk/electro,
+  and 7SUS4 keeps the third out of the way for suspended techno stabs.
 - **K3 INVERT:** ROOT, 1ST, 2ND, 3RD: the lowest notes move up an octave, for smoother changes between chords.
 - Chords are recorded as chords (a step holds up to 4 notes), live or step by step, and go through the arpeggiator
   if it's on: one key, an arpeggiated chord.
@@ -394,6 +423,8 @@ bass of pattern 7. The playing clip is solid with a bar showing where it is; a c
 | **Hold a track key + OCT−** | That track stops (at the bar). Start it again with a clip. |
 | **Tap a track key** | Mute or unmute it. |
 | **Hold a track key + OCT+** | **Solo** it; again to go back to how the mutes were. |
+
+Track and lane mutes cut their internal voices and new sends immediately, including held notes. Unmuting waits for a new hit or note. Sound already in the shared reverb/delay or performance loop decays or releases naturally; muting does not flush effects used by the other tracks.
 | **Hold a white key + K1 / K2** | That scene's **follow action** and after how many bars (below). |
 | **Black keys 5–11, held** | The **perform keys** (below). |
 | **Hold OCT+** | TAPE STOP. |
@@ -504,5 +535,5 @@ the sound saved with the pattern it's on.
   average (up to 6). Continue starts from the top. The clock is sent out of USB only.
 - Sounds per pattern keeps the tracks' sounds and the kit, not the mixer, FX or master bus.
 - The 303 generator: no per-step dice locking (keep this step, re-roll the rest), no 303-style transpose track, no
-  drum generator. A 32- or 64-step part gets a line of that length, not a 16-step line repeated. The arpeggiator
+  drum generator. A part of any length, up to 128 steps, gets a line of that length, not a 16-step line repeated. The arpeggiator
   ignores slides (it plays each note as its own).

@@ -30,7 +30,7 @@
 <tr><th scope="row">SEQ</th><td>STEPS, ACID, KEYS (see above).</td><td>Held on DRUMS STEPS: the step lights show accents, and white keys toggle accents.</td></tr>
 <tr><th scope="row">ENV, LFO, ARP, FX, GLO, HOME</th><td>Their pages (see above).</td><td>No hold function.</td></tr>
 <tr><th scope="row">OCT−</th><td colspan="2">In order of priority: SAVE held: reload the sound. HOME with a track key held: stop that track's clip. HOME (EDIT and REC not held): tap tempo, tapped twice or more. REC held: QUANTIZE. A step held: clear its locks and chance. EDIT held: undo. SONG: delete the cursor's entry. ACID: MUTATE. T2–T4 KEYS, EDIT, ENV, LFO, ARP, mixer, FX and master pages: octave down. STEPS and DRUMS EDIT: previous step bank.</td></tr>
-<tr><th scope="row">OCT+</th><td colspan="2">In order of priority: HOME with a track key held: solo that track (again: unsolo). HOME (EDIT and REC not held): TAPE STOP while held. REC held: LEGATO. A step held on T2–T4: cycle HALF, WHOLE, SLIDE. EDIT held: redo. SONG: copy the cursor's entry after it. DRUMS MUTE page: every pad on. ACID: NEW line. T2–T4 KEYS, EDIT, ENV, LFO, ARP, mixer, FX and master pages: octave up. STEPS and DRUMS EDIT: next step bank.</td></tr>
+<tr><th scope="row">OCT+</th><td colspan="2">With SEQ held: repeat the selected track part, when the length and locks fit. On PICK NOTES: move the picker range up. Otherwise: HOME with a track key held: solo that track (again: unsolo). HOME (EDIT and REC not held): TAPE STOP while held. REC held: LEGATO. A step held on T2–T4: cycle HALF, WHOLE, SLIDE. EDIT held: redo. SONG: copy the cursor's entry after it. DRUMS MUTE page: every pad on. ACID: NEW line. T2–T4 KEYS, EDIT, ENV, LFO, ARP, mixer, FX and master pages: octave up. STEPS and DRUMS EDIT: next step bank.</td></tr>
 </tbody></table>
 
 <h2 id="keys">What the keys do on each page</h2>
@@ -44,7 +44,7 @@
 <tr><th scope="row">HOME (PATTERNS)</th><td>Pick a scene: every track to that pattern. Held: K1/K2 set its follow action. With a track key held: launch only that track's clip.</td><td>Track keys. Tap: mute or unmute. Hold: modifier for clips, OCT− stop and OCT+ solo.</td><td>Perform effects while held: ROLL, FILL, STUTTER, FILTER, THROW, WASH, CRUSH.</td></tr>
 <tr><th scope="row">SONG</th><td>Set the cursor's entry to that pattern and move on (at the end: add an entry).</td><td>Mute or unmute a track.</td><td>Nothing.</td></tr>
 <tr><th scope="row">DRUMS, every other page</th><td>Steps of the selected pad on the bank shown. Steps 1, 5, 9 and 13 of the bank (the beats) glow dimly while empty. A lit step held: a modifier for locks, chance and quick clears.</td><td colspan="2">Select a pad and play it (recorded when REC is lit and playing). On MUTE: mute or unmute the pad in this pattern.</td></tr>
-<tr><th scope="row">T2–T4 STEPS</th><td>Steps. An empty one lights at once with the last note played. A lit one held: modifier for NOTE, VELOCITY, GATE, CHANCE and locks.</td><td>Step banks 1–16, 17–32, 33–48, 49–64 (those that exist at the length).</td><td>Nothing.</td></tr>
+<tr><th scope="row">T2–T4 STEPS</th><td>Steps. An empty one lights at once with the last note played. A lit one held: modifier for NOTE, VELOCITY, GATE, CHANCE and locks.</td><td>Banks of 16 steps, up to 113–128 (only those available at the current length).</td><td>Nothing.</td></tr>
 <tr><th scope="row">T2–T4, every other page</th><td colspan="3">A chromatic keyboard of 27 notes from F3 to G5 at octave 0, moved by OCT− / OCT+ from −3 to +3 octaves. Velocity comes from how hard you press. With REC lit, playing records; stopped on KEYS, it step-records at the cursor.</td></tr>
 </tbody></table>
 
@@ -65,13 +65,13 @@
 <caption>STEPS, KEYS and HOME knobs, and a held instrument step</caption>
 <thead><tr><th scope="col">Knob</th><th scope="col">Range</th><th scope="col">Notes</th></tr></thead>
 <tbody>
-<tr><th scope="row">K1 LENGTH</th><td>1–64 steps</td><td>The selected track's part in this pattern.</td></tr>
+<tr><th scope="row">K1 LENGTH</th><td>1–128 steps</td><td>The selected track's part in this pattern.</td></tr>
 <tr><th scope="row">K2 RATE</th><td>1/16, 1/8, 1/32, 1/16T, 1/8T</td><td>The selected track's part.</td></tr>
 <tr><th scope="row">K3 SWING</th><td>50–75%</td><td>The whole project.</td></tr>
 <tr><th scope="row">K4 TEMPO</th><td>60–240 BPM, 1 BPM a click</td><td>The whole project. Also tap tempo (HOME, OCT− twice or more: the tempo follows when the taps average 0.25–1 s apart; a gap over 2 s starts counting again) and MIDI FOLLOW.</td></tr>
 <tr><th scope="row">Held step: K1 NOTE</th><td>Moves the step's note, or its whole chord, by semitones</td><td>You hear the step while stopped. A “+” after the note means a chord.</td></tr>
 <tr><th scope="row">Held step: K2 VELOCITY</th><td>1–127, then ACCENT</td><td>ACCENT is 127 with the 303-style accent: louder with a filter lift.</td></tr>
-<tr><th scope="row">Held step: K3 GATE</th><td>0.12–31.87 steps</td><td>An eighth of a step a click up to two steps, then a whole step a click. SLIDE shows when the step slides.</td></tr>
+<tr><th scope="row">Held step: K3 GATE</th><td>⅛–128 steps</td><td>Turn slowly for an eighth of a step per click, or quickly to snap to musical bars at the selected RATE. SLIDE shows when the step slides.</td></tr>
 <tr><th scope="row">Held step: SELECT CHANCE</th><td>5–100%, 5% a click</td><td>Also on DRUMS, where it uses one of the part's 16 locks.</td></tr>
 <tr><th scope="row">Held step: OCT+</th><td>HALF, WHOLE, SLIDE</td><td>T2–T4. HALF is half a step. WHOLE holds to just before the next note. SLIDE glides into the next note without a new attack.</td></tr>
 </tbody></table>
@@ -154,7 +154,7 @@
 <thead><tr><th scope="col">Page</th><th scope="col">K1</th><th scope="col">K2</th><th scope="col">K3</th><th scope="col">K4</th></tr></thead>
 <tbody>
 <tr><th scope="row">ARP</th><td>MODE: OFF, UP, DOWN, UP+DOWN, RANDOM, AS PLAYED</td><td>RATE: 1/4, 1/8, 1/8T, 1/16, 1/16T, 1/32 (1/16 at first)</td><td>OCTAVES: 1–4</td><td>GATE: 5–100%, 5% a click (50% at first)</td></tr>
-<tr><th scope="row">ARP 2</th><td>LATCH: OFF, ON</td><td>CHORD: OFF, MAJ, MIN, 7, MAJ7, MIN7, SUS2, SUS4, DIM, AUG, 5, OCT</td><td>INVERT: ROOT, 1ST, 2ND, 3RD</td><td>—</td></tr>
+<tr><th scope="row">ARP 2</th><td>LATCH: OFF, ON</td><td>CHORD: OFF, MAJ, MIN, 7, MAJ7, MIN7, SUS2, SUS4, DIM, AUG, 5, OCT, MIN9, MAJ9, 7#9, 7SUS4</td><td>INVERT: ROOT, 1ST, 2ND, 3RD</td><td>—</td></tr>
 </tbody></table>
 <p>The arpeggiator plays held keys, incoming MIDI notes and the notes of sequenced steps, up to 16 notes. LATCH keeps notes going after you let go; turning LATCH off with no key down stops them. CHORD makes every key play a chord of up to four notes; inversions move its lowest notes up an octave. Chords record into a step as up to four notes. Incoming MIDI notes are not turned into chords.</p>
 
@@ -251,7 +251,7 @@
 <thead><tr><th scope="col">What</th><th scope="col">Limit</th></tr></thead>
 <tbody>
 <tr><th scope="row">Patterns</th><td>16, each with a DRUMS part and T2, T3, T4 parts</td></tr>
-<tr><th scope="row">Part length</th><td>1–64 steps, in banks of 16</td></tr>
+<tr><th scope="row">Part length</th><td>1–128 steps, in banks of 16</td></tr>
 <tr><th scope="row">Notes per step</th><td>4 (T2–T4)</td></tr>
 <tr><th scope="row">Locks</th><td>16 per part (on DRUMS, a step's chance uses one)</td></tr>
 <tr><th scope="row">Gate</th><td>Up to 31.87 steps</td></tr>

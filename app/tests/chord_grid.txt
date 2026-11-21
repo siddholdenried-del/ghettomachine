@@ -1,0 +1,188 @@
+# Four-note chord stamps and editable notes through the real grid controls.
+turn ALGO 3
+wait 40
+tap ARP
+wait 30
+tap ARP
+wait 30
+spin K2 12
+wait 30
+expect chord4 12
+spin K3 1
+wait 30
+tap SEQ
+wait 30
+key 0 down
+wait 40
+expect note4_1_0 72
+expect note4_1_1 63
+expect note4_1_2 70
+expect note4_1_3 74
+tap ARP
+wait 30
+key 0 up
+wait 30
+shot chord_picker.png
+# Keyboard area begins at F3; physical key 10 is D#4 (MIDI 63).
+key 10 down
+wait 30
+key 10 up
+wait 30
+expect note4_1_0 72
+expect note4_1_1 70
+expect note4_1_2 74
+expect note4_1_3 0
+key 9 down
+wait 30
+key 9 up
+wait 30
+expect note4_1_3 62
+# Fifth pitch is refused instead of replacing any of the four.
+key 7 down
+wait 30
+key 7 up
+wait 30
+expect note4_1_0 72
+expect note4_1_3 62
+tap SEQ
+wait 30
+expect page 0
+expect note4_1_3 62
+# Existing per-step knobs still work, and editing pitches preserves the gate.
+key 0 down
+wait 30
+turn K3 2
+wait 30
+expect gate4_1 8
+tap ARP
+wait 30
+key 0 up
+wait 30
+tap OCT-
+wait 30
+key 21 down
+wait 30
+key 21 up
+wait 30
+expect note4_1_3 0
+expect gate4_1 8
+tap OCT+
+wait 30
+key 7 down
+wait 30
+key 7 up
+wait 30
+expect note4_1_3 60
+expect gate4_1 8
+press EDIT
+wait 30
+tap OCT-
+wait 30
+release EDIT
+wait 30
+expect note4_1_3 0
+tap ARP
+wait 30
+expect page 0
+tap SAVE
+wait 150
+reboot
+wait 650
+expect chord4 12
+expect chordinv4 1
+expect note4_1_2 74
+expect gate4_1 8
+# Shapes are additive IDs; no changes to old ID meanings. Step 2 stamps MAJ9.
+tap ARP
+wait 30
+turn SELECT 1
+wait 30
+expect arppage 1
+spin K2 1
+wait 30
+expect chord4 13
+spin K3 -1
+wait 30
+tap SEQ
+wait 30
+key 2 down
+wait 30
+key 2 up
+wait 30
+expect note4_2_0 60
+expect note4_2_1 64
+expect note4_2_2 71
+expect note4_2_3 74
+# Normal tap-to-clear still works.
+key 2 down
+wait 30
+key 2 up
+wait 30
+expect note4_2_0 0
+tap ARP
+wait 30
+turn SELECT 1
+wait 30
+expect arppage 1
+spin K2 1
+wait 30
+expect chord4 14
+tap SEQ
+wait 30
+key 4 down
+wait 30
+key 4 up
+wait 30
+expect note4_3_0 60
+expect note4_3_1 64
+expect note4_3_2 70
+expect note4_3_3 75
+tap ARP
+wait 30
+turn SELECT 1
+wait 30
+expect arppage 1
+spin K2 1
+wait 30
+expect chord4 15
+tap SEQ
+wait 30
+key 6 down
+wait 30
+key 6 up
+wait 30
+expect note4_4_0 60
+expect note4_4_1 65
+expect note4_4_2 67
+expect note4_4_3 70
+tap ARP
+wait 30
+turn SELECT 1
+wait 30
+expect arppage 1
+spin K2 -15
+wait 30
+expect chord4 0
+tap SEQ
+wait 30
+key 7 down
+wait 30
+key 7 up
+wait 30
+expect note4_5_0 60
+expect note4_5_1 0
+# Removing the only pitch leaves a rest, not a second note or hidden placeholder.
+key 7 down
+wait 30
+tap ARP
+wait 30
+key 7 up
+wait 30
+key 7 down
+wait 30
+key 7 up
+wait 30
+expect note4_5_0 0
+tap SEQ
+wait 30
+expect page 0

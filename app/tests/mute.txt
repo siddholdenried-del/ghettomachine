@@ -1,0 +1,201 @@
+# UI-driven hard mute: no lingering dry/stem output, stale/retriggered notes, or loss of another track.
+wait 600
+tap HOME
+wait 20
+midi 91 30 7F
+midi 93 3C 7F
+wait 120
+expect voices2 1
+expect voices4 1
+expect stemreset 1
+key 3 down
+wait 20
+key 3 up
+wait 20
+expect tmute 2
+expect voices2 0
+expect voices4 1
+expect stemreset 1
+wait 15
+expect stem2 -1200
+expect stem4 >-650
+# Note-on cannot sneak through a mute from MIDI. Lifting mute cannot revive either note.
+midi 91 34 7F
+wait 30
+expect voices2 0
+key 3 down
+wait 20
+key 3 up
+wait 20
+expect tmute 0
+wait 120
+expect voices2 0
+midi 91 34 7F
+wait 40
+expect voices2 1
+midi 81 34 00
+midi 83 3C 00
+wait 800
+# Go to drums, start a ring-out, then directly hold ENV and tap the open-hat lane.
+tap HOME
+wait 20
+expect trk 1
+midi 99 2E 7F
+wait 20
+expect stem1 >-650
+press ENV
+wait 20
+key 20 down
+wait 20
+key 20 up
+wait 20
+release ENV
+wait 20
+expect mute 256
+expect stemreset 1
+wait 15
+expect stem1 -1200
+# Muted open hat is silent through MIDI. Unmute without resurrecting it.
+midi 99 2E 7F
+wait 25
+expect stem1 -1200
+key 20 down
+wait 20
+key 20 up
+wait 20
+expect mute 0
+expect stemreset 1
+wait 20
+expect stem1 -1200
+midi 99 2E 7F
+wait 25
+expect stem1 >-650
+# Mute the hat again while a kick rings. Unmuted lanes stay audible.
+midi 99 24 7F
+wait 20
+key 20 down
+wait 20
+key 20 up
+wait 20
+expect mute 256
+expect stemreset 1
+wait 30
+expect stem1 >-650
+# Drum-track mute cuts the kick and keeps incoming drums out until unmuted.
+tap HOME
+wait 20
+key 1 down
+wait 20
+key 1 up
+wait 20
+expect tmute 1
+expect stemreset 1
+midi 99 24 7F
+wait 30
+expect stem1 -1200
+key 1 down
+wait 20
+key 1 up
+wait 20
+expect tmute 0
+expect stemreset 1
+wait 25
+expect stem1 -1200
+# A latched arpeggiator cannot keep or later replay its stored note.
+press SEL
+wait 20
+key 5 down
+wait 20
+key 5 up
+wait 20
+release SEL
+wait 30
+expect trk 3
+tap ARP
+wait 30
+spin K1 1
+wait 30
+tap ARP
+wait 30
+spin K1 1
+wait 30
+expect arpset3_4 1
+midi 92 3C 7F
+wait 40
+midi 82 3C 00
+wait 100
+expect arpn3 1
+tap HOME
+wait 20
+key 5 down
+wait 20
+key 5 up
+wait 20
+expect tmute 4
+expect arpn3 0
+expect voices3 0
+midi 92 48 7F
+wait 150
+expect arpn3 0
+key 5 down
+wait 20
+key 5 up
+wait 20
+wait 150
+expect arpn3 0
+expect voices3 0
+midi 92 48 7F
+wait 45
+expect arpn3 1
+expect voices3 >0
+# 808 open hat likewise cuts, including a switched-away kit's overlapping tail.
+midi 82 48 00
+wait 200
+press SEL
+wait 20
+key 1 down
+wait 20
+key 1 up
+wait 20
+release SEL
+wait 30
+expect trk 1
+tap ENV
+wait 30
+tap OCT+
+wait 30
+expect mute 0
+turn PRESET 1
+wait 30
+expect kit 1
+expect stemreset 1
+midi 99 2E 7F
+wait 30
+expect stem1 >-650
+key 20 down
+wait 20
+key 20 up
+wait 20
+expect mute 256
+expect stemreset 1
+wait 10
+expect stem1 -1200
+shot lane-mute.png
+# Unmute and sound an 808 OH, switch to the 909, then mute the shared lane.
+key 20 down
+wait 20
+key 20 up
+wait 20
+midi 99 2E 7F
+wait 20
+turn PRESET -1
+wait 20
+expect kit 0
+key 20 down
+wait 20
+key 20 up
+wait 20
+expect mute 256
+expect stemreset 1
+wait 15
+expect stem1 -1200

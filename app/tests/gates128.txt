@@ -1,0 +1,57 @@
+# A full 128-step note in the real step-editor, and fine edits after a fast turn.
+wait 600
+turn ALGO 1
+wait 30
+tap SEQ
+wait 30
+spin K1 112
+wait 30
+expect ilen2 128
+key 0 down
+wait 30
+expect gate2_1 6
+spin K3 1
+wait 140
+expect gate2_1 7
+spin K3 8
+wait 140
+expect gate2_1 1024
+spin K3 -1
+wait 140
+expect gate2_1 1023
+spin K3 1
+wait 140
+expect gate2_1 1024
+key 0 up
+wait 30
+tap SAVE
+wait 400
+expect projfmt 5
+reboot
+wait 600
+expect gate2_1 1024
+# At 120 BPM, a 1/16 step is 0.125 seconds, 128 steps exactly 16 s.
+tap PLAY
+wait 14500
+expect voices2 >0
+tap PLAY
+wait 300
+# 1/8 RATE: there are eight steps to one musical bar (64 eighths).
+expect trk 2
+expect page 0
+key 1 down
+wait 30
+key 1 up
+wait 30
+spin K2 1
+wait 30
+key 2 down
+wait 30
+spin K3 3
+wait 140
+expect gate2_2 192
+spin K3 -1
+wait 140
+expect gate2_2 191
+key 2 up
+wait 30
