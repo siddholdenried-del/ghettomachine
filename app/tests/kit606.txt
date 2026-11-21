@@ -32,3 +32,44 @@ expect kit 0
 expect dpreset 0
 expect hits0 4
 expect hits7 4
+# Change the closed hat’s level, then save and power cycle through the real project codec.
+turn PRESET 2
+wait 70
+expect kit 2
+key 17 down
+wait 30
+key 17 up
+wait 30
+expect pad 7
+tap EDIT
+wait 30
+turn K1 -7
+wait 30
+expect pot7_0 57
+tap SAVE
+wait 300
+expect projfmt 4
+reboot
+wait 600
+expect kit 2
+expect dpreset 10
+expect pot7_0 57
+expect hits7 4
+# The saved 606 knobs can also be restored without power-cycling.
+key 17 down
+wait 30
+key 17 up
+wait 30
+expect pad 7
+expect page 1
+expect epage 0
+turn K1 5
+wait 30
+expect pot7_0 62
+press SAVE
+wait 30
+tap OCT-
+wait 30
+release SAVE
+wait 70
+expect pot7_0 57
