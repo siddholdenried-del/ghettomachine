@@ -327,6 +327,7 @@ typedef struct {
     uint8_t uni, nuni;                    /* its place in a unison stack */
     uint8_t astage, fstage;               /* 1 attack, 2 decay / sustain, 3 release */
     uint8_t half;                         /* which half renders it this block */
+    uint8_t choke;                        /* shed (syn_pool): fading out fast, whatever its release */
     int32_t gate;                         /* a gated note: samples left before it lets go */
     float aenv, fenv;                     /* 0..1 */
     float pc, pt;                         /* the pitch now and where it goes, 1/16 semitone */
@@ -715,23 +716,47 @@ static void rel(int i)                    /* a voice lets go */
     }
 }
 
-/* a voice for a new note: a free one in the pool; else the quietest letting go, else the oldest, of those not on
- * track `except` (0: any) */
-static int voice_take(int except)
+/* the voices sounding that the pool counts: not the ones shed and fading out (syn_pool) */
+static int pool_used(void)
+{
+    int i, n = 0;
+    for (i = 0; i < NVOICE; i++)
+        n += vx[i].trk && !vx[i].choke;
+    return n;
+}
+
+/* the voice to give up, of those the pool counts (not already shed): the quietest letting go, else the oldest, of
+ * those not on track `except` (0: any) */
+static int voice_victim(int except)
 {
     int i, best = -1;
-    for (i = 0; i < pool; i++)
-        if (!vx[i].trk)
-            return i;
-    for (i = 0; i < pool; i++)
-        if (vx[i].trk != except && vx[i].astage == 3 && (best < 0 || vx[i].aenv < vx[best].aenv))
+    for (i = 0; i < NVOICE; i++)
+        if (vx[i].trk && !vx[i].choke && vx[i].trk != except && vx[i].astage == 3 &&
+            (best < 0 || vx[i].aenv < vx[best].aenv))
             best = i;
     if (best >= 0)
         return best;
-    for (i = 0; i < pool; i++)
-        if (vx[i].trk != except && (best < 0 || (int32_t)(vv[i].age - vv[best].age) < 0))
+    for (i = 0; i < NVOICE; i++)
+        if (vx[i].trk && !vx[i].choke && vx[i].trk != except &&
+            (best < 0 || (int32_t)(vv[i].age - vv[best].age) < 0))
             best = i;
     return best;
+}
+
+/* a voice for a new note: a free one while the pool has room (0.5, the budgets: the pool is a count of voices
+ * sounding, not the first `pool` slots, so shedding picks which voice goes); else the one to give up */
+static int voice_take(int except)
+{
+    int i;
+    if (pool_used() < pool) {
+        for (i = 0; i < NVOICE; i++)
+            if (!vx[i].trk)
+                return i;
+        for (i = 0; i < NVOICE; i++)      /* every slot taken, some by voices shed and fading: one of those */
+            if (vx[i].choke && vx[i].trk != except)
+                return i;
+    }
+    return voice_victim(except);
 }
 
 static void voice_start(int i, int t, int note, float vel, int32_t gate, int uni, int nuni, int glide)
@@ -774,6 +799,7 @@ static void voice_start(int i, int t, int note, float vel, int32_t gate, int uni
         x->pos = p < 0.0f ? 0.0f : p > (float)(tk[t].s1 - 2u) ? (float)(tk[t].s1 - 2u) : p;
     }
     x->trk = (uint8_t)t;
+    x->choke = 0;
     x->held = (uint8_t)(gate < 0);
     x->gate = gate < 0 ? 0 : gate > 0 ? gate : 1;
     x->uni = (uint8_t)uni;
@@ -977,12 +1003,17 @@ void syn_kill(void)
         tk[i].nstack = 0;
 }
 
+/* the voices that may sound. Over it, the quietest letting go, then the oldest, are shed: let go and faded out in
+ * about 10 ms whatever their release (a pad's long release kept a shed voice rendering for seconds) */
 void syn_pool(int n)
 {
     int i;
     pool = clamp(n, 1, NVOICE);
-    for (i = pool; i < NVOICE; i++)
+    while (pool_used() > pool && (i = voice_victim(0)) >= 0) {
         rel(i);
+        vx[i].astage = vx[i].fstage = vx[i].mstage = 3;
+        vx[i].choke = 1;
+    }
 }
 
 int syn_voices(int t)
@@ -1093,6 +1124,8 @@ void syn_prepare(void)
         if (!x->held && x->gate > 0 && (x->gate -= SYN_CTL) <= 0)
             rel(i);
         x->aenv = env_step(&x->astage, x->aenv, s, SP_AA, SP_AD, SP_AS, SP_AR);
+        if (x->choke)                     /* shed: down by half every 0.73 ms, silent in about 10 */
+            x->aenv *= 0.5f;
         if (x->astage == 3 && x->aenv < 0.0003f) {   /* faded out: free */
             x->trk = 0;
             x->astage = x->fstage = x->mstage = 0;

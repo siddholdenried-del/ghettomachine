@@ -422,6 +422,28 @@ static void sync_drum_mutes(void)
         }
 }
 
+/* The sections' budgets (0.5; govern(), before app_render): each section a share of a block's time, kept by giving
+ * up its least important work: the drums BUD_DRUMS % (over it, the oldest ringing sound is cut), the synth BUD_SYNTH %
+ * (its voices capped at what that buys, at the cost a voice is measured to have; a voice over the cap fades out in
+ * about 10 ms), the effects BUD_FX % (the inserts, Color, the reverb and the delay together: over it, a Color strip,
+ * then an insert, leaves the chain, and comes back when there is room; the reverb, the delay and the master bus
+ * always stay). So no section can take the others' time */
+#define BUD_DRUMS 20
+#define BUD_SYNTH 30
+#define BUD_FX 25
+static struct {
+    uint32_t clock;                       /* blocks rendered */
+    uint32_t pad_at[NPADS];               /* each pad's last hit (clock) */
+    uint16_t pad_live;                    /* the pads hit and not cut since */
+    uint8_t cap;                          /* the synth's voices its budget allows */
+    uint8_t fx_shed;                      /* the effects out of the chain: bit t track t's Color, bit 4 + t its insert */
+    uint16_t fx_wait;                     /* blocks before the effects' next move */
+    float per_voice, syn_base;            /* the synth: a voice's time a block and its time with none, us (measured) */
+    float d_prev, fx_mean;                /* the drums' last block; the effects' running mean, us */
+    uint32_t act[3];                      /* when each last gave something up (clock: the CPU view's red) */
+    uint32_t cuts, caps, sheds;           /* drum sounds cut, voices shed, effects taken out, so far */
+} gov;
+
 static void pad_fire(int pad, float vel)
 {
     if (pad < 0 || pad >= NPADS || drum_lane_muted(pad))
@@ -429,6 +451,8 @@ static void pad_fire(int pad, float vel)
     if (!drums_has_pad(drum_model(pad), pad))
         return;
     drums_trigger_mapped(proj.kit, proj.model, pad, vel);
+    gov.pad_at[pad] = gov.clock;
+    gov.pad_live |= (uint16_t)(1u << pad);
     if (vel > pad_hit[pad])
         pad_hit[pad] = vel;
 }
@@ -798,6 +822,11 @@ static uint32_t cs_t[CS_NUM];             /* this block's ticks */
 static float cs_us[CS_NUM];               /* the running means, us per block */
 static float cs_pk[CS_NUM];               /* the worst block lately, us: held, falling by half in about 1.3 s (the spikes
                                            * a running mean hides: a pattern starting, a switch) */
+static float cs_mx[CS_NUM];               /* the worst block since a screen reader last asked (speak: read remotely) */
+#ifdef PLAT_HOST
+static float gov_fake[CS_NUM];            /* the simulator: the stages' times the budgets see, us (a test sets them:
+                                           * its own clock is the computer's, which says nothing of the FM-1) */
+#endif
 #define CS_MARK(v) uint32_t v = plat_ticks24()
 
 /* GhettoMachine 0.5 (CPU): a track's insert and Color sleep once their input has been silent and their output too, for
@@ -832,9 +861,11 @@ static void insert_process(int t, float *l, float *r, unsigned n)
 {
     CS_MARK(t0);
     int q = fxs_peak(l, r, n) < FXS_LEVEL;
-    if (!fxs_asleep(t, q)) {
-        track_insert_process(&insert_rt[t-1], &proj.insert[t-1], l, r, n);
-        color_run(&color_rt[t], &proj.color[t], l, r, n);
+    if (!fxs_asleep(t, q)) {              /* (gov.fx_shed: out of the chain while the effects are over budget) */
+        if (!(gov.fx_shed >> (4 + t) & 1u))
+            track_insert_process(&insert_rt[t-1], &proj.insert[t-1], l, r, n);
+        if (!(gov.fx_shed >> t & 1u))
+            color_run(&color_rt[t], &proj.color[t], l, r, n);
         fxs_after(t, q, fxs_peak(l, r, n) < FXS_LEVEL, n);
     }
     cs_t[CS_FXIN] += plat_ticks24() - t0;
@@ -2997,6 +3028,113 @@ static void post_job(uint32_t which)      /* a block's tail (the second core's j
     j->done = 1;
 }
 
+/* the budgets kept (the audio interrupt, at a block's end, the second core idle): the block's times in ticks */
+#define BUD_US(pct) ((float)(pct) * (1.0e4f * (float)APP_BLOCK / 44100.0f))   /* a share of a block, us */
+#define GOV_MIN_VOICES 3
+static float gov_us(int stage, uint32_t ticks)
+{
+#ifdef PLAT_HOST
+    (void)ticks;
+    return gov_fake[stage];
+#else
+    (void)stage;
+    return (float)ticks * (1.0f / (float)PLAT_TICKS_PER_US);
+#endif
+}
+
+static void pool_apply(void)              /* the voices allowed: the CPU's shedding and the synth's budget, the fewer */
+{
+    syn_pool(pool_now < gov.cap ? pool_now : gov.cap);
+}
+
+static int fx_unit_on(int u)              /* effect u (bit t: Color; 4 + t: insert) in the chain and switched on */
+{
+    if (u < 4)
+        return color_active(&proj.color[u]) && !track_is_muted(u);
+    return proj.insert[u - 5].mode != TI_OFF && proj.insert[u - 5].v[3] && !track_is_muted(u - 4);
+}
+
+static void govern(uint32_t t_drums, uint32_t t_synth, uint32_t t_fxin, uint32_t t_fx)
+{
+    /* the effects in the order they go: Color on the drums, T4, T3, T2, then the inserts on T4, T3, T2 */
+    static const uint8_t ORDER[7] = {0, 3, 2, 1, 7, 6, 5};
+    const float d = gov_us(CS_DRUMS, t_drums), sy = gov_us(CS_SYNTH, t_synth);
+    const float fx = gov_us(CS_FXIN, t_fxin) + gov_us(CS_FX, t_fx);
+    int k;
+    gov.clock++;
+    {   /* the synth: its time is syn_base + per_voice a voice, both measured as it plays (three voices or more: a
+         * running mean, a rise followed in about 4 blocks, a fall in about 20, so one slow block sheds little and a
+         * real overload is met in 25 ms); the cap is what the budget buys */
+        int v = syn_voices(-1), cap = pool_max;
+        if (v == 0) {
+            gov.syn_base += (sy - gov.syn_base) * 0.05f;
+        } else if (v >= 3) {
+            float per = (sy - gov.syn_base) / (float)v;
+            if (per > 0.0f)
+                gov.per_voice = gov.per_voice <= 0.0f ? per
+                                : gov.per_voice + (per - gov.per_voice) * (per > gov.per_voice ? 0.25f : 0.05f);
+        }
+        if (gov.per_voice > 0.0f) {
+            float room = BUD_US(BUD_SYNTH) - gov.syn_base;
+            cap = room > 0.0f ? (int)(room / gov.per_voice) : 0;
+            cap = cap < GOV_MIN_VOICES ? GOV_MIN_VOICES : cap > pool_max ? pool_max : cap;
+        }
+        if (cap != gov.cap) {
+            if (cap < gov.cap && v > cap) {
+                gov.caps += (uint32_t)(v - cap);
+                gov.act[1] = gov.clock;
+            }
+            gov.cap = (uint8_t)cap;
+            pool_apply();
+        }
+    }
+    {   /* the drums: over their share for two blocks, the oldest sound still ringing is cut (not one hit in the last
+         * four blocks: a new hit is heard) */
+        float m = 0.5f * (d + gov.d_prev);
+        gov.d_prev = d;
+        if (m > BUD_US(BUD_DRUMS) && gov.pad_live) {
+            int old = -1;
+            for (k = 0; k < NPADS; k++)
+                if ((gov.pad_live >> k & 1u) && (old < 0 || (int32_t)(gov.pad_at[k] - gov.pad_at[old]) < 0))
+                    old = k;
+            if (old >= 0 && gov.clock - gov.pad_at[old] >= 4u) {
+                drums_cut_mapped(proj.kit, proj.model, old);
+                gov.pad_live &= (uint16_t)~(1u << old);
+                gov.cuts++;
+                gov.act[0] = gov.clock;
+            }
+        }
+    }
+    {   /* the effects: over their share, the next one in ORDER leaves the chain (one every 8 blocks); with room
+         * again (under 0.6 of it), the last to leave comes back, from silence, one every 4 s */
+        gov.fx_mean += (fx - gov.fx_mean) * 0.25f;
+        if (gov.fx_wait) {
+            gov.fx_wait--;
+        } else if (gov.fx_mean > BUD_US(BUD_FX)) {
+            for (k = 0; k < 7; k++)
+                if (!(gov.fx_shed >> ORDER[k] & 1u) && fx_unit_on(ORDER[k])) {
+                    gov.fx_shed |= (uint8_t)(1u << ORDER[k]);
+                    gov.fx_wait = 8;
+                    gov.sheds++;
+                    gov.act[2] = gov.clock;
+                    break;
+                }
+        } else if (gov.fx_shed && gov.fx_mean < 0.6f * BUD_US(BUD_FX)) {
+            for (k = 6; k >= 0; k--)
+                if (gov.fx_shed >> ORDER[k] & 1u) {
+                    int u = ORDER[k];
+                    if (u < 4)
+                        color_reset(&color_rt[u]);
+                    else
+                        track_insert_reset(&insert_rt[u - 5]);
+                    gov.fx_shed &= (uint8_t)~(1u << u);
+                    gov.fx_wait = 688;
+                    break;
+                }
+        }
+    }
+}
+
 void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
 {
     uint32_t done = 0, i;
@@ -3153,7 +3291,8 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         CS_MARK(cs_d0);
         drums_render(proj.kit, buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, (int)chunk);
         cs_t[CS_DRUMS] += plat_ticks24() - cs_d0;
-        if (!track_is_muted(TR_DRUM) && color_active(&proj.color[TR_DRUM])) {   /* (asleep on silence: insert_process) */
+        if (!track_is_muted(TR_DRUM) && color_active(&proj.color[TR_DRUM]) && !(gov.fx_shed & 1u)) {   /* (asleep on
+                                                                               * silence: insert_process) */
             int q = fxs_peak(buf_l + done, buf_r + done, chunk) < FXS_LEVEL &&
                     fxs_peak(bus_rev + done, bus_dly + done, chunk) < FXS_LEVEL;
             CS_MARK(cs_c0);
@@ -3261,7 +3400,10 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             const float u = (float)cs_t[i] * (1.0f / (float)PLAT_TICKS_PER_US);
             cs_us[i] += (u - cs_us[i]) * 0.02f;
             cs_pk[i] = u > cs_pk[i] ? u : cs_pk[i] * 0.997f;
+            if (u > cs_mx[i])
+                cs_mx[i] = u;
         }
+        govern(cs_t[CS_DRUMS], cs_t[CS_SYNTH], cs_t[CS_FXIN], cs_t[CS_FX]);   /* the budgets, for the next block */
     }
 }
 
@@ -3284,6 +3426,7 @@ void app_init(void)
     plat_usb_audio_full(1);
     cpu2 = (uint8_t)(plat_cpu2_set(1) == 0);
     pool_max = pool_now = (uint8_t)(cpu2 ? SYN_VOICES : SYN_VOICES / 2);
+    gov.cap = pool_max;
     syn_pool(pool_max);
     user_load();
     project_load();
@@ -9041,9 +9184,20 @@ static void page_cpu(void)
             if (pk > w)
                 cv_rect(104 + pk, y + 1, 2, 12, pk >= 99 ? TH_RED : TH_TXT);
         }
-        int_text(pct, u);
-        text_cat(u, "%");
-        text_r(232, y - 2, &FONT_XS, u, TH_TXT);
+        {   /* its budget: a notch under the bar (the effects': the two rows together); the number red for a second
+             * after the budget gave something up (a drum sound cut, a voice shed, an effect out), and while one is out */
+            const int sec = i == CS_DRUMS ? 0 : i == CS_SYNTH ? 1 : i == CS_FXIN || i == CS_FX ? 2 : -1;
+            const int bud = sec == 0 ? BUD_DRUMS : sec == 1 ? BUD_SYNTH : BUD_FX;
+            int hot = 0;
+            if (sec >= 0) {
+                if (sec < 2)
+                    cv_rect(104 + bud, y + 11, 1, 3, TH_TXT);
+                hot = (gov.act[sec] && gov.clock - gov.act[sec] < 172u) || (sec == 2 && gov.fx_shed);
+            }
+            int_text(pct, u);
+            text_cat(u, "%");
+            text_r(232, y - 2, &FONT_XS, u, hot ? TH_RED : TH_TXT);
+        }
     }
     cards_of(KD_SETUP, 0);
 }
@@ -9625,7 +9779,7 @@ static void draw_live(void)               /* the band's meters; the page too whe
 
 static void speak(void)                   /* a screen reader that has just started listening hears the screen */
 {
-    char t[96];
+    char t[200];
     if (ann_on() && ann_where()) {
         t[0] = 0;
         text_cat(t, APP_NAME ". ");
@@ -9637,6 +9791,67 @@ static void speak(void)                   /* a screen reader that has just start
             text_cat(t, drums_pad_name(drum_model(ui.pad), ui.pad));
         }
         ann_say(t, 0, ANN_NOW);
+        {   /* and the processor (0.5: read remotely while someone plays, tools/fm1_remote.py screen): each stage's
+             * share of a block, its mean and its worst block since the last asking; the blocks late; the voices
+             * sounding, the budget's cap and the pool; what the budgets gave up (drum sounds cut, voices shed,
+             * effects taken out, and which are out now); the second core */
+            static const char *const NM[CS_NUM] = {"DRUMS", "SYNTH", "INSERTS", "REVERB", "MASTER", "OTHER", "CPU"};
+            static const uint8_t SEQ[CS_NUM] = {CS_TOTAL, CS_DRUMS, CS_SYNTH, CS_FXIN, CS_FX, CS_MASTER, CS_REST};
+            const float per = 100.0f * 44100.0f / (1.0e6f * (float)APP_BLOCK);
+            char u[12];
+            float mx[CS_NUM];
+            uint32_t f = plat_lock();
+            int i;
+            for (i = 0; i < CS_NUM; i++) {
+                mx[i] = cs_mx[i];
+                cs_mx[i] = 0.0f;
+            }
+            plat_unlock(f);
+            t[0] = 0;
+            for (i = 0; i < CS_NUM; i++) {
+                int k = SEQ[i];
+                text_cat(t, NM[k]);
+                text_cat(t, " ");
+                int_text((int32_t)(cs_us[k] * per + 0.5f), u);
+                text_cat(t, u);
+                text_cat(t, " MAX ");
+                int_text((int32_t)(mx[k] * per + 0.5f), u);
+                text_cat(t, u);
+                text_cat(t, ". ");
+            }
+            ann_say(t, 0, 0);
+            t[0] = 0;
+            text_cat(t, "LATE ");
+            int_text((int32_t)plat_xruns(), u);
+            text_cat(t, u);
+            text_cat(t, ". VOICES ");
+            int_text(syn_voices(-1), u);
+            text_cat(t, u);
+            text_cat(t, " CAP ");
+            int_text(gov.cap, u);
+            text_cat(t, u);
+            text_cat(t, " POOL ");
+            int_text(pool_now, u);
+            text_cat(t, u);
+            text_cat(t, ". CUT ");
+            int_text((int32_t)gov.cuts, u);
+            text_cat(t, u);
+            text_cat(t, " SHED ");
+            int_text((int32_t)gov.caps, u);
+            text_cat(t, u);
+            text_cat(t, " FX OUT ");
+            int_text((int32_t)gov.sheds, u);
+            text_cat(t, u);
+            text_cat(t, " NOW ");
+            int_text(gov.fx_shed, u);
+            text_cat(t, u);
+            text_cat(t, ". CORE2 ");
+            int_text(cpu2 && plat_cpu2_on(), u);
+            text_cat(t, u);
+            text_cat(t, " KIT ");
+            text_cat(t, drums_kit_name(proj.kit));
+            ann_say(t, 0, 0);
+        }
     }
     ann_tick(plat_ms());
 }
@@ -9742,7 +9957,7 @@ static void shed(void)                    /* the CPU short: fewer voices; back u
         return;
     ui.shed_t = now;
     f = plat_lock();
-    syn_pool(pool_now);
+    pool_apply();
     plat_unlock(f);
 }
 
@@ -9774,10 +9989,17 @@ void app_frame(void)
         ui.redraw = 1;
     }
     shed();
-    {   /* the delay's line back once sampling, STUTTER and TAPE STOP are done with it */
-        int free = rec.state == RS_IDLE && !rec.pending && !(perf.want & (1u << PF_STUT | 1u << PF_TAPE));
+    {   /* the delay's line back once sampling, STUTTER and TAPE STOP are done with it: the keys up, and the last block
+         * that had them through its tail (perf.on: the block rendering; pf_was: the tail's, a block later). Zeroed
+         * here, outside the lock (it took 1.5 ms with the audio held off, a quarter of a block: a glitch as the live
+         * sound came back) */
+        int free = rec.state == RS_IDLE && !rec.pending &&
+                   !((perf.want | perf.on | pf_was) & (1u << PF_STUT | 1u << PF_TAPE));
         if (free != fx_delay_on()) {
-            uint32_t f = plat_lock();
+            uint32_t f;
+            if (free)
+                fx_delay_zero();
+            f = plat_lock();
             fx_delay_line(free);
             plat_unlock(f);
         }
@@ -10115,6 +10337,22 @@ int app_expect(const char *what, int *got)
     } else if (!strncmp(what, "cpu", 3) && what[3] >= '0' && what[3] < '0' + CS_NUM && !what[4]) {
         /* cpuN: stage N's running mean, us x 10 per block (0 DRUMS 1 SYNTH 2 FX IN 3 FX 4 MASTER 5 REST 6 TOTAL) */
         *got = (int)(cs_us[what[3] - '0'] * 10.0f + 0.5f);
+    } else if (!strncmp(what, "cpufake", 7) && what[7] >= '0' && what[7] < '0' + CS_NUM && what[8] == '_') {
+        /* cpufakeN_US: the budgets see stage N take US microseconds a block from now (1); the simulator only */
+        int v = 0;
+        const char *q = what + 9;
+        while (*q >= '0' && *q <= '9')
+            v = v * 10 + (*q++ - '0');
+        gov_fake[what[7] - '0'] = (float)v;
+        *got = 1;
+    } else if (!strcmp(what, "govcap")) { /* the budgets: the synth's voices allowed */
+        *got = gov.cap;
+    } else if (!strcmp(what, "govcuts")) {   /* drum sounds cut so far */
+        *got = (int)gov.cuts;
+    } else if (!strcmp(what, "govshed")) {   /* voices shed so far */
+        *got = (int)gov.caps;
+    } else if (!strcmp(what, "govfx")) {  /* the effects out of the chain now: bit t Color, bit 4 + t the insert */
+        *got = gov.fx_shed;
     } else if (!strncmp(what, "cpupk", 5) && what[5] >= '0' && what[5] < '0' + CS_NUM && !what[6]) {
         /* cpupkN: stage N's worst block lately, us x 10 */
         *got = (int)(cs_pk[what[5] - '0'] * 10.0f + 0.5f);

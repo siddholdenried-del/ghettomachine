@@ -98,6 +98,7 @@ typedef struct {
     uint32_t idx, max, core_idx, rng;
     float rate, decay, air, step, pos, noise_gain;
     uint32_t taps, at;
+    float cfg_step;          /* the source step coef is built for (0: none): a hit at the same TUNE keeps the bank */
     float hist[2 * D6_CLAP_TAPS];
     float coef[4 * D6_CLAP_TAPS];
     d6_cf_t f[4];                 /* core frames at floor(pos) - 1 .. + 2 (pitched down only) */

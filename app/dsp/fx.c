@@ -201,17 +201,23 @@ GM_RAM void fx_master(float *l, float *r, int n, float volume)
 
 void fx_key(int kit, float vel) { master_key(&mst, kit, vel); }
 
-void fx_delay_line(int on)
+void fx_delay_zero(void)                  /* (the main loop, no lock: nothing plays the lent line) */
 {
     int i;
+    if (!fxb.dl_off)
+        return;
+    for (i = 0; i < line_len; i++)        /* what sampling left in it: gone */
+        line[i] = 0;
+}
+
+void fx_delay_line(int on)
+{
     if (!on) {
         fxb.dl_off = 1;
         return;
     }
     if (!fxb.dl_off)
         return;
-    for (i = 0; i < line_len; i++)        /* what sampling left in it: gone */
-        line[i] = 0;
     fxb.w = 0;
     fxb.dl_quiet = line_len;              /* (an all-silent line: the delay idles until something comes) */
     fxb.dl_off = 0;

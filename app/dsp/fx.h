@@ -50,9 +50,11 @@ void fx_process(const float *dry_l, const float *dry_r, const float *rev, const 
 /* then the master bus, in place: EQ, compressor, filter, TAPE, STEREO, GAIN, limiter, volume (0..1, gliding) */
 void fx_master(float *l, float *r, int n, float volume);
 void fx_key(int kit, float vel);          /* a kick: PUMP's key */
-/* the delay's line lent out (0: the delay leaves the chain at once; the caller may write the line) or back (1: zeroed,
- * the delay back in); between render blocks */
+/* the delay's line lent out (0: the delay leaves the chain at once; the caller may write the line) or back (1: the
+ * delay back in, on a line the caller has zeroed with fx_delay_zero); between render blocks. fx_delay_zero: the lent
+ * line zeroed, from the main loop without the lock (132 KB: 1.5 ms on the FM-1, which the audio must not wait for) */
 void fx_delay_line(int on);
+void fx_delay_zero(void);
 int fx_delay_on(void);
 float fx_gr(void);                        /* the master compressor's gain reduction now, dB (the screen's meter) */
 float fx_lgr(void);                       /* the limiter's, dB */

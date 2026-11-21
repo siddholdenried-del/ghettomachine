@@ -918,6 +918,7 @@ static void s6cp_init(d6_cp_t *c, uint32_t seed)
 {
     c->rng = seed ? seed : 0x6D2B79F5u;
     c->on = 0;
+    c->cfg_step = 0.0f;
 }
 
 static void s6cp_trigger(d6_cp_t *c, float decay_pct, float pitch, float noise)
@@ -934,7 +935,11 @@ static void s6cp_trigger(d6_cp_t *c, float decay_pct, float pitch, float noise)
     core = fm_minf(want, 0.5f * S6_SR);
     c->step = core / S6_SR;
     c->rate = core;
-    s6cp_configure(c, want / core);
+    if (want / core != c->cfg_step) {     /* (0.5, CPU: the bank only when TUNE has moved: building it was most of a
+                                           * hit's 40,000 instructions, as much as a block of the master bus) */
+        s6cp_configure(c, want / core);
+        c->cfg_step = want / core;
+    }
     for (i = 0; i < D6_CLAP_TAPS; i++)   /* prewarm */
         s6cp_push(c, s6cp_gauss(&c->rng));
     c->core_idx = 0;
