@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ghettomachine.bongcult.com: BongTech GhettoMachine's page (docs/how-it-works.html) with the emulator framed in it, and the emulator.
+"""ghettomachine.bongcult.com: GhettoMachine's page (docs/how-it-works.html) with the emulator framed in it, and the emulator.
 
   python3 -I site/build.py site/public   (from the repository's top, after tools/build.py ../../app --web in third_party/fm1-base;
                                          site/publish.sh does this, commits it and pushes)
@@ -210,16 +210,16 @@ MASTHEAD = """<a class="bc-skip" href="#gm-main">Skip to content</a>
 <header class="bc-masthead">
   <a class="bc-name" href="https://bongcult.com/"><img src="/bong-cult-logo.svg" alt="Bong Cult home" width="866" height="320"></a>
   <div class="bc-rule" aria-hidden="true"></div>
-  <p class="bc-badge">BongTech · Project site</p>
+  <p class="bc-badge">BongWare · BongTech</p>
 </header>
 """
 LANDING = """<div class="hero gm-home">
   <div class="screen">
-    <div class="top"><span class="label">Firmware for the M-VAVE FM-1</span><span class="ver">RELEASE_VERSION_LABEL</span></div>
+    <div class="top"><span class="label">Custom firmware for the M-VAVE FM-1</span><span class="ver">RELEASE_VERSION_LABEL</span></div>
     <h1><span class="logo">GhettoMachine</span></h1>
     <p class="sub">Four-track groovebox firmware. 909, 808 and 606 kits, three synth or sampler tracks, and a 128-step sequencer.</p>
   </div>
-  <p class="lede">Make a beat in the browser or look up the controls for the FM-1.</p>
+  <p class="lede">GhettoMachine is BongWare custom firmware engineered by BongTech, part of <a href="https://bongcult.com/">BongCult</a>. Make a beat in the browser or look up the controls for the FM-1.</p>
   <div class="gm-actions" id="play">
     <a class="gm-button gm-primary" href="/guide/">Open the User Guide</a>
     <a class="gm-button" href="/emu/">Play in browser</a>
@@ -267,7 +267,7 @@ def render_document(head, title, path, content, guide_slug=None, topics=()):
         '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n'
         '<meta name="theme-color" content="#10100f">\n'
-        '<meta name="description" content="BongTech GhettoMachine, a four-track groovebox firmware for the M-VAVE FM-1, playable in the browser.">\n'
+        '<meta name="description" content="GhettoMachine is BongWare custom firmware by BongTech: a four-track groovebox for the M-VAVE FM-1, playable in the browser.">\n'
         f'<link rel="canonical" href="https://ghettomachine.bongcult.com{path}">\n'
         + re.sub(r'<title>[^<]*</title>', f'<title>{html.escape(title)}</title>', head, count=1) + '\n'
         + ICON.replace("HREF", "/favicon.svg")
@@ -326,7 +326,7 @@ def build_landing(out):
         "})();\n"
     )
     landing = LANDING.replace("RELEASE_VERSION_LABEL", html.escape(RELEASE["targets"]["web"]["landing_label"])).replace("REPO", REPO).replace("TECHNICAL_TOPIC_LINKS", fallback)
-    (out / "index.html").write_text(render_document(head, "GhettoMachine · BongTech", "/", landing))
+    (out / "index.html").write_text(render_document(head, "GhettoMachine · BongWare", "/", landing))
     tech_dir = out / "technical"
     tech_dir.mkdir(exist_ok=True)
     (tech_dir / "index.html").write_text(render_document(head, "Inside GhettoMachine · Technical tour", "/technical/", contents))
@@ -375,10 +375,21 @@ def build_landing(out):
         shutil.copyfile(BRANDING / file, out / file)
 
 
+def emulator_title(page):
+    page, count = re.subn(r"<title>[^<]*</title>", "<title>GhettoMachine in the browser · BongWare</title>", page, count=1)
+    if count != 1:
+        raise SystemExit("site: the emulator's page has no title")
+    return page
+
+
 def main():
     args = sys.argv[1:]
     if len(args) == 2 and args[0] == "--landing-only":
-        build_landing(Path(args[1]).resolve())
+        out = Path(args[1]).resolve()
+        build_landing(out)
+        page = out / "emu" / "index.html"
+        if page.is_file():
+            page.write_text(emulator_title(page.read_text()))
         return
     if len(args) != 1 or args[0].startswith("-"):
         raise SystemExit(__doc__)
@@ -395,9 +406,9 @@ def main():
         shutil.copy(emu_src / f, out / "emu" / f)
     shutil.copytree(emu_src / "parts", out / "emu" / "parts")
     emu_page = (out / "emu" / "index.html").read_text()
-    emu_page, n1 = re.subn(r"<title>[^<]*</title>", "<title>BongTech GhettoMachine in the browser</title>", emu_page, count=1)
+    emu_page = emulator_title(emu_page)
     emu_page, n2 = re.subn(r"<h1>[^<]*</h1>", '<h1>GhettoMachine</h1>\n  <p><a href="../">How it works</a></p>', emu_page, count=1)
-    if n1 != 1 or n2 != 1 or emu_page.count(START) != 1:
+    if n2 != 1 or emu_page.count(START) != 1:
         raise SystemExit("site: the emulator's page has no <title>, <h1> or switch-on block to change")
     emu_page = emu_page.replace(START, START_HINT)
     # framed in the page: no title of its own (the page has it), less room around it

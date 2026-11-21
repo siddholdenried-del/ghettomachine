@@ -83,6 +83,18 @@
     {
       "literal": "Historical tour (0.5).",
       "path": "technical/index.html"
+    },
+    {
+      "literal": "BongWare \u00b7 BongTech",
+      "path": "index.html"
+    },
+    {
+      "literal": "GhettoMachine is BongWare custom firmware engineered by BongTech, part of",
+      "path": "index.html"
+    },
+    {
+      "literal": "<title>GhettoMachine in the browser \u00b7 BongWare</title>",
+      "path": "emu/index.html"
     }
   ],
   "manifest_path": "release.json",

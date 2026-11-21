@@ -1,6 +1,6 @@
-# BongTech GhettoMachine: development preview manual
+# GhettoMachine: development preview manual
 
-The BongTech GhettoMachine turns the M-VAVE FM-1 into a four-track groovebox:
+GhettoMachine, part of the BongWare firmware line engineered by BongTech, turns the M-VAVE FM-1 into a four-track groovebox:
 
 - **Drums:** a 909, 808 or 606 kit, with editable sounds.
 - **T2, T3, T4:** instrument tracks. Each is a MONO synth, a POLY synth or a SAMPLER.
