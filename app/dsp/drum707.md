@@ -2,7 +2,7 @@
 
 This bank adapts the DSP only from [TR-707C by JimmyKaps](https://github.com/JimmyKaps/tr707c-fm1/tree/260d07d582dc62113ef4ea1a12ce1513da7aac8c) under GPL-3.0-only. Sources used: `firmware/src/tr707c.c` (voice trigger and render only; fast sine attributed there to Dinghy) and `tools/gen_tr707c_tables.py` (voice coefficients and tune/decay generation). See [upstream licensing and credits](https://github.com/JimmyKaps/tr707c-fm1/blob/260d07d582dc62113ef4ea1a12ce1513da7aac8c/LICENSING.md). Preserve this notice with both the generated coefficients and corresponding source. No Roland ROM or samples; no third-party art, UI, platform, firmware package or other binaries incorporated. It is an inspired synthesized kit, not a faithful TR-707 hardware or PCM emulation.
 
-- Factory assignment in the existing eleven-lane grid: BD, SD, LT, MT, HT, RS, CP, CH, OH, CR, RD. The DSP also exposes cowbell and tambourine IDs; these are not extra lanes.
+- Factory assignment in the existing eleven-lane grid: BD, SD, LT, MT, HT, RS, CP, CH, OH, CR, RD. Select 707 Cowbell or 707 Tambourine in any existing lane's Drum Model picker, one assignment per voice; there are no extra lanes.
 - GhettoMachine's adapter adds per-voice level, tuning, decay, pan and FX sends, adjustable hat choke, independent reproducible noise states and compact interpolated decay tables.
 - To regenerate/check the checked-in header: `python3 app/tools/gen_707_tables.py /tmp/drum707_tables.h && cmp /tmp/drum707_tables.h app/dsp/drum707_tables.h`.
 - Host smoke: `cc -O2 -Wall -Wextra -Werror -std=c99 -Iapp/dsp app/tests/drum707_unit.c app/dsp/drum707.c -o /tmp/drum707 && /tmp/drum707`.

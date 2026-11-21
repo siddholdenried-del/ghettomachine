@@ -66,5 +66,41 @@ int main(void)
     drums_trigger_mapped(KIT_909,map,7,.8f);
     drums_cut_pad(7); render(KIT_909,a);
     assert(energy(a) > .001f);
+    /* 707 auxiliaries replace voices, not lanes. Resolve invalid duplicate
+     * model bytes without granting two lanes ownership of the same voice. */
+    memset(map,0,sizeof map);
+    map[0] = DRUM_MODEL_707_CB + 1;
+    map[7] = DRUM_MODEL_707_TB + 1;
+    map[8] = DRUM_MODEL_707_CB + 1;
+    assert(drums_model(KIT_909,map,8)==KIT_909);
+    assert(drums_model(KIT_909,map,0)==DRUM_MODEL_707_CB);
+    assert(drums_model(KIT_909,map,7)==DRUM_MODEL_707_TB);
+
+    drums_init();
+    drums_set(DRUM_MODEL_707_CB,0,D7P_PAN,127);
+    drums_set(DRUM_MODEL_707_CB,0,D7P_REV,90);
+    drums_set(DRUM_MODEL_707_CB,0,D7P_DLY,70);
+    drums_trigger_mapped(KIT_909,map,0,.8f);
+    render(KIT_909,a);
+    for(int i=0;i<128;i++) assert(a[0][i]==0.f);
+    assert(energy(a)>.01f && a[2][20]!=0.f && a[3][20]!=0.f);
+    drums_cut_mapped(KIT_909,map,0); render(KIT_909,a);
+    assert(energy(a)==0.0f);
+
+    /* Tambourine on a hat's physical lane must not choke the open hat. */
+    drums_init();
+    drums_trigger_mapped(KIT_909,map,8,.8f); render(KIT_909,a);
+    drums_trigger_mapped(KIT_909,map,7,.8f);
+    drums_cut_mapped(KIT_909,map,7); render(KIT_909,a);
+    assert(energy(a)>.001f);
+
+    drums_init();
+    drums_trigger_mapped(KIT_909,map,0,.8f);
+    drums_trigger_mapped(KIT_909,map,7,.8f);
+    render(KIT_909,a);
+    drums_cut_mapped(KIT_909,map,0); render(KIT_909,a);
+    drums_init();
+    drums_trigger_mapped(KIT_909,map,7,.8f); render(KIT_909,b); render(KIT_909,b);
+    assert(memcmp(a,b,sizeof a)==0);
     puts("Mixed DSP: four-bus sum, pad cut isolation, invalid override fallback, cross-model choke toggle");
 }

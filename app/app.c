@@ -35,6 +35,8 @@
 #define LK_KIT606 0x40u                    /* 606 locks keep their own pots */
 #define LK_KIT808 0x80u                   /* lock_t.param: the 808's knob (else the 909's) */
 #define LK_KIT707 (LK_KIT606 | LK_KIT808) /* both bits unused by legacy locks */
+#define LK_707_CB 0xD0u                   /* no historic 707 knob used bit 4 or 5 */
+#define LK_707_TB 0xE0u
 #define LK_PROB 0x7Fu                     /* lock_t.param: the step's chance, either kit */
 #define NTRK 4                            /* tracks: the drums, then T2..T4 */
 #define NINST 3                           /* instrument tracks */
@@ -212,7 +214,7 @@ typedef struct {
     uint8_t pots606[NPADS + 1][NPOTS];    /* appended in format 4; legacy prefix and tail stay fixed */
     track_insert_param_t insert[NINST];  /* format 5: track-wide inserts, one per instrument */
     uint8_t pots707[NPADS + 1][NPOTS];    /* format 7: older metadata ends immediately before this field */
-    uint8_t model[NPADS];                /* 0 inherits, 1..KIT_NUM picks an engine */
+    uint8_t model[NPADS];                /* 0 inherits, otherwise a pad model ID plus one */
     uint8_t pattern_model[NPAT][NPADS];  /* saved with the pattern when Sounds per Pattern is active */
     color_params_t color[NTRK];          /* format 7: independent Color per track */
 } project_t;
@@ -320,6 +322,22 @@ static int16_t insert_ring[(NINST * 2) - 1][TI_DELAY];
 static int16_t insert_pool[TI_DELAY] PLAT_POOL;
 static uint8_t (*kit_pots(int k))[NPOTS] { return k == KIT_707 ? proj.pots707 : k == KIT_606 ? proj.pots606 : proj.pots[k]; }
 static int drum_model(int pad) { return drums_model(proj.kit, proj.model, pad); }
+#define AUX707_POTS 6
+/* These bytes were zero/unused in v7. The two auxiliary voices have one
+ * per-voice set of pots, independent of the normal 707 lane's pots. The high
+ * bit on LEVEL distinguishes a real zero-level save from older v7 bytes. */
+static uint8_t *aux707_pots(int model)
+{
+    return &proj.pots707[model - KIT_NUM][NPOTS - AUX707_POTS];
+}
+
+static void drum_map_clean(int base, uint8_t *map)
+{
+    for (int pad = 0; pad < NPADS; ++pad) {
+        const int model = drums_model(base, map, pad);
+        map[pad] = (uint8_t)(model == base ? 0 : model + 1);
+    }
+}
 static int kit_is_custom(const uint8_t *map)
 {
     if (map)
@@ -399,7 +417,7 @@ static void sync_drum_mutes(void)
     if (cut) color_reset(&color_rt[TR_DRUM]); /* no history from a newly cut lane */
     for (pad = 0; cut && pad < NPADS; pad++)
         if (cut >> pad & 1u) {
-            drums_cut_pad(pad);
+            drums_cut_mapped(proj.kit, proj.model, pad);
             pad_hit[pad] = 0.0f;
         }
 }
@@ -609,9 +627,11 @@ static int step_locked(const dpart_t *p, int step, int pad)
     return 0;
 }
 
-static int lk_param(int kit, int i) { return (kit == KIT_707 ? (int)LK_KIT707 : kit == KIT_606 ? (int)LK_KIT606 : kit == KIT_808 ? (int)LK_KIT808 : 0) | i; }
+static int lk_param(int kit, int i) { return (kit == DRUM_MODEL_707_CB ? (int)LK_707_CB : kit == DRUM_MODEL_707_TB ? (int)LK_707_TB : kit == KIT_707 ? (int)LK_KIT707 : kit == KIT_606 ? (int)LK_KIT606 : kit == KIT_808 ? (int)LK_KIT808 : 0) | i; }
 static int lk_model(uint8_t code)
 {
+    if ((code & 0xF0u) == LK_707_CB) return DRUM_MODEL_707_CB;
+    if ((code & 0xF0u) == LK_707_TB) return DRUM_MODEL_707_TB;
     const int id = code & LK_KIT707;
     return id == LK_KIT707 ? KIT_707 : id == LK_KIT606 ? KIT_606 : id == LK_KIT808 ? KIT_808 : KIT_909;
 }
@@ -690,6 +710,11 @@ static void pots_from_engines(void)
         for (pad = 0; pad <= NPADS; pad++)
             for (i = 0; i < NPOTS; i++)
                 kit_pots(k)[pad][i] = (uint8_t)(i < drums_nparams(k, pad) ? drums_get(k, pad, i) : 0);
+    for (k = KIT_NUM; k < DRUM_MODEL_NUM; ++k) {
+        uint8_t *pot = aux707_pots(k);
+        for (i = 0; i < AUX707_POTS; ++i) pot[i] = (uint8_t)drums_get(k, 0, i);
+        pot[0] |= 0x80u;
+    }
 }
 
 static void pots_apply(void)              /* (the lock held, or the interrupt) */
@@ -701,6 +726,11 @@ static void pots_apply(void)              /* (the lock held, or the interrupt) *
                 for (i = 0; i < drums_nparams(k, pad) && i < NPOTS; i++)
                     if (param_is_switch_sound(drums_param(k, pad, i)) == (pass == 0))
                         drums_set(k, pad, i, kit_pots(k)[pad][i]);
+    for (k = KIT_NUM; k < DRUM_MODEL_NUM; ++k) {
+        const uint8_t *pot = aux707_pots(k);
+        for (i = 0; i < AUX707_POTS; ++i)
+            drums_set(k, 0, i, pot[0] & 0x80u ? pot[i] & 127u : drums_param(k, 0, i)->def);
+    }
 }
 
 static void pots_to_engines(void)
@@ -838,7 +868,7 @@ static void project_check(void)           /* a loaded project's values kept in r
         l->phase &= 127u;
         l->depth = (int8_t)clamp(l->depth, -64, 63);
         if (t == TR_DRUM) {
-            if (l->rsv[0] > KIT_NUM)
+            if (l->rsv[0] > DRUM_MODEL_NUM)
                 l->rsv[0] = 0;
             if (l->pad >= NPADS || (l->dest != LFO_OFF && l->dest >= NPOTS))
                 l->dest = LFO_OFF, l->pad = 0;
@@ -911,16 +941,12 @@ static void project_check(void)           /* a loaded project's values kept in r
         }
         if (proj.pkit[i] > DPRESET_COUNT)
             proj.pkit[i] = 0;
-        for (s = 0; s < NPADS; s++)
-            if (!drums_has_pad((int)proj.pattern_model[i][s] - 1, s))
-                proj.pattern_model[i][s] = 0;
+        drum_map_clean(-1, proj.pattern_model[i]);
         if ((proj.follow[i] & 7u) > 4u)
             proj.follow[i] = 0;
         proj.follow[i] &= 0x7Fu;
     }
-    for (s = 0; s < NPADS; s++)
-        if (!drums_has_pad((int)proj.model[s] - 1, s) || proj.model[s] == proj.kit + 1)
-            proj.model[s] = 0;
+    drum_map_clean(proj.kit, proj.model);
     proj.version = PROJ_VERSION;
     if (proj.dpreset >= DPRESET_COUNT)
         proj.dpreset = (uint8_t)kit_factory(proj.kit);
@@ -1446,11 +1472,10 @@ static void user_load(void)
     uint32_t i;
     int n = plat_store_load(OBJ_USER, &user, sizeof user), k;
     if ((n == (int)sizeof user || n == (int)offsetof(user_t, model)) && user.magic == USER_MAGIC) {
-        for (k = 0; k < NUKIT; k++)
-            for (i = 0; i < NPADS; i++)
-                if (n != (int)sizeof user || !drums_has_pad((int)user.model[k][i] - 1, (int)i)
-                    || user.model[k][i] == user.kit[k].kit + 1)
-                    user.model[k][i] = 0;
+        for (k = 0; k < NUKIT; k++) {
+            if (n == (int)sizeof user) drum_map_clean(user.kit[k].kit, user.model[k]);
+            else for (i = 0; i < NPADS; i++) user.model[k][i] = 0;
+        }
         return;
     }
     if (n == (int)sizeof(user_v1_t) && user.magic == USER_MAGIC_V1) {   /* 0.2's: moved into place, last first */
@@ -1492,10 +1517,15 @@ static void drum_map_apply(int base, const uint8_t *map)
     for (int r = 0; r < NPADS; r++) {
         const int model = drums_model(base, map, r);
         if (mixed && drum_model(r) != model) {
-            drums_cut_pad(r);
+            drums_cut_mapped(proj.kit, proj.model, r);
             roll_inhibit_pads |= (uint16_t)(1u << r);
             pad_hit[r] = 0.0f;
         }
+    }
+    /* Cut all owners before publishing any new aliases. Earlier lanes can
+     * otherwise mask a later lane's old owner during a live scene change. */
+    for (int r = 0; r < NPADS; r++) {
+        const int model = drums_model(base, map, r);
         proj.model[r] = model == base ? 0 : (uint8_t)(model + 1);
     }
     proj.kit = (uint8_t)base;
@@ -1512,9 +1542,13 @@ static void kit_raw(int i, const uint8_t *scene, int use_slot_pots)
         base = u->kit;
         map = user.model[i - 2];
         if (use_slot_pots)
-            for (r = 0; r <= NPADS; r++)
-                for (c = 0; c < NPOTS; c++)
-                    kit_pots(drums_model(base, map, r))[r][c] = u->pots[r][c];
+            for (r = 0; r <= NPADS; r++) {
+                const int model = drums_model(base, map, r);
+                uint8_t *pot = model >= KIT_NUM ? aux707_pots(model) : kit_pots(model)[r];
+                for (c = 0; c < (model >= KIT_NUM ? AUX707_POTS : NPOTS); c++)
+                    pot[c] = u->pots[r][c];
+                if (model >= KIT_NUM) pot[0] |= 0x80u;
+            }
     }
     if (base < 0)
         return;
@@ -1967,7 +2001,7 @@ static void locks_apply(const dpart_t *p, int step, int pad)
     int i;
     for (i = 0; i < p->nlk; i++) {
         const lock_t *l = &p->lk[i];
-        int k = l->param & 0x3F;
+        int k = l->param & (lk_model(l->param) >= KIT_NUM ? 0x0F : 0x3F);
         if (l->step != step || l->pad != pad || l->param == LK_PROB || k >= NPOTS ||
             lk_model(l->param) != drum_model(pad))
             continue;
@@ -3332,11 +3366,11 @@ static void drum_model_turn(int pad, int32_t e)
 {
     const int old = drum_model(pad), dir = e > 0 ? 1 : -1;
     int which = old;
-    int count = e > KIT_NUM ? KIT_NUM : e < -KIT_NUM ? KIT_NUM : e * dir;
+    int count = e > DRUM_MODEL_NUM ? DRUM_MODEL_NUM : e < -DRUM_MODEL_NUM ? DRUM_MODEL_NUM : e * dir;
     for (; count > 0; count--) {
         int next = which;
-        for (int tries = 0; tries < KIT_NUM; tries++) {
-            next = (next + dir + KIT_NUM) % KIT_NUM;
+        for (int tries = 0; tries < DRUM_MODEL_NUM; tries++) {
+            next = (next + dir + DRUM_MODEL_NUM) % DRUM_MODEL_NUM;
             if (drums_has_pad(next, pad))
                 break;
         }
@@ -3344,11 +3378,21 @@ static void drum_model_turn(int pad, int32_t e)
     }
     if (which != old) {
         uint32_t f = plat_lock();
+        if (which >= KIT_NUM) {
+            for (int r = 0; r < NPADS; ++r)
+                if (r != pad && drum_model(r) == which) {
+                    char msg[18] = "IN USE: PAD ";
+                    int_text(r + 1, msg + 12);
+                    plat_unlock(f);
+                    app_say(drums_model_name(which), msg);
+                    return;
+                }
+        }
         for (int k = 0; k < NPOTS; k++)
             if (ovr_mask[pad] >> k & 1u)
                 drums_set(old, pad, k, ovr_base[pad][k]);
         ovr_mask[pad] = 0;
-        drums_cut_pad(pad);
+        drums_cut_mapped(proj.kit, proj.model, pad);
         roll_inhibit_pads |= (uint16_t)(1u << pad);
         pad_hit[pad] = 0.0f;
         proj.model[pad] = which == proj.kit ? 0 : (uint8_t)(which + 1);
@@ -3358,7 +3402,7 @@ static void drum_model_turn(int pad, int32_t e)
         dirty = 1;
         ui.epage = (uint8_t)(drum_epages() - 1);
     }
-    app_say(drums_pad_name(which, pad), drums_kit_name(which));
+    app_say(drums_pad_name(which, pad), drums_model_name(which));
 }
 
 static void param_text(const x0x_param_t *p, int v, char *t)
@@ -4571,8 +4615,10 @@ static void save_user(void)               /* SAVE let go after choosing a slot: 
         for (r = 0; r <= NPADS; r++) {
             if (r < NPADS)
                 user.model[s][r] = proj.model[r];
+            const int model = drum_model(r);
+            const uint8_t *pot = model >= KIT_NUM ? aux707_pots(model) : kit_pots(model)[r];
             for (c = 0; c < NPOTS; c++)
-                u->pots[r][c] = kit_pots(drum_model(r))[r][c];
+                u->pots[r][c] = model < KIT_NUM ? pot[c] : c < AUX707_POTS ? pot[c] & 127u : 0;
         }
         proj.dpreset = (uint8_t)(2 + s);
         dpreset_name(proj.dpreset, t);
@@ -7354,7 +7400,8 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
         if (k != 0)
             return 0;
         v = drum_model(ui.pad);
-        card_put(c, "MODEL", drums_has_pad(v, ui.pad) ? drums_kit_name(v) : "--", v, 0, KIT_NUM - 1, -1);
+        card_put(c, "MODEL", !drums_has_pad(v, ui.pad) ? "--" : v >= KIT_NUM ?
+                 drums_pad_name(v, ui.pad) : drums_kit_name(v), v, 0, DRUM_MODEL_NUM - 1, -1);
         return 1;
     case KD_KIT: {
         const x0x_param_t *p;
@@ -8374,7 +8421,8 @@ static void page_dedit(void)              /* the drums' EDIT page: the pad, its 
         ui.epage = 0;
     if (drum_model_page()) {
         kit_band("DRUM MODEL", "K1: CHANGE", drum_epages(), ui.epage);
-        cv_text(7, 75, &FONT_B, drums_pad_name(drum_model(ui.pad), ui.pad), TH_FG);
+        const int model = drum_model(ui.pad);
+        cv_text(7, 75, &FONT_B, model >= KIT_NUM ? drums_model_name(model) : drums_pad_name(model, ui.pad), TH_FG);
         cv_text(7, 94, &FONT_S, "SAVE + PRESETS: STORE KIT", TH_FG);
         cards_of(KD_MODEL, 0);
         return;

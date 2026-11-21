@@ -24,9 +24,14 @@
 #define DRUMS_VEL_NORMAL (88.0f / 127.0f)   /* an unaccented sequencer hit; 1.0 is an accent */
 
 enum { KIT_909 = 0, KIT_808 = 1, KIT_606 = 2, KIT_707 = 3, KIT_NUM };
+/* Pad models include the four kits and two alternate 707 voices. A factory
+ * kit is still strictly below KIT_NUM. The auxiliary engines are shared,
+ * at most one lane per model. */
+enum { DRUM_MODEL_707_CB = KIT_NUM, DRUM_MODEL_707_TB, DRUM_MODEL_NUM };
+const char *drums_model_name(int model);
 const char *drums_kit_name(int kit);
 int drums_has_pad(int kit, int pad);
-/* Persisted zero = inherit base, 1..KIT_NUM = explicit model ID plus one. */
+/* Persisted zero = inherit base, 1..DRUM_MODEL_NUM = explicit model ID plus one. */
 int drums_model(int base, const uint8_t *map, int pad);
 void drums_trigger_mapped(int base, const uint8_t *map, int pad, float vel);
 
@@ -35,6 +40,7 @@ void drums_init(void);
 void drums_trigger(int kit, int pad, float vel);
 /* Cut the pad in all kits, including another kit's held-over tail. */
 void drums_cut_pad(int pad);
+void drums_cut_mapped(int base, const uint8_t *map, int pad);
 /* renders n (<= DRUMS_MAX_BLOCK) samples of the kit, plus the other kit's tails while they ring, into l / r, and the
  * pads' reverb and delay sends (each pad's Rev and Dly knobs) into rev / dly (all overwritten) */
 void drums_render(int kit, float *l, float *r, float *rev, float *dly, int n);

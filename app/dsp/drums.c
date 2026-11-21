@@ -35,12 +35,22 @@ const char *drums_kit_name(int kit)
     return kit == KIT_707 ? "707" : kit == KIT_606 ? "606" : kit == KIT_808 ? "808" : "909";
 }
 
+const char *drums_model_name(int model)
+{
+    return model == DRUM_MODEL_707_CB ? "707 COWBELL" :
+           model == DRUM_MODEL_707_TB ? "707 TAMBOURINE" : drums_kit_name(model);
+}
+
+static int is707(int kit) { return kit == KIT_707 || kit == DRUM_MODEL_707_CB || kit == DRUM_MODEL_707_TB; }
+
 static int voice(int kit, int pad)
 {
     if (pad == DRUMS_PAD_KIT)
-        return kit == KIT_707 ? D7_KIT : kit == KIT_606 ? D6_KIT : kit == KIT_808 ? D8_KIT : DR_KIT;
+        return is707(kit) ? D7_KIT : kit == KIT_606 ? D6_KIT : kit == KIT_808 ? D8_KIT : DR_KIT;
     if (pad < 0 || pad >= DRUMS_NPADS)
         return -1;
+    if (kit == DRUM_MODEL_707_CB) return D7_CB;
+    if (kit == DRUM_MODEL_707_TB) return D7_TB;
     return kit == KIT_606 ? PAD606[pad] : kit == KIT_808 ? PAD808[pad] : pad;
 }
 
@@ -76,7 +86,7 @@ void drums_trigger(int kit, int pad, float vel)
             const int raw = (int)(vel * 127.0f + .5f);
             drum606_trigger(&d606, v, raw < 1 ? 1 : raw);
         }
-    } else if (kit == KIT_707) {
+    } else if (is707(kit)) {
         if (vel > 0.0f)
             drum707_trigger(&d707, v, vel);
     } else
@@ -129,14 +139,14 @@ void drums_render(int kit, float *l, float *r, float *rev, float *dly, int n)
     }
 }
 
-int drums_active(int kit) { return kit == KIT_707 ? drum707_active(&d707) : kit == KIT_606 ? drum606_active(&d606) : kit == KIT_808 ? drum808_active(&d808) : drum909_active(&d909); }
+int drums_active(int kit) { return is707(kit) ? drum707_active(&d707) : kit == KIT_606 ? drum606_active(&d606) : kit == KIT_808 ? drum808_active(&d808) : drum909_active(&d909); }
 
 int drums_nparams(int kit, int pad)
 {
     int v = voice(kit, pad);
     if (v < 0)
         return 0;
-    return kit == KIT_707 ? drum707_nparams(v) : kit == KIT_606 ? COUNT606[v] : kit == KIT_808 ? drum808_nparams(v) : drum909_nparams(v);
+    return is707(kit) ? drum707_nparams(v) : kit == KIT_606 ? COUNT606[v] : kit == KIT_808 ? drum808_nparams(v) : drum909_nparams(v);
 }
 
 const x0x_param_t *drums_param(int kit, int pad, int i)
@@ -144,7 +154,7 @@ const x0x_param_t *drums_param(int kit, int pad, int i)
     int v = voice(kit, pad);
     if (v < 0)
         return 0;
-    return kit == KIT_707 ? drum707_param(v, i) : kit == KIT_606 ? (i >= 0 && i < COUNT606[v] ? &desc606[v][i] : 0) : kit == KIT_808 ? drum808_param(v, i) : drum909_param(v, i);
+    return is707(kit) ? drum707_param(v, i) : kit == KIT_606 ? (i >= 0 && i < COUNT606[v] ? &desc606[v][i] : 0) : kit == KIT_808 ? drum808_param(v, i) : drum909_param(v, i);
 }
 
 int drums_get(int kit, int pad, int i)
@@ -152,7 +162,7 @@ int drums_get(int kit, int pad, int i)
     int v = voice(kit, pad);
     if (v < 0)
         return 0;
-    return kit == KIT_707 ? drum707_get(&d707, v, i) : kit == KIT_606 ? (i >= 0 && i < COUNT606[v] ? drum606_get(&d606, v, i) : 0) : kit == KIT_808 ? drum808_get(&d808, v, i) : drum909_get(&d909, v, i);
+    return is707(kit) ? drum707_get(&d707, v, i) : kit == KIT_606 ? (i >= 0 && i < COUNT606[v] ? drum606_get(&d606, v, i) : 0) : kit == KIT_808 ? drum808_get(&d808, v, i) : drum909_get(&d909, v, i);
 }
 
 void drums_set(int kit, int pad, int i, int value)
@@ -160,7 +170,7 @@ void drums_set(int kit, int pad, int i, int value)
     int v = voice(kit, pad);
     if (v < 0)
         return;
-    if (kit == KIT_707)
+    if (is707(kit))
         drum707_set(&d707, v, i, value);
     else if (kit == KIT_808)
         drum808_set(&d808, v, i, value);
@@ -175,19 +185,25 @@ const char *drums_pad_name(int kit, int pad)
 {
     if (pad < 0 || pad > DRUMS_NPADS)
         return "";
+    if (kit == DRUM_MODEL_707_CB && pad != DRUMS_PAD_KIT) return "CB";
+    if (kit == DRUM_MODEL_707_TB && pad != DRUMS_PAD_KIT) return "TB";
     return kit == KIT_606 ? NAME606[pad] : kit == KIT_808 ? NAME808[pad] : NAME909[pad];
 }
 
 int drums_has_pad(int kit, int pad)
 {
-    return kit >= 0 && kit < KIT_NUM && pad >= 0 && pad < DRUMS_NPADS &&
+    return kit >= 0 && kit < DRUM_MODEL_NUM && pad >= 0 && pad < DRUMS_NPADS &&
            voice(kit, pad) >= 0;
 }
 
 int drums_model(int base, const uint8_t *map, int pad)
 {
     int requested = map && pad >= 0 && pad < DRUMS_NPADS ? map[pad] - 1 : -1;
-    return drums_has_pad(requested, pad) ? requested : base;
+    if (!drums_has_pad(requested, pad)) return base;
+    if (requested >= KIT_NUM)
+        for (int i = 0; i < pad; ++i)
+            if (map[i] == requested + 1) return base;
+    return requested;
 }
 
 static void drums_cut_voice(int kit, int pad)
@@ -199,21 +215,28 @@ static void drums_cut_voice(int kit, int pad)
     case KIT_909: drum909_cut(&d909, v); break;
     case KIT_808: drum808_cut(&d808, v); break;
     case KIT_606: drum606_cut(&d606, v); break;
-    case KIT_707: drum707_cut(&d707, v); break;
+    case KIT_707: case DRUM_MODEL_707_CB: case DRUM_MODEL_707_TB: drum707_cut(&d707, v); break;
     }
+}
+
+void drums_cut_mapped(int base, const uint8_t *map, int pad)
+{
+    const int model = drums_model(base, map, pad);
+    drums_cut_pad(pad);
+    if (model >= KIT_NUM) drums_cut_voice(model, pad);
 }
 
 void drums_trigger_mapped(int base, const uint8_t *map, int pad, float vel)
 {
     const int model = drums_model(base, map, pad);
-    if (vel > 0.0f && (pad == 7 || pad == 8)) {
+    if (vel > 0.0f && model < KIT_NUM && (pad == 7 || pad == 8)) {
         const int peer = pad == 7 ? 8 : 7;
         const int other = drums_model(base, map, peer);
         // Compare source engine's choke direction without changing its normal
         // same-engine algorithm or any factory preset's signal path.
         const int mode = model == KIT_606 ? drum606_get(&d606, D6_KIT, D6K_CHOKE)
                        : model == KIT_808 ? d808.choke : model == KIT_909 ? 2 : d707.choke;
-        if (other != model && (mode == 2 || (mode == 1 && pad == 7)))
+        if (other < KIT_NUM && other != model && (mode == 2 || (mode == 1 && pad == 7)))
             drums_cut_voice(other, peer);
     }
     drums_trigger(model, pad, vel);

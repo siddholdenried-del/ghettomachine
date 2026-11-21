@@ -89,12 +89,13 @@ monospace face. Three parts, top to bottom:
 
 - **Pads:** the 11 black keys are BD, SD, LT, MT, HT, RS, CP, CH, OH and CR/RD (909) or CY/CB (808). Pressing one picks it
   and plays it. The 707 uses BD, SD, LT, MT, HT, RS, CP, CH, OH, CR and RD in those 11 positions. Its Cowbell and
-  Tambourine voices are implemented in the engine but are not mapped in the fixed 11-lane preset. On 606, black keys
+  Tambourine are optional lane models rather than extra factory lanes. On 606, black keys
   4, 6 and 11 are silent and key 10 is CY. Steps on a silent lane are retained when switching kits.
 - **Mix models:** pick a pad, open **EDIT**, and turn **SELECT** fully right to **DRUM MODEL**. Turn **K1** to choose
-  among compatible voices for that pad. For example, leave the 909 kick and change only the closed hat to 808. The
-  kit reads **CUSTOM** as soon as a lane differs; the steps, mutes and other lanes stay unchanged. Model changes cut
-  that lane's old hit. Factory presets restore their own lane maps.
+  among compatible voices for that pad, including **707 Cowbell** and **707 Tambourine** on any lane. Each can be
+  assigned once at a time; if it is already in use, the screen shows its pad number and leaves both assignments alone.
+  Turn the other way to reach the remaining voices. The kit reads **CUSTOM** as soon as a lane differs. It keeps
+  the lane’s steps, MIDI note and mute, but cuts its previous sound. Factory presets restore their own lane maps.
 - **Steps (SEQ):** the 16 white keys are the picked pad's steps. Press an empty step to light it; press and let go of a
   lit one to clear it. OCT− / OCT+ or SELECT move through step pages up to 128. The beats, steps 1, 5, 9 and 13 of the
   page, glow dimly while they're empty, and the screen's grid gives them a darker column, so a bar is easy to count.
