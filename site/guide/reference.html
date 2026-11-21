@@ -54,7 +54,7 @@
 <thead><tr><th scope="col">Encoder</th><th scope="col">What it does</th></tr></thead>
 <tbody>
 <tr><th scope="row">ALGORITHM</th><td>Pick the track: DRUMS, T2, T3, T4 (it stops at each end).</td></tr>
-<tr><th scope="row">PRESETS</th><td>DRUMS: 909, 808, USER KIT 1–8 (empty slots skipped). T2–T4: 24 factory sounds, then USER 1–16 (empty slots skipped). A factory or user sound sets TYPE to MONO or POLY, so turning PRESETS on a SAMPLER track leaves SAMPLER. With SAVE held: choose the user slot to save to.</td></tr>
+<tr><th scope="row">PRESETS</th><td>DRUMS: 909, 808, 606, 707, then occupied user kits. T2–T4: Original, occupied USER slots, Motor City, After Hours, Machine Funk, Warehouse and Dub / Broken. Hold SEL while turning to jump synth banks. A factory or user sound sets TYPE to MONO or POLY, so turning PRESETS on a SAMPLER track leaves SAMPLER. With SAVE held: choose the user slot to save to.</td></tr>
 <tr><th scope="row">SELECT</th><td>A step held: its CHANCE (on T2–T4 EDIT, ENV and LFO it turns pages instead). EDIT, ENV, LFO, ARP, ACID, FX, mixer and master: the page. SONG: the cursor. HOME: the previous or next scene; with SEL held while playing, nudge. T2–T4 KEYS: the step-record cursor. STEPS: the step bank.</td></tr>
 <tr><th scope="row">K1–K4</th><td>In order of priority: REC held: the REC page. HOME with a scene key held: FOLLOW and BARS. SETUP: MIDI CLOCK and SOUNDS. HOME with a perform key held: K1 sets the effect. Otherwise the four cards on the page. On STEPS, KEYS, HOME and the DRUMS MUTE page the cards are LENGTH, RATE, SWING and TEMPO. On T2–T4 STEPS with a step held: NOTE, VELOCITY, GATE.</td></tr>
 <tr><th scope="row">MASTER</th><td>Speaker and headphone volume, after the master bus. It doesn't change the USB audio.</td></tr>
@@ -107,8 +107,8 @@
 <ul>
 <li><strong>Dist</strong> picks the distortion that Drive feeds: Diode, Clip, SAT, BFZ, PDIST, Fold, Crush.</li>
 <li><strong>P.Dpth</strong> and <strong>Pitch</strong> on the 909 BD set the depth and amount of the kick's pitch drop. <strong>Tail</strong> on the 909 CP is the clap's reverb-like tail. <strong>Snappy</strong> is the snare wires' level.</li>
-<li>The 909, 808 and 606 keep their own knob settings. Switching kits and back restores the previous settings.</li>
-<li>Both kits play at the same level: each 808 sound is as loud as the 909 pad that plays its part. The 808's accent is stronger, about 6 dB against the 909's 3, as on a real 808; its KIT page's Accent sets how much.</li>
+<li>The 909, 808, 606 and 707 keep their own knob settings. Switching kits and back restores the previous settings.</li>
+<li>The 909 and 808 are level-matched for equivalent pads. The 808's accent is stronger, about 6 dB against the 909's 3, as on a real 808; its KIT page's Accent sets how much.</li>
 <li>Pads triggered by the sequencer play at a normal level; accented steps play at full level, shaped by the KIT page's Accent.</li>
 </ul>
 
@@ -236,14 +236,14 @@
 
 <h2 id="presets">Presets and user slots</h2>
 <table>
-<caption>The 24 factory sounds, in PRESETS order</caption>
+<caption>The 24 original factory sounds, grouped by type</caption>
 <thead><tr><th scope="col">Type</th><th scope="col">Sounds</th></tr></thead>
 <tbody>
 <tr><th scope="row">MONO</th><td>SQR BASS, ACID, SUB BASS, FAT BASS, SAW LEAD, SUPERSAW, SYNC LEAD, FM BASS, FOLD LEAD, CRUSH BASS, WOBBLE</td></tr>
 <tr><th scope="row">POLY</th><td>SOFT PAD, PWM STRINGS, PLUCK, BRASS, SINE KEYS, RAVE STAB, ORGAN, WIND, FM BELL, FM KEYS, WEST PLUCK, RING METAL, DRIFT PAD</td></tr>
 </tbody></table>
-<p>The full order is SQR BASS, ACID, SUB BASS, FAT BASS, SAW LEAD, SUPERSAW, SYNC LEAD, SOFT PAD, PWM STRINGS, PLUCK, BRASS, SINE KEYS, RAVE STAB, ORGAN, WIND, FM BELL, FM BASS, FM KEYS, FOLD LEAD, WEST PLUCK, RING METAL, DRIFT PAD, CRUSH BASS, WOBBLE, then USER 1–16. A new project starts with SQR BASS on T2 (an octave down), PLUCK on T3 and SOFT PAD on T4.</p>
-<p>To save: stop, hold SAVE, turn PRESETS to pick a slot (the first turn starts at the slot the sound came from, or the first empty one), check REPLACE or EMPTY, and let go of SAVE. A user sound keeps every sound parameter and whether it's MONO or POLY. A user kit keeps the kit (909 or 808) and all its knobs. User presets are stored apart from the project, so loading or saving the project doesn't change them.</p>
+<p>The original bank order is SQR BASS, ACID, SUB BASS, FAT BASS, SAW LEAD, SUPERSAW, SYNC LEAD, SOFT PAD, PWM STRINGS, PLUCK, BRASS, SINE KEYS, RAVE STAB, ORGAN, WIND, FM BELL, FM BASS, FM KEYS, FOLD LEAD, WEST PLUCK, RING METAL, DRIFT PAD, CRUSH BASS, WOBBLE. Occupied USER slots and the five factory expansion banks follow. A new project starts with SQR BASS on T2 (an octave down), PLUCK on T3 and SOFT PAD on T4.</p>
+<p>To save: stop, hold SAVE, turn PRESETS to pick a slot (the first turn starts at the slot the sound came from, or the first empty one), check REPLACE or EMPTY, and let go of SAVE. A user sound keeps every sound parameter and whether it's MONO or POLY. A user kit keeps its base kit, knob settings and any selected pad models. User presets are stored apart from the project, so loading or saving the project doesn't change them.</p>
 
 <h2 id="limits">Limits</h2>
 <table>
@@ -254,7 +254,7 @@
 <tr><th scope="row">Part length</th><td>1–128 steps, in banks of 16</td></tr>
 <tr><th scope="row">Notes per step</th><td>4 (T2–T4)</td></tr>
 <tr><th scope="row">Locks</th><td>16 per part (on DRUMS, a step's chance uses one)</td></tr>
-<tr><th scope="row">Gate</th><td>Up to 31.87 steps</td></tr>
+<tr><th scope="row">Gate</th><td>Up to 128 steps</td></tr>
 <tr><th scope="row">Voices</th><td>16 shared by T2–T4; POLY up to 8 per track; MONO up to 4 in unison. Fewer while the processor is short of time.</td></tr>
 <tr><th scope="row">Undo</th><td>8 pattern edits, and redo</td></tr>
 <tr><th scope="row">Song</th><td>32 entries of 1–16 bars</td></tr>

@@ -217,7 +217,7 @@ LANDING = """<div class="hero gm-home">
   <div class="screen">
     <div class="top"><span class="label">Custom firmware for the M-VAVE FM-1</span><span class="ver">RELEASE_VERSION_LABEL</span></div>
     <h1><span class="logo">GhettoMachine</span></h1>
-    <p class="sub">Four-track groovebox firmware. 909, 808 and 606 kits, three synth or sampler tracks, and a 128-step sequencer.</p>
+    <p class="sub">Four-track groovebox firmware. 909, 808, 606 and 707 kits, three synth or sampler tracks, and a 128-step sequencer.</p>
   </div>
   <p class="lede">GhettoMachine is BongWare custom firmware engineered by BongTech, part of <a href="https://bongcult.com/">BongCult</a>. Make a beat in the browser or look up the controls for the FM-1.</p>
   <div class="gm-actions" id="play">

@@ -25,8 +25,8 @@
       "sha256": "c4fc02bbe685f3161e16c6233e7f7f1fb3a36f4de9c8a874103030b6751bcfa9"
     },
     "emu/app.wasm": {
-      "bytes": 663207,
-      "sha256": "8868f57e66549d02bab6b6abdc2d62e4c8a43e8858df436244a9542495fbee1c"
+      "bytes": 688448,
+      "sha256": "50a08af5a5aa8d2c03624b41919ee5b17b16f3154ef738f34d170e306032a9b0"
     },
     "emu/app_worklet.js": {
       "bytes": 210,
@@ -77,16 +77,16 @@
       "sha256": "e205d8b375cf94cef107f04849f7d326db70aa8ea9f0882b0ff569e7084dddbd"
     },
     "guide/beats/index.html": {
-      "bytes": 29840,
-      "sha256": "403f2ec9c1e06fd5b8583aaf6ecc1f2e87e5b71deb51ad8fc81df3633780fa75"
+      "bytes": 30795,
+      "sha256": "2572e671d3f4de371aa759e0a9e72f7d14e065e7ca1f65a0b2a51afea6357cd9"
     },
     "guide/index.html": {
-      "bytes": 26893,
-      "sha256": "99e135facf33dc1843219fc1664ecfe73d74de2466eb2af5281e9ce34e204832"
+      "bytes": 26991,
+      "sha256": "f65f1b46bfc405dc192fd69ffaa61612ae73c60a98bcc0b66ae0ef16a4897be3"
     },
     "guide/mixer/index.html": {
-      "bytes": 21373,
-      "sha256": "80a307c2c954f58475823f7de5cb8f847e7d52773b451f7598ba98e45f1ac32b"
+      "bytes": 22100,
+      "sha256": "72e3deb5d87138fb5e11c1e9a5ffc6003613951251af15e541adda04757e151a"
     },
     "guide/modulation/index.html": {
       "bytes": 37613,
@@ -101,20 +101,20 @@
       "sha256": "0f7dbff2f54f2f4c04ead1ad9dd90a4790efcbd5ed9a771e784821c847022743"
     },
     "guide/reference/index.html": {
-      "bytes": 54650,
-      "sha256": "aacad94b2b343562a311f85db6ba4ca6c83b054630b9ba426cbb73f735fe14df"
+      "bytes": 54781,
+      "sha256": "944cadedcf60e0070ce47955374a54b63884a3e56f2c10d2c722445714926e1e"
     },
     "guide/setup/index.html": {
-      "bytes": 29611,
-      "sha256": "8a03d248065aa3a065bc721b486e2c0f1f516cbf2dfa3af68f31ec1e5edf6770"
+      "bytes": 29584,
+      "sha256": "942314000deb8aa96e8785b23f1d8b0f81a1053ab8c65af6237b9dc29661ffde"
     },
     "guide/sounds/index.html": {
-      "bytes": 26070,
-      "sha256": "e810ecb7d8e843f7d81ca7c7402acb247f8cead3dbebda24ff1dff83cd8fd8ca"
+      "bytes": 27064,
+      "sha256": "3ef472cb07d44fe190d811b5518933242a16dc3831ccb88707aa266bdbd50b3c"
     },
     "index.html": {
-      "bytes": 13701,
-      "sha256": "6dd7cf897d77b368c6f73e641bb77c03e1e9c0d752c6f44cfa5aca0793764fa3"
+      "bytes": 13706,
+      "sha256": "527ec9b87b820943bdae48b8851edb5532d2c6bb7ce5b270a76d8dc622d38e76"
     },
     "technical/index.html": {
       "bytes": 63780,
@@ -126,32 +126,32 @@
   "site": "https://ghettomachine.bongcult.com",
   "source": {
     "emscripten": "4.0.11+d3432e7a2a6585331c94b041973fb16c9f332ce4",
-    "emulator_build_commit": "d05369606353b86c55006708332de8959c38eff6",
-    "feature_source": "8d8880b0f169a435a15406d867e28914103c7fd5",
+    "emulator_build_commit": "23a43a2c778d6d82569bc6e96e085fe0344251e7",
+    "feature_source": "23a43a2c778d6d82569bc6e96e085fe0344251e7",
     "felucca_bsp": "2a5af3dfc8bccb92e37d48a3e7e0bf9a5827e51f",
     "fm1_base": "7337375c15e9db26f23b0c68a1db61429add2f48",
-    "provenance": "Fresh browser development build from clean committed runtime, after reconciling current main dark-theme CPU/display changes and 808 gain with the approved sequencer/606/mute/chord/insert/art changes.",
-    "remote_main_predecessor": "435f9c8455d47e05a328cc6d0bb842a2f8863a97",
+    "provenance": "Browser development build from the exact clean v7 source, covering 707 and its auxiliary pad models, mixed kits, per-track Color, full-bleed boot art and five original synth banks.",
+    "remote_main_predecessor": "a6a78a632626e3ce2cacc57f895e5cfb2f1c8059",
     "repository": "https://github.com/siddholdenried-del/ghettomachine",
-    "runtime_tree": "a1105d58d15488c6d3be97e305a17ff8119503de"
+    "runtime_tree": "8dd33a16822f42452b2b8491d34d61214aa87a66"
   },
   "targets": {
     "device": {
-      "application_bytes": 520032,
-      "build_from": "d05369606353b86c55006708332de8959c38eff6",
-      "build_id": "556E98C4",
+      "application_bytes": 564640,
+      "build_from": "23a43a2c778d6d82569bc6e96e085fe0344251e7",
+      "build_id": "DED60016",
       "build_status": "linked-and-packaged",
       "downloads": [],
       "flashed": false,
       "hardware_tested": false,
       "package_bytes": 616099,
       "package_identity": "FM-1_800",
-      "package_sha256": "3c6bea2e1fe97feab1aa05224eb697aba3042d91d067717ebce9c7e10f8f5cad",
+      "package_sha256": "28957d1a5d00297de2e7baeff6179d1c8b6caddd8c4ea76e8702bf282f7f7d77",
       "pool_guard_bytes": 8192,
       "pool_limit_bytes": 344064,
-      "pool_used_bytes": 334672,
+      "pool_used_bytes": 335124,
       "ram_limit_bytes": 98304,
-      "ram_used_bytes": 93172,
+      "ram_used_bytes": 97060,
       "status": "not-distributed",
       "tested_for_this_release": false
     },
@@ -180,7 +180,7 @@
       "identity": "GHETTOMACHINE DEV",
       "path": "emu/app.wasm",
       "platform": "browser",
-      "sha256": "8868f57e66549d02bab6b6abdc2d62e4c8a43e8858df436244a9542495fbee1c"
+      "sha256": "50a08af5a5aa8d2c03624b41919ee5b17b16f3154ef738f34d170e306032a9b0"
     }
   ]
 }

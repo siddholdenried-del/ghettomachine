@@ -65,7 +65,7 @@
       "path": "guide/recording/index.html"
     },
     {
-      "literal": "909, 808 and 606 kits, three synth or sampler tracks, and a 128-step sequencer.",
+      "literal": "909, 808, 606 and 707 kits, three synth or sampler tracks, and a 128-step sequencer.",
       "path": "index.html"
     },
     {
@@ -77,7 +77,7 @@
       "path": "guide/sounds/index.html"
     },
     {
-      "literal": "reads project formats 1\u20134 and saves format 5.",
+      "literal": "reads project formats 1\u20136 and saves format 7.",
       "path": "guide/setup/index.html"
     },
     {
@@ -95,6 +95,18 @@
     {
       "literal": "<title>GhettoMachine in the browser \u00b7 BongWare</title>",
       "path": "emu/index.html"
+    },
+    {
+      "literal": "<strong>707 COWBELL</strong> or <strong>707 TAMBOURINE</strong>",
+      "path": "guide/beats/index.html"
+    },
+    {
+      "literal": "Motor City, After Hours, Machine Funk, Warehouse and Dub / Broken.",
+      "path": "guide/sounds/index.html"
+    },
+    {
+      "literal": "before shared sends and the selected track\u2019s USB stem",
+      "path": "guide/mixer/index.html"
     }
   ],
   "manifest_path": "release.json",
@@ -112,32 +124,32 @@
   "site": "https://ghettomachine.bongcult.com",
   "source": {
     "emscripten": "4.0.11+d3432e7a2a6585331c94b041973fb16c9f332ce4",
-    "emulator_build_commit": "d05369606353b86c55006708332de8959c38eff6",
-    "feature_source": "8d8880b0f169a435a15406d867e28914103c7fd5",
+    "emulator_build_commit": "23a43a2c778d6d82569bc6e96e085fe0344251e7",
+    "feature_source": "23a43a2c778d6d82569bc6e96e085fe0344251e7",
     "felucca_bsp": "2a5af3dfc8bccb92e37d48a3e7e0bf9a5827e51f",
     "fm1_base": "7337375c15e9db26f23b0c68a1db61429add2f48",
-    "provenance": "Fresh browser development build from clean committed runtime, after reconciling current main dark-theme CPU/display changes and 808 gain with the approved sequencer/606/mute/chord/insert/art changes.",
-    "remote_main_predecessor": "435f9c8455d47e05a328cc6d0bb842a2f8863a97",
+    "provenance": "Browser development build from the exact clean v7 source, covering 707 and its auxiliary pad models, mixed kits, per-track Color, full-bleed boot art and five original synth banks.",
+    "remote_main_predecessor": "a6a78a632626e3ce2cacc57f895e5cfb2f1c8059",
     "repository": "https://github.com/siddholdenried-del/ghettomachine",
-    "runtime_tree": "a1105d58d15488c6d3be97e305a17ff8119503de"
+    "runtime_tree": "8dd33a16822f42452b2b8491d34d61214aa87a66"
   },
   "targets": {
     "device": {
-      "application_bytes": 520032,
-      "build_from": "d05369606353b86c55006708332de8959c38eff6",
-      "build_id": "556E98C4",
+      "application_bytes": 564640,
+      "build_from": "23a43a2c778d6d82569bc6e96e085fe0344251e7",
+      "build_id": "DED60016",
       "build_status": "linked-and-packaged",
       "downloads": [],
       "flashed": false,
       "hardware_tested": false,
       "package_bytes": 616099,
       "package_identity": "FM-1_800",
-      "package_sha256": "3c6bea2e1fe97feab1aa05224eb697aba3042d91d067717ebce9c7e10f8f5cad",
+      "package_sha256": "28957d1a5d00297de2e7baeff6179d1c8b6caddd8c4ea76e8702bf282f7f7d77",
       "pool_guard_bytes": 8192,
       "pool_limit_bytes": 344064,
-      "pool_used_bytes": 334672,
+      "pool_used_bytes": 335124,
       "ram_limit_bytes": 98304,
-      "ram_used_bytes": 93172,
+      "ram_used_bytes": 97060,
       "status": "not-distributed",
       "tested_for_this_release": false
     },
@@ -167,7 +179,7 @@
       "identity": "GHETTOMACHINE DEV",
       "path": "emu/app.wasm",
       "platform": "browser",
-      "sha256": "8868f57e66549d02bab6b6abdc2d62e4c8a43e8858df436244a9542495fbee1c"
+      "sha256": "50a08af5a5aa8d2c03624b41919ee5b17b16f3154ef738f34d170e306032a9b0"
     }
   ]
 }
