@@ -717,44 +717,55 @@ static void pots_from_engines(void)
     }
 }
 
-static void pots_apply(void)              /* (the lock held, or the interrupt) */
+/* one pad's knobs (model's pad; an aux 707 model has one) into its engine: a switch (808 tom / conga...) first, the
+ * knobs after it edit its sound. (The lock held, or the interrupt) */
+static void pots_apply_pad(int model, int pad)
 {
-    int k, pad, i, pass;
-    for (pass = 0; pass < 2; pass++)      /* a switch (808 tom / conga...) first: the knobs after it edit its sound */
-        for (k = 0; k < KIT_NUM; k++)
-            for (pad = 0; pad <= NPADS; pad++)
-                for (i = 0; i < drums_nparams(k, pad) && i < NPOTS; i++)
-                    if (param_is_switch_sound(drums_param(k, pad, i)) == (pass == 0))
-                        drums_set(k, pad, i, kit_pots(k)[pad][i]);
-    for (k = KIT_NUM; k < DRUM_MODEL_NUM; ++k) {
-        const uint8_t *pot = aux707_pots(k);
+    int i, pass;
+    if (model >= KIT_NUM) {
+        const uint8_t *pot = aux707_pots(model);
         for (i = 0; i < AUX707_POTS; ++i)
-            drums_set(k, 0, i, pot[0] & 0x80u ? pot[i] & 127u : drums_param(k, 0, i)->def);
+            drums_set(model, 0, i, pot[0] & 0x80u ? pot[i] & 127u : drums_param(model, 0, i)->def);
+        return;
     }
+    for (pass = 0; pass < 2; pass++)
+        for (i = 0; i < drums_nparams(model, pad) && i < NPOTS; i++)
+            if (param_is_switch_sound(drums_param(model, pad, i)) == (pass == 0))
+                drums_set(model, pad, i, kit_pots(model)[pad][i]);
 }
 
+/* every kit's knobs into the engines, from the main loop, a pad at a time under the lock (0.5, the second CPU pass):
+ * all four kits' in one hold took about a millisecond on the FM-1 with the audio held off, a sixth of a block; a pad's
+ * are a few dozen microseconds */
 static void pots_to_engines(void)
 {
-    uint32_t f = plat_lock();
-    pots_apply();
-    plat_unlock(f);
+    int k, pad;
+    for (k = 0; k < DRUM_MODEL_NUM; k++)
+        for (pad = 0; pad <= (k < KIT_NUM ? NPADS : 0); pad++) {
+            uint32_t f = plat_lock();
+            pots_apply_pad(k, pad);
+            plat_unlock(f);
+        }
 }
 
-static void tracks_to_voices(void)
+static void tracks_to_voices(void)        /* (a track, then an FX knob, at a time under the lock: short holds) */
 {
     int t;
-    uint32_t f = plat_lock();
     for (t = 1; t < NTRK; t++) {
         const track_t *ts = tset(t);
+        uint32_t f = plat_lock();
         syn_sound(t, ts->snd);
         syn_level(t, (float)ts->level / 127.0f);
         syn_source(t, ts->type == TY_SAMPLER);
         syn_sample_shape(t, ts->s_start, ts->s_end, ts->s_loop, ts->s_lstart, ts->s_root, ts->s_tune);
         syn_mixer(t, proj.mix[t].pan, (float)proj.mix[t].rev / 127.0f, (float)proj.mix[t].dly / 127.0f);
+        plat_unlock(f);
     }
-    for (t = 0; t < FXP_NUM; t++)
+    for (t = 0; t < FXP_NUM; t++) {
+        uint32_t f = plat_lock();
         fx_set(t, proj.fx[t]);
-    plat_unlock(f);
+        plat_unlock(f);
+    }
 }
 
 static void track_shape(int t)           /* a SAMPLER track's start, end, loop and pitch -> the synth */
@@ -785,6 +796,8 @@ static uint32_t crc32_of(const uint8_t *d, uint32_t n) { return ~crc32_more(0xFF
 enum { CS_DRUMS, CS_SYNTH, CS_FXIN, CS_FX, CS_MASTER, CS_REST, CS_TOTAL, CS_NUM };
 static uint32_t cs_t[CS_NUM];             /* this block's ticks */
 static float cs_us[CS_NUM];               /* the running means, us per block */
+static float cs_pk[CS_NUM];               /* the worst block lately, us: held, falling by half in about 1.3 s (the spikes
+                                           * a running mean hides: a pattern starting, a switch) */
 #define CS_MARK(v) uint32_t v = plat_ticks24()
 
 /* GhettoMachine 0.5 (CPU): a track's insert and Color sleep once their input has been silent and their output too, for
@@ -1598,8 +1611,12 @@ static void kit_raw(int i, const uint8_t *scene, int use_slot_pots)
         return;
     drum_map_apply(base, scene ? scene : map);
     proj.dpreset = (uint8_t)i;
-    if (use_slot_pots && dpreset_user(i))
-        pots_apply();
+    if (use_slot_pots && dpreset_user(i))  /* the pads the kit set (above), not every kit's: a pattern switch in the
+                                            * interrupt (SOUNDS PER PATTERN) takes a quarter of the time */
+        for (r = 0; r <= NPADS; r++) {
+            const int model = drums_model(base, map, r);
+            pots_apply_pad(model, model >= KIT_NUM ? 0 : r);
+        }
 }
 
 static void psnd_store(int t, int p)      /* track t's sound now, kept with pattern p */
@@ -2221,6 +2238,8 @@ static int rec_target(int st, float fr, int len)
     return t >= len ? 0 : t;
 }
 
+static void pump_key(int kit, float vel); /* (a kick for PUMP: at the block's tail, post_job) */
+static void click_stretch(float r);       /* (the click's beat stretched by r: at the block's tail) */
 static void seq_drum(void)                /* audio interrupt: the drum part's next step, and its hits */
 {
     dpart_t *p = dcur();
@@ -2240,7 +2259,7 @@ static void seq_drum(void)                /* audio interrupt: the drum part's ne
         locks_apply(p, next, pad);
         pad_fire(pad, bit_get(p->acc, next) ? 1.0f : DRUMS_VEL_NORMAL);
         if (pad == 0)                     /* the bass drum: the master's PUMP ducks to it */
-            fx_key(drum_model(0), bit_get(p->acc, next) ? 1.0f : DRUMS_VEL_NORMAL);
+            pump_key(drum_model(0), bit_get(p->acc, next) ? 1.0f : DRUMS_VEL_NORMAL);
     }
     sq.t[TR_DRUM].dur = step_samples(TR_DRUM, next);
     sq.t[TR_DRUM].to_next += sq.t[TR_DRUM].dur;
@@ -2295,7 +2314,7 @@ static void roll_fire(void)               /* ROLL: each track's step as it was p
                 float v = bit_get(d->acc, st) ? 1.0f : DRUMS_VEL_NORMAL;
                 pad_fire(pad, v);
                 if (pad == 0)
-                    fx_key(drum_model(0), v);
+                    pump_key(drum_model(0), v);
             }
     for (t = 1; t < NTRK; t++) {
         const ipart_t *p = ipart(t);
@@ -2495,7 +2514,7 @@ static void tempo_stretch(void)           /* audio interrupt: a new tempo (the k
         for (t = 0; t < NTRK; t++)
             if (sq.t[t].to_next < 1e8f)
                 sq.t[t].to_next *= r;
-        ck.to_next *= r;
+        click_stretch(r);                 /* (the click's beat: at this block's tail, post_job) */
         sq.mclk_to *= r;
         perf.roll_to *= r;
         perf.roll_len *= r;
@@ -2655,18 +2674,41 @@ static int16_t stem_q(float x)
     return (int16_t)(x >= 1.0f ? 32767 : x <= -1.0f ? -32767 : (int)(x * 32767.0f));
 }
 
+/* the stems of the block rendered, sent with the next block (the master pair comes a block late now: post_job), a
+ * frame's tracks together */
+static int16_t stem_hold[APP_BLOCK * 2u * NTRK] PLAT_POOL;
+static void stems_send(uint32_t n)        /* the block before's stems, into this block's channels; the hold cleared */
+{
+    uint32_t off = 0, k;
+    const int16_t *h = stem_hold;
+    while (off < n) {
+        uint32_t run;
+        int16_t *p = plat_usb_ch(off, &run);
+        if (!p || !run)
+            break;
+        if (run > n - off)
+            run = n - off;
+        for (k = 0; k < run; k++, p += PLAT_USB_CH_STRIDE, h += 2u * NTRK)
+            for (int c = 0; c < 2 * NTRK; c++)
+                p[c] = h[c];
+        off += run;
+    }
+    for (k = 0; k < APP_BLOCK * 2u * NTRK; k++)
+        stem_hold[k] = 0;
+}
+
 /* n frames of track s (l, r: the mix's scale) into its stem, from the frame off into the block being rendered */
 static void stem_put(int s, const float *l, const float *r, uint32_t off, uint32_t n)
 {
-    while (n) {
-        uint32_t run, k;
-        int16_t *p = plat_usb_ch(off, &run);
-        if (!p || !run)
+    {
+        uint32_t k;
+        int16_t *p;
+        if (off >= APP_BLOCK)
             return;
-        if (run > n)
-            run = n;
-        p += 2 * s;
-        for (k = 0; k < run; k++, p += PLAT_USB_CH_STRIDE) {
+        if (n > APP_BLOCK - off)
+            n = APP_BLOCK - off;
+        p = stem_hold + off * 2u * NTRK + 2 * s;
+        for (k = 0; k < n; k++, p += 2u * NTRK) {
             float a = l[k] * STEM_GAIN, b = r[k] * STEM_GAIN;
             p[0] = stem_q(a);
             p[1] = stem_q(b);
@@ -2680,10 +2722,6 @@ static void stem_put(int s, const float *l, const float *r, uint32_t off, uint32
             stem_overs += (a > 1.0f) + (b > 1.0f);
 #endif
         }
-        l += run;
-        r += run;
-        off += run;
-        n -= run;
     }
 }
 
@@ -2767,8 +2805,17 @@ static void rec_frame(float m)            /* audio interrupt: a frame into rec_b
         rec.state = RS_DONE;
 }
 
-/* the render's buses: the dry mix, the reverb and delay sends, and the FX's out */
-static float buf_l[APP_BLOCK], buf_r[APP_BLOCK], bus_rev[APP_BLOCK], bus_dly[APP_BLOCK], mix_out_l[APP_BLOCK], mix_out_r[APP_BLOCK];
+/* the render's buses: the dry mix and the reverb and delay sends of a block. Two sets (0.5, the second CPU pass): the
+ * first core renders a block into one while the second finishes the block before in the other, in place (post_job:
+ * the reverb and delay, the master bus, the perform effects, the metronome); app_render outputs that one. The pointers
+ * are the set being rendered now */
+typedef struct {
+    float l[APP_BLOCK], r[APP_BLOCK], rev[APP_BLOCK], dly[APP_BLOCK];
+} bus_t;
+static bus_t bus_a;
+static bus_t bus_b PLAT_POOL;
+static bus_t *const BUS[2] = {&bus_a, &bus_b};
+static float *buf_l = bus_a.l, *buf_r = bus_a.r, *bus_rev = bus_a.rev, *bus_dly = bus_a.dly;
 static volatile float peak_l, peak_r;     /* each side's peak since the last look (the tests) */
 static volatile uint32_t clips;           /* samples past the ceiling (the tests: the limiter keeps it 0) */
 
@@ -2789,12 +2836,12 @@ static volatile float peak;               /* the output's peak since the screen 
 
 static int16_t q16(float x) { return (int16_t)(x > 1.0f ? 32767 : x < -1.0f ? -32767 : (int)(x * 32767.0f)); }
 
-static void pf_output(float *l, float *r, uint32_t n)   /* STUTTER, TAPE STOP, CRUSH on the output (under MASTER) */
+static void pf_output(float *l, float *r, uint32_t n, uint8_t on)   /* STUTTER, TAPE STOP, CRUSH on the output (under
+                                                                      * MASTER); on: the perform keys the block had */
 {
     int16_t *b = shared_buf;
     int32_t cap = DLY_LEN / 2;
     uint32_t i;
-    uint8_t on = perf.on;
     int bits = 16 - perf.crush * 12 / 127, hold = 1 + perf.crush * 15 / 127;
     float lv = (float)(1 << (bits - 1));
     for (i = 0; i < n; i++) {
@@ -2840,35 +2887,46 @@ static void pf_output(float *l, float *r, uint32_t n)   /* STUTTER, TAPE STOP, C
     }
 }
 
-void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
+/* GhettoMachine 0.5, the second CPU pass: a block's tail on the second core while the first renders the next block.
+ * The first core renders block N (the sequencer, the drums, the synth: its voices shared with the second core once
+ * that is free, the inserts, Color) into one set of buses, and notes here what the tail needs. At the start of block
+ * N + 1 the second core takes it (post_job): the reverb and the delay, a sample being recorded, the master bus,
+ * STUTTER, TAPE STOP and CRUSH, the metronome, in place in that set; the first core waits for it at the end of block
+ * N + 1 and outputs it. Everything is heard a block (5.8 ms) later; nothing else changes. Without the second core (off,
+ * given up, the simulator, the browser) the first core does the tail itself, the same way, at the same place */
+typedef struct {
+    uint32_t n;
+    float gain, bpm, beat_len, ratio;     /* MASTER; the tempo; a beat in samples; the click's beat stretched by (the
+                                           * tempo moved: tempo_stretch) */
+    float kick_vel;                       /* PUMP: the block's loudest kick (0: none), and its kit */
+    int kick_kit, bar_at;                 /* (bar_at: where the bar starts in the block, -1: not in it) */
+    uint8_t want, playing, counting, click_on;   /* the perform keys; playing; counting in; the click on */
+    uint32_t t_fx, t_master;              /* its stages' ticks (the CPU view) */
+    volatile uint8_t ready, done;         /* noted for the tail; the tail done */
+} post_t;
+static post_t post[2];
+static uint8_t cur_set;                   /* the set the first core renders now */
+static uint8_t pf_was;                    /* the perform keys the last tail had (the tail's own) */
+
+static void pump_key(int kit, float vel)  /* audio interrupt: a kick for PUMP, given at this block's tail (fx_key) */
 {
-    uint32_t done = 0, i;
-    int bar_at = -1;
-    float gain = (float)master_q12 / 4096.0f, pk = peak, pkl = peak_l, pkr = peak_r;
-    CS_MARK(cs_start);
-    for (i = 0; i < CS_NUM; i++)
-        cs_t[i] = 0;
-    if (n > APP_BLOCK)
-        n = APP_BLOCK;
-    if (STEMS) {                          /* a computer records the USB stems this block */
-        uint32_t run;
-        stems_on = plat_usb_ch(0, &run) != 0;
+    post_t *j = &post[cur_set];
+    if (vel > j->kick_vel) {
+        j->kick_vel = vel;
+        j->kick_kit = kit;
     }
-    midi_in();
-    render_t += n;
-    tempo_stretch();
-    fx_bpm((float)proj.bpm10 * 0.1f);
-    {   /* the perform keys: what changed since the last block */
-        uint8_t w = perf.want, up = (uint8_t)(w & ~perf.on), down = (uint8_t)(perf.on & ~w);
-        if (up >> PF_ROLL & 1u) {
-            int t;
-            roll_inhibit_tracks = proj.tmute;
-            roll_inhibit_pads = dcur()->mute;
-            for (t = 0; t < NTRK; t++)
-                perf.roll_step[t] = (int8_t)(sq.t[t].step < 0 ? 0 : sq.t[t].step);
-            perf.roll_to = 0.0f;
-            perf.roll_len = bar_samples() * (1.0f / 16.0f) * ROLL_F[perf.roll_rate % 5];
-        }
+}
+
+static void click_stretch(float r) { post[cur_set].ratio *= r; }
+
+static void post_job(uint32_t which)      /* a block's tail (the second core's job, or the first's) */
+{
+    post_t *j = &post[which];
+    bus_t *b = BUS[which];
+    float *l = b->l, *r = b->r;
+    uint32_t n = j->n, i;
+    {   /* STUTTER, TAPE STOP: their slices set going as their keys go down; let go, the live sound fades back */
+        uint8_t w = j->want, up = (uint8_t)(w & ~pf_was), down = (uint8_t)(pf_was & ~w);
         if (up >> PF_STUT & 1u) {
             perf.st_len = (int32_t)(bar_samples() * (1.0f / 32.0f) * (float)(1 << (perf.stut_len % 3)));
             if (perf.st_len > DLY_LEN / 2)
@@ -2882,6 +2940,109 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         }
         if ((down >> PF_STUT & 1u) || (down >> PF_TAPE & 1u))
             perf.fade = 0.0f;
+        pf_was = w;
+    }
+    fx_bpm(j->bpm);
+    if (j->kick_vel > 0.0f)
+        fx_key(j->kick_kit, j->kick_vel);
+    {
+        CS_MARK(t0);
+        fx_process(l, r, b->rev, b->dly, l, r, (int)n);   /* the reverb and the delay (in place) */
+        j->t_fx = plat_ticks24() - t0;
+    }
+    if (rec.state == RS_ARMED || rec.state == RS_REC)   /* sampling: the mix as it sounds, before the master */
+        for (i = 0; i < n && (rec.state == RS_ARMED || rec.state == RS_REC); i++) {
+            float m = 0.5f * (l[i] + r[i]);
+            if (rec.state == RS_ARMED && (m > 0.01f || m < -0.01f))
+                rec.state = RS_REC;       /* the first sound over -40 dB starts it */
+            if (rec.state == RS_REC)
+                rec_frame(m > 1.0f ? 1.0f : m < -1.0f ? -1.0f : m);
+        }
+    {
+        CS_MARK(t0);
+        PLAT_FAR(fx_master)(l, r, (int)n, j->gain);   /* compressor, filter, MASTER (gliding), limiter (RAM) */
+        j->t_master = plat_ticks24() - t0;
+    }
+    if ((j->want & (1u << PF_STUT | 1u << PF_TAPE | 1u << PF_CRUSH)) || perf.fade < 1.0f)
+        pf_output(l, r, n, j->want);
+    {
+        const float bl = j->beat_len;
+        const int on = j->click_on;
+        ck.to_next *= j->ratio;
+        for (i = 0; i < n; i++) {         /* the metronome's beats: the bar's start, then the counter */
+            if (!j->playing && !j->counting) {
+                ck.beat = 0;
+            } else if ((int)i == j->bar_at) {
+                if (on)
+                    click_hit(1);
+                ck.beat = 1;
+                ck.to_next = bl;
+            } else if ((ck.to_next -= 1.0f) <= 0.0f) {
+                ck.to_next += bl;
+                if (on && (ck.beat || !j->playing))   /* (playing, beat 1 is the bar's) */
+                    click_hit(ck.beat == 0);
+                ck.beat = (ck.beat + 1) & 3;
+            }
+            if (ck.env > 0.0001f) {       /* after the master bus, under MASTER: not in a sample or the meters (in the
+                                           * USB master pair, and under MASTER on the speaker: plat_usb_audio_full) */
+                float y = ck.c * ck.y1 - ck.y2, v = ck.y1 * ck.env * j->gain;
+                ck.y2 = ck.y1;
+                ck.y1 = y;
+                ck.env *= 0.9975f;
+                l[i] += v;
+                r[i] += v;
+            }
+        }
+    }
+    j->done = 1;
+}
+
+void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
+{
+    uint32_t done = 0, i;
+    const uint32_t prev = cur_set;        /* the block before's set: its tail runs now (post_job) */
+    int bar_at = -1, post_there = 0, post_here = 0;
+    float gain = (float)master_q12 / 4096.0f, pk = peak, pkl = peak_l, pkr = peak_r;
+    CS_MARK(cs_start);
+    for (i = 0; i < CS_NUM; i++)
+        cs_t[i] = 0;
+    if (n > APP_BLOCK)
+        n = APP_BLOCK;
+    cur_set ^= 1u;                        /* this block into the other set */
+    {
+        post_t *j = &post[cur_set];
+        bus_t *b = BUS[cur_set];
+        buf_l = b->l;
+        buf_r = b->r;
+        bus_rev = b->rev;
+        bus_dly = b->dly;
+        j->ready = j->done = 0;
+        j->kick_vel = 0.0f;
+        j->ratio = 1.0f;
+        j->t_fx = j->t_master = 0;
+    }
+    if (post[prev].ready)                 /* the block before's tail: on the second core while this one renders */
+        post_there = cpu2 && plat_cpu2_on() && plat_cpu2_run(post_job, prev);
+    if (STEMS) {                          /* a computer records the USB stems this block: the block before's go */
+        uint32_t run;
+        stems_on = plat_usb_ch(0, &run) != 0;
+        if (stems_on)
+            stems_send(n);
+    }
+    midi_in();
+    render_t += n;
+    tempo_stretch();
+    {   /* the perform keys: what changed since the last block (ROLL here; the output's effects: post_job) */
+        uint8_t w = perf.want, up = (uint8_t)(w & ~perf.on);
+        if (up >> PF_ROLL & 1u) {
+            int t;
+            roll_inhibit_tracks = proj.tmute;
+            roll_inhibit_pads = dcur()->mute;
+            for (t = 0; t < NTRK; t++)
+                perf.roll_step[t] = (int8_t)(sq.t[t].step < 0 ? 0 : sq.t[t].step);
+            perf.roll_to = 0.0f;
+            perf.roll_len = bar_samples() * (1.0f / 16.0f) * ROLL_F[perf.roll_rate % 5];
+        }
         perf.on = w;
     }
     if (sq.playing && (proj.recq >> 2 & 3u) == 1u) {   /* MIDI CLOCK sent: 24 a beat (to the block) */
@@ -3043,56 +3204,37 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             if (perf.on >> PF_WASH & 1u)
                 bus_rev[i] += d;
         }
-    {
-        CS_MARK(cs_f0);
-        fx_process(buf_l, buf_r, bus_rev, bus_dly, mix_out_l, mix_out_r, (int)n);   /* the reverb and the delay */
-        cs_t[CS_FX] += plat_ticks24() - cs_f0;
+    {   /* this block's tail, noted for the next block (post_job) */
+        post_t *j = &post[cur_set];
+        const int mode = click_mode();
+        j->n = n;
+        j->gain = gain;
+        j->bpm = (float)proj.bpm10 * 0.1f;
+        j->beat_len = bar_samples() * 0.25f;
+        j->want = perf.on;
+        j->playing = sq.playing;
+        j->counting = ck.count > 0;
+        j->bar_at = bar_at;
+        j->click_on = (uint8_t)((sq.playing && (mode == CK_ON || (mode == CK_REC && ck.rec))) || ck.count > 0);
+        j->ready = 1;
     }
-    if (rec.state == RS_ARMED || rec.state == RS_REC)   /* sampling: the mix as it sounds, before the master */
-        for (i = 0; i < n && (rec.state == RS_ARMED || rec.state == RS_REC); i++) {
-            float m = 0.5f * (mix_out_l[i] + mix_out_r[i]);
-            if (rec.state == RS_ARMED && (m > 0.01f || m < -0.01f))
-                rec.state = RS_REC;       /* the first sound over -40 dB starts it */
-            if (rec.state == RS_REC)
-                rec_frame(m > 1.0f ? 1.0f : m < -1.0f ? -1.0f : m);
-        }
-    {
-        CS_MARK(cs_m0);
-        PLAT_FAR(fx_master)(mix_out_l, mix_out_r, (int)n, gain);   /* compressor, filter, MASTER (gliding), limiter (RAM) */
-        cs_t[CS_MASTER] += plat_ticks24() - cs_m0;
-    }
-    if (perf.on & (1u << PF_STUT | 1u << PF_TAPE | 1u << PF_CRUSH) || perf.fade < 1.0f)
-        pf_output(mix_out_l, mix_out_r, n);
-    {
-        float bl = bar_samples() * 0.25f;
-        int mode = click_mode(), on = (sq.playing && (mode == CK_ON || (mode == CK_REC && ck.rec))) || ck.count > 0;
-        for (i = 0; i < n; i++) {         /* the metronome's beats: the bar's start, then the counter */
-            if (!sq.playing && ck.count <= 0) {
-                ck.beat = 0;
-            } else if ((int)i == bar_at) {
-                if (on)
-                    click_hit(1);
-                ck.beat = 1;
-                ck.to_next = bl;
-            } else if ((ck.to_next -= 1.0f) <= 0.0f) {
-                ck.to_next += bl;
-                if (on && (ck.beat || !sq.playing))   /* (playing, beat 1 is the bar's) */
-                    click_hit(ck.beat == 0);
-                ck.beat = (ck.beat + 1) & 3;
+    {   /* the block before's tail: the second core's, waited for (its synth jobs after it were, already); else here */
+        post_t *j = &post[prev];
+        if (j->ready) {
+            if (post_there)
+                plat_cpu2_wait();
+            if (!j->done) {
+                post_job(prev);
+                post_here = 1;
             }
-            if (ck.env > 0.0001f) {       /* after the master bus, under MASTER: not in a sample or the meters (in the
-                                           * USB master pair, and under MASTER on the speaker: plat_usb_audio_full) */
-                float y = ck.c * ck.y1 - ck.y2, v = ck.y1 * ck.env * gain;
-                ck.y2 = ck.y1;
-                ck.y1 = y;
-                ck.env *= 0.9975f;
-                mix_out_l[i] += v;
-                mix_out_r[i] += v;
-            }
+        } else {
+            for (i = 0; i < n; i++)
+                BUS[prev]->l[i] = BUS[prev]->r[i] = 0.0f;
         }
+        j->ready = 0;
     }
     for (i = 0; i < n; i++) {
-        float l = mix_out_l[i], r = mix_out_r[i];
+        float l = BUS[prev]->l[i], r = BUS[prev]->r[i];
         if (l > 0.999f || l < -0.999f || r > 0.999f || r < -0.999f)
             clips++;
         if (l > 0.999f) l = 0.999f; else if (l < -0.999f) l = -0.999f;
@@ -3105,14 +3247,21 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     peak = pk > pkl ? (pk > pkr ? pk : pkr) : (pkl > pkr ? pkl : pkr);
     peak_l = pkl;
     peak_r = pkr;
-    {   /* the stages' running means (about the last 50 blocks: 0.3 s) */
-        uint32_t tot = plat_ticks24() - cs_start, sum = 0;
-        for (i = 0; i < CS_REST; i++)
-            sum += cs_t[i];
+    {   /* the stages' running means (about the last 50 blocks: 0.3 s). REVERB+DELAY and MASTER: the block before's
+         * tail, on the second core (or this one's, then counted out of REST); REST: the rest of this core's time,
+         * waiting for the second included */
+        uint32_t tot = plat_ticks24() - cs_start, sum = cs_t[CS_DRUMS] + cs_t[CS_SYNTH] + cs_t[CS_FXIN];
+        cs_t[CS_FX] = post[prev].t_fx;
+        cs_t[CS_MASTER] = post[prev].t_master;
+        if (post_here)
+            sum += cs_t[CS_FX] + cs_t[CS_MASTER];
         cs_t[CS_REST] = tot > sum ? tot - sum : 0u;
         cs_t[CS_TOTAL] = tot;
-        for (i = 0; i < CS_NUM; i++)
-            cs_us[i] += ((float)cs_t[i] * (1.0f / (float)PLAT_TICKS_PER_US) - cs_us[i]) * 0.02f;
+        for (i = 0; i < CS_NUM; i++) {
+            const float u = (float)cs_t[i] * (1.0f / (float)PLAT_TICKS_PER_US);
+            cs_us[i] += (u - cs_us[i]) * 0.02f;
+            cs_pk[i] = u > cs_pk[i] ? u : cs_pk[i] * 0.997f;
+        }
     }
 }
 
@@ -5581,8 +5730,8 @@ static void reload_sound(void)            /* SAVE + OCT-: the track's sound (the
             drum_map_apply(saved_kit, saved_map);
             proj.dpreset = saved_preset >= DPRESET_COUNT ? (uint8_t)kit_factory(saved_kit) : saved_preset;
         }
-        pots_apply();
         plat_unlock(f);
+        pots_to_engines();                /* (a pad at a time under the lock) */
     } else {
         static track_t t;
         static psound_t q;
@@ -8860,16 +9009,22 @@ static void page_home(void)               /* the scene grid: 16 patterns across 
 }
 
 /* SETUP turned with SELECT (0.5, CPU): the render's time by stage (app_render's cs_us), each as a share of the time a
- * block has (APP_BLOCK frames at 44.1 kHz), a bar and a number; the total, and the blocks that came late since the
- * start. The synth's second core counts only as the first's wait for it */
+ * block has (APP_BLOCK frames at 44.1 kHz), a bar and a number; a tick on the bar at its worst block lately (cs_pk);
+ * the total, the total's worst block (PEAK), and the blocks that came late since the start. The reverb and delay and
+ * the master bus run on the second core (CORE2: post_job), beside the first's; the rest, and TOTAL, are the first
+ * core's, which waits for the second at the end of a block (OTHER) and for its half of the synth's voices (SYNTH) */
 static void page_cpu(void)
 {
-    static const char *const NM[CS_NUM] = {"DRUMS", "SYNTH", "INSERT+COLOR", "REVERB+DELAY", "MASTER", "OTHER", "TOTAL"};
+    static const char *const NM[CS_NUM] = {"DRUMS", "SYNTH", "INSERT+COLOR", "REV+DLY CORE2", "MASTER CORE2", "OTHER",
+                                           "TOTAL"};
     const float per = 100.0f * 44100.0f / (1.0e6f * (float)APP_BLOCK);   /* us a block -> % of its time */
     char t[24], u[8];
     int i;
     t[0] = 0;
-    text_cat(t, "LATE ");
+    text_cat(t, "PEAK ");
+    int_text((int32_t)(cs_pk[CS_TOTAL] * per + 0.5f), u);
+    text_cat(t, u);
+    text_cat(t, "% LATE ");
     int_text((int32_t)plat_xruns(), u);
     text_cat(t, u);
     band_set(C_CREAM, "SETUP", "CPU BY STAGE", t, 0, 0);
@@ -8880,6 +9035,12 @@ static void page_cpu(void)
         cv_rect(104, y + 3, 100, 8, C_GRID);
         if (w > 0)
             cv_rect(104, y + 3, w, 8, i == CS_TOTAL && pct > 85 ? TH_RED : C_METER);
+        {   /* the worst block lately: a tick (at the end when past 100 %) */
+            int pk = (int)(cs_pk[i] * per + 0.5f);
+            pk = pk > 99 ? 99 : pk;
+            if (pk > w)
+                cv_rect(104 + pk, y + 1, 2, 12, pk >= 99 ? TH_RED : TH_TXT);
+        }
         int_text(pct, u);
         text_cat(u, "%");
         text_r(232, y - 2, &FONT_XS, u, TH_TXT);
@@ -9954,6 +10115,9 @@ int app_expect(const char *what, int *got)
     } else if (!strncmp(what, "cpu", 3) && what[3] >= '0' && what[3] < '0' + CS_NUM && !what[4]) {
         /* cpuN: stage N's running mean, us x 10 per block (0 DRUMS 1 SYNTH 2 FX IN 3 FX 4 MASTER 5 REST 6 TOTAL) */
         *got = (int)(cs_us[what[3] - '0'] * 10.0f + 0.5f);
+    } else if (!strncmp(what, "cpupk", 5) && what[5] >= '0' && what[5] < '0' + CS_NUM && !what[6]) {
+        /* cpupkN: stage N's worst block lately, us x 10 */
+        *got = (int)(cs_pk[what[5] - '0'] * 10.0f + 0.5f);
     } else if (!strcmp(what, "wlit")) {   /* the white keys lit, a bit a key (white 1: 1) */
         *got = lit_white;
     } else if (!strcmp(what, "wdim")) {   /* the white keys glowing */

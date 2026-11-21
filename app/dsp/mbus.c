@@ -228,7 +228,9 @@ void mbus_set(mbus_t *m, int i, int v)
         stereo_coefs(m);
 }
 
-/* ---- the audio (GhettoMachine 0.5, CPU: from RAM, gm_ram.h: fx_master calls it) */
+/* ---- the audio (GhettoMachine 0.5, CPU: from RAM, gm_ram.h: fx_master calls it; on the second core, whose stack is
+ * 2.8 KB: the meter's and STEREO's scratch in pieces of MB_PIECE samples, the same sums) */
+#define MB_PIECE 64
 GM_RAM void mbus_eq(mbus_t *m, float *l, float *r, int n)
 {
     int b;
@@ -272,10 +274,10 @@ GM_RAM void mbus_tape_stereo(mbus_t *m, float *l, float *r, int n)
         tape_run(m, r, n, 1);
     }
     if (m->st_on) {
-        float w = 0.5f * m->width, gl = m->bal_l, gr = m->bal_r, side[256];
+        float w = 0.5f * m->width, gl = m->bal_l, gr = m->bal_r, side[MB_PIECE];
         int done = 0;
-        while (done < n) {                        /* (in pieces of 256: the side's own buffer) */
-            int k = n - done < 256 ? n - done : 256;
+        while (done < n) {                        /* (in pieces: the side's own buffer) */
+            int k = n - done < MB_PIECE ? n - done : MB_PIECE;
             float *L = l + done, *R = r + done;
             for (i = 0; i < k; i++)
                 side[i] = (L[i] - R[i]) * w;
@@ -309,13 +311,13 @@ void mbus_meter_on(mbus_t *m, int on)
 
 GM_RAM void mbus_meter(mbus_t *m, const float *l, const float *r, int n)
 {
-    float kl[256], kr[256], acc = m->lu_acc, lr = m->c_lr, ll = m->c_ll, rr = m->c_rr;
+    float kl[MB_PIECE], kr[MB_PIECE], acc = m->lu_acc, lr = m->c_lr, ll = m->c_ll, rr = m->c_rr;
     const float a = 7.558e-5f;                   /* the correlation's averages: 300 ms */
     int i, k, done = 0, cnt = m->lu_n;
     if (!m->meter_on)
         return;
     while (done < n) {
-        k = n - done < 256 ? n - done : 256;
+        k = n - done < MB_PIECE ? n - done : MB_PIECE;
         for (i = 0; i < k; i++) {
             kl[i] = l[done + i];
             kr[i] = r[done + i];

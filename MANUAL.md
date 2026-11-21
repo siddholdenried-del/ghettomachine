@@ -20,9 +20,10 @@ GhettoMachine, part of the BongWare firmware line engineered by BongTech, turns 
 > (1, 5, 9, 13): that build went on the FM-1 on 21 Nov, and a recording from it had no clicks. REC + GLO (erase the
 > track's part, to record it again) went on it the same day, and later the 808 brought up to the 909's level with the
 > Dungeon BBS screen. The CPU pass (SETUP's CPU view; a cheaper 606, Color and phaser; effects that sleep on silence) went
-> on it the same day. A second pass (the reverb at half the rate; the synth's voices, the reverb, the delay and the master
-> bus run from RAM) is in the source, not on the FM-1 yet. 0.5 is 0.4 plus the USB stems. 0.4 is 0.3 plus the 303 generator, the new name and the boot screen's logo; 0.3 is 0.2 plus the performance
-> update (the scene grid onwards) and the synth update. 0.5 passes its simulator tests (2,136 checks, 39 more on the
+> on it the same day, and a second pass (the reverb at half the rate; the synth's voices, the reverb, the delay and the
+> master bus run from RAM) later that day. A third (the reverb, the delay and the master bus on the second core, a block
+> behind the first; the CPU view's peaks) is in the source, not on the FM-1 yet. 0.5 is 0.4 plus the USB stems. 0.4 is 0.3 plus the 303 generator, the new name and the boot screen's logo; 0.3 is 0.2 plus the performance
+> update (the scene grid onwards) and the synth update. 0.5 passes its simulator tests (2,140 checks, 39 more on the
 > synth itself and 48 on the master bus's sound). It reads a project saved by 0.2, 0.3 or 0.4.
 
 ## Installing it, and getting back
@@ -503,9 +504,12 @@ Press HOME on the SONG page.
   follow action) takes that pattern's sound; a pattern with none yet takes the sound that's playing. So pattern 1 can
   be a 909 with a soft pad and pattern 2 an 808 with an acid bass. The grid shows which patterns have their own.
 - **SELECT: CPU.** Turn SELECT to see where the processor's time goes, live: **DRUMS**, **SYNTH**, **INSERT+COLOR**,
-  **REVERB+DELAY**, **MASTER**, **OTHER** and the **TOTAL**, each as a share of the time the FM-1 has for each block of
-  sound, and **LATE**: the blocks that weren't ready in time since it started (each a glitch). The synth's second core
-  counts only as the time the first waits for it. Turn SELECT back for the clock and the sounds.
+  **REV+DLY CORE2**, **MASTER CORE2**, **OTHER** and the **TOTAL**, each as a share of the time the FM-1 has for each
+  block of sound. The bar is the average; a tick past it marks the worst block of the last second or so (a pattern
+  starting, a switch), and the band's **PEAK** is the total's. **LATE**: the blocks that weren't ready in time since it
+  started (each a glitch). The reverb, the delay and the master bus run on the FM-1's second core (CORE2) while the
+  first renders the next block; TOTAL is the first core's, and it waits for the second at the end of a block (in
+  OTHER) and for its half of the synth's voices (in SYNTH). Turn SELECT back for the clock and the sounds.
 
 ## What is kept, and where
 
@@ -550,7 +554,14 @@ the sound saved with the pattern it's on.
   delay and the master bus run from the FM-1's RAM instead of through its flash's cache, which both cores share. The
   synth's sound is bit for bit as it was. What costs most on the FM-1, roughly: the 606 (about 2.5 times the 909, 8 times
   the 707), then each synth voice sounding (a unison stack such as SUPERSAW is 4 a note, and a pad's long release keeps
-  the last chord's voices going under the next), then the reverb and delay, then the master bus.
+  the last chord's voices going under the next), then the reverb and delay, then the master bus. The third pass (21 Nov,
+  after the FM-1 still went late as patterns started and switched): the FM-1's two cores split each block's work. The
+  first renders block N (the sequencer, the drums, the synth's voices, the inserts and Color) while the second finishes
+  block N - 1 (the reverb and the delay, a sample being recorded, the master bus, STUTTER, TAPE STOP and CRUSH, the
+  metronome); before, the second core only took half the synth's voices. So everything is heard a block (5.8 ms) later
+  than before, the USB stems with it; the sound is otherwise bit for bit the same. Loading a kit's knobs (a user kit, a
+  pattern switch with SOUNDS PER PATTERN, RELOAD, a project) holds the audio off for one pad at a time, not for all
+  four kits at once (about a millisecond on the FM-1).
 - The first recording of the stems from the FM-1 had each track on its own pair, but the USB buffer ran dry about a
   dozen times in 9 seconds, each a click in the recording (not in the FM-1's own sound). 0.5 now keeps a deeper buffer
   (about 6 ms more delay); recorded from on 21 Nov with MASTER at 0, it had no clicks and the master pair kept its

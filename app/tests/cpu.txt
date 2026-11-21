@@ -1,6 +1,8 @@
 # CPU (0.5): a track's insert and Color sleep once silence has gone through them a while (fxsleepN: track N's chain
 # asleep), and wake with its next sound; SETUP turned with SELECT shows the render's time by stage (cpuN: stage N's
-# running mean, us x 10 a block: 0 DRUMS 1 SYNTH 2 INSERT+COLOR 3 REVERB+DELAY 4 MASTER 5 OTHER 6 TOTAL).
+# running mean, us x 10 a block: 0 DRUMS 1 SYNTH 2 INSERT+COLOR 3 REVERB+DELAY 4 MASTER 5 OTHER 6 TOTAL; cpupkN: its
+# worst block lately, the tick on its bar; the band's PEAK, the total's). Since the second CPU pass the reverb and delay
+# and the master bus run on the second core, a block behind the first (3 and 4 are its time).
 #   tools/build.py ../../app --host, then  app/build/host/ghettomachine_host app/tests/cpu.txt OUTDIR (OUTDIR must exist)
 wait 600
 master 4096
@@ -95,6 +97,11 @@ wait 600
 expect setupview 1
 expect cpu0 >0
 expect cpu6 >0
+expect cpu3 >0
+expect cpu4 >0
+# the worst block lately: never under the running mean
+expect cpupk6 >0
+expect cpupk0 >0
 shot cpu_page.png
 turn SELECT -1
 wait 30
