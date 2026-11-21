@@ -83,6 +83,8 @@ void drums_cut_pad(int pad)
         return;
     drum909_cut(&d909, pad);
     drum808_cut(&d808, PAD808[pad]);
+    if (PAD606[pad] >= 0)
+        drum606_cut(&d606, PAD606[pad]);
 }
 
 void drums_render(int kit, float *l, float *r, float *rev, float *dly, int n)

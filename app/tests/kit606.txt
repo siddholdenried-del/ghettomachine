@@ -73,3 +73,22 @@ wait 30
 release SAVE
 wait 70
 expect pot7_0 57
+# Hard mute must kill the active 606 lane too.
+midi 99 2E 7F
+wait 20
+expect stem1 >-650
+press ENV
+wait 20
+key 20 down
+wait 20
+key 20 up
+wait 20
+release ENV
+wait 20
+expect mute 256
+expect stemreset 1
+wait 15
+expect stem1 -1200
+midi 99 2E 7F
+wait 25
+expect stem1 -1200

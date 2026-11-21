@@ -1,6 +1,6 @@
 # BongTech GhettoMachine
 
-A four-track groovebox firmware for the **M-VAVE FM-1**: one drum track (909 or 808, every pad editable) and three
+A four-track groovebox firmware for the **M-VAVE FM-1**: one drum track (909, 808 or 606 with editable sounds) and three
 instrument tracks, each a mono synth, a poly synth or a sampler. A 128-step sequencer with 16 patterns, a scene grid
 for playing live, an LFO on every track, an arpeggiator and chord mode, a reverb, a tempo delay and a master bus with a
 mastering chain, a deeper synth (FM, ring, a wave shaper, a mod matrix, macros), a **303 pattern generator** whose

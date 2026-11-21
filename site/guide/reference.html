@@ -30,7 +30,7 @@
 <tr><th scope="row">SEQ</th><td>STEPS, ACID, KEYS (see above).</td><td>Held on DRUMS STEPS: the step lights show accents, and white keys toggle accents.</td></tr>
 <tr><th scope="row">ENV, LFO, ARP, FX, GLO, HOME</th><td>Their pages (see above).</td><td>No hold function.</td></tr>
 <tr><th scope="row">OCT−</th><td colspan="2">In order of priority: SAVE held: reload the sound. HOME with a track key held: stop that track's clip. HOME (EDIT and REC not held): tap tempo, tapped twice or more. REC held: QUANTIZE. A step held: clear its locks and chance. EDIT held: undo. SONG: delete the cursor's entry. ACID: MUTATE. T2–T4 KEYS, EDIT, ENV, LFO, ARP, mixer, FX and master pages: octave down. STEPS and DRUMS EDIT: previous step bank.</td></tr>
-<tr><th scope="row">OCT+</th><td colspan="2">In order of priority: HOME with a track key held: solo that track (again: unsolo). HOME (EDIT and REC not held): TAPE STOP while held. REC held: LEGATO. A step held on T2–T4: cycle HALF, WHOLE, SLIDE. EDIT held: redo. SONG: copy the cursor's entry after it. DRUMS MUTE page: every pad on. ACID: NEW line. T2–T4 KEYS, EDIT, ENV, LFO, ARP, mixer, FX and master pages: octave up. STEPS and DRUMS EDIT: next step bank.</td></tr>
+<tr><th scope="row">OCT+</th><td colspan="2">With SEQ held: repeat the selected track part, when the length and locks fit. On PICK NOTES: move the picker range up. Otherwise: HOME with a track key held: solo that track (again: unsolo). HOME (EDIT and REC not held): TAPE STOP while held. REC held: LEGATO. A step held on T2–T4: cycle HALF, WHOLE, SLIDE. EDIT held: redo. SONG: copy the cursor's entry after it. DRUMS MUTE page: every pad on. ACID: NEW line. T2–T4 KEYS, EDIT, ENV, LFO, ARP, mixer, FX and master pages: octave up. STEPS and DRUMS EDIT: next step bank.</td></tr>
 </tbody></table>
 
 <h2 id="keys">What the keys do on each page</h2>
@@ -153,7 +153,7 @@
 <thead><tr><th scope="col">Page</th><th scope="col">K1</th><th scope="col">K2</th><th scope="col">K3</th><th scope="col">K4</th></tr></thead>
 <tbody>
 <tr><th scope="row">ARP</th><td>MODE: OFF, UP, DOWN, UP+DOWN, RANDOM, AS PLAYED</td><td>RATE: 1/4, 1/8, 1/8T, 1/16, 1/16T, 1/32 (1/16 at first)</td><td>OCTAVES: 1–4</td><td>GATE: 5–100%, 5% a click (50% at first)</td></tr>
-<tr><th scope="row">ARP 2</th><td>LATCH: OFF, ON</td><td>CHORD: OFF, MAJ, MIN, 7, MAJ7, MIN7, SUS2, SUS4, DIM, AUG, 5, OCT</td><td>INVERT: ROOT, 1ST, 2ND, 3RD</td><td>—</td></tr>
+<tr><th scope="row">ARP 2</th><td>LATCH: OFF, ON</td><td>CHORD: OFF, MAJ, MIN, 7, MAJ7, MIN7, SUS2, SUS4, DIM, AUG, 5, OCT, MIN9, MAJ9, 7#9, 7SUS4</td><td>INVERT: ROOT, 1ST, 2ND, 3RD</td><td>—</td></tr>
 </tbody></table>
 <p>The arpeggiator plays held keys, incoming MIDI notes and the notes of sequenced steps, up to 16 notes. LATCH keeps notes going after you let go; turning LATCH off with no key down stops them. CHORD makes every key play a chord of up to four notes; inversions move its lowest notes up an octave. Chords record into a step as up to four notes. Incoming MIDI notes are not turned into chords.</p>
 

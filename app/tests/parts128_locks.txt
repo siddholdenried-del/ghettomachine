@@ -1,0 +1,40 @@
+# Doubling carries chance, knob locks and accents; halving removes them; undo restores them.
+wait 600
+tap EDIT
+wait 30
+key 14 down
+wait 30
+turn SELECT -5
+wait 30
+turn K2 10
+wait 30
+key 14 up
+wait 30
+expect prob0_9 75
+expect lock0_9_1 >-1
+expect acc9 1
+press SEQ
+tap OCT+
+release SEQ
+wait 30
+expect len 32
+expect hit0_25 1
+expect acc25 1
+expect prob0_25 75
+expect lock0_25_1 >-1
+press SEQ
+tap OCT-
+release SEQ
+wait 30
+expect len 16
+expect hit0_25 0
+expect acc25 0
+expect prob0_25 100
+expect lock0_25_1 -1
+press EDIT
+tap OCT-
+release EDIT
+wait 30
+expect len 32
+expect prob0_25 75
+expect lock0_25_1 >-1
