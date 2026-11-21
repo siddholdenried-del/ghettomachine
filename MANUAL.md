@@ -22,9 +22,11 @@ GhettoMachine, part of the BongWare firmware line engineered by BongTech, turns 
 > Dungeon BBS screen. The CPU pass (SETUP's CPU view; a cheaper 606, Color and phaser; effects that sleep on silence) went
 > on it the same day, and a second pass (the reverb at half the rate; the synth's voices, the reverb, the delay and the
 > master bus run from RAM) later that day. A third (the reverb, the delay and the master bus on the second core, a block
-> behind the first; the CPU view's peaks) went on it that evening. The sections' budgets (the drums 20 %, the synth
-> 30 %, the effects 25 % of the processor) are in the source, not on the FM-1 yet. 0.5 is 0.4 plus the USB stems. 0.4 is 0.3 plus the 303 generator, the new name and the boot screen's logo; 0.3 is 0.2 plus the performance
-> update (the scene grid onwards) and the synth update. 0.5 passes its simulator tests (2,183 checks, 39 more on the
+> behind the first; the CPU view's peaks) went on it that evening. The sections' budgets went on it that night at 20 %
+> for the drums, 30 % for the synth and 25 % for the effects: played, it had no late blocks, but the budgets cut 138 drum
+> sounds in a minute and held the synth to 4 or 5 voices with a third of the first core unused. Loosened to 30 %, 40 %
+> and 25 % in the source, not on the FM-1 yet. 0.5 is 0.4 plus the USB stems. 0.4 is 0.3 plus the 303 generator, the new name and the boot screen's logo; 0.3 is 0.2 plus the performance
+> update (the scene grid onwards) and the synth update. 0.5 passes its simulator tests (2,184 checks, 39 more on the
 > synth itself and 48 on the master bus's sound). It reads a project saved by 0.2, 0.3 or 0.4.
 
 ## Installing it, and getting back
@@ -564,9 +566,10 @@ the sound saved with the pattern it's on.
   pattern switch with SOUNDS PER PATTERN, RELOAD, a project) holds the audio off for one pad at a time, not for all
   four kits at once (about a millisecond on the FM-1).
 - **Budgets** (21 Nov, in the source): each section has a share of the processor it can't pass, so one can't take the
-  others' time: the **drums 20 %**, the **synth 30 %**, the **effects 25 %** (the inserts, Color, the reverb and the
+  others' time: the **drums 30 %**, the **synth 40 %**, the **effects 25 %** (the inserts, Color, the reverb and the
   delay together). Over its share a section gives up its least important work, without a glitch in the rest:
-  - the synth's voices are capped at what 30 % buys, at what a voice is measured to cost as you play; a note over the
+  - the synth's voices are capped at what 40 % buys (about 8 on the FM-1: a voice was measured at about 4 % of a
+    block), at what a voice is measured to cost as you play; a note over the
     cap takes the place of the quietest voice letting go, else the oldest. A shed voice fades out in about 10 ms
     whatever its release (before, a pad's long release kept it costing for seconds);
   - the drums' oldest sound still ringing is cut (a cymbal's or a tom's tail before a hit just played);

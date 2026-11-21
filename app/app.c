@@ -428,8 +428,10 @@ static void sync_drum_mutes(void)
  * about 10 ms), the effects BUD_FX % (the inserts, Color, the reverb and the delay together: over it, a Color strip,
  * then an insert, leaves the chain, and comes back when there is room; the reverb, the delay and the master bus
  * always stay). So no section can take the others' time */
-#define BUD_DRUMS 20
-#define BUD_SYNTH 30
+#define BUD_DRUMS 30                      /* (20 and 30 at first, as asked: on the FM-1 they cut 138 drum sounds in a
+                                           * minute and held the synth to 4 or 5 voices with a third of the first core
+                                           * unused; loosened the same day) */
+#define BUD_SYNTH 40
 #define BUD_FX 25
 static struct {
     uint32_t clock;                       /* blocks rendered */
@@ -822,7 +824,17 @@ static uint32_t cs_t[CS_NUM];             /* this block's ticks */
 static float cs_us[CS_NUM];               /* the running means, us per block */
 static float cs_pk[CS_NUM];               /* the worst block lately, us: held, falling by half in about 1.3 s (the spikes
                                            * a running mean hides: a pattern starting, a switch) */
-static float cs_mx[CS_NUM];               /* the worst block since a screen reader last asked (speak: read remotely) */
+/* the worst block of the last 8 to 10 s, in buckets of 2 s (speak: read remotely; the reader's HELLO and its WHERE
+ * both ask, 0.2 s apart, so a maximum since the last asking covered only that) */
+#define CS_MXB 5
+static float cs_mx[CS_MXB][CS_NUM];
+static uint8_t cs_mxi;
+static uint16_t cs_mxn;
+/* the synth's stage in three parts (speak): the control tick (the LFOs, the arpeggiators, syn_prepare), the voices
+ * (both halves, the second core's waited for) and the mix (without the inserts and Color: FX IN's) */
+enum { SY_PREP, SY_VOICES, SY_MIX, SY_NUM };
+static uint32_t sy_t[SY_NUM];             /* this block's ticks */
+static float sy_us[SY_NUM];               /* the running means, us per block */
 #ifdef PLAT_HOST
 static float gov_fake[CS_NUM];            /* the simulator: the stages' times the budgets see, us (a test sets them:
                                            * its own clock is the computer's, which says nothing of the FM-1) */
@@ -2662,9 +2674,16 @@ static uint8_t pool_max, pool_now;        /* the voices allowed: 16 on two cores
 
 static void syn_job(uint32_t half) { PLAT_FAR(syn_half)(half); }   /* (RAM code, 0.5: dsp/gm_ram.h) */
 
+/* the second core takes its half of the voices only from SYN_SPLIT_MIN voices up: handing a job over and waiting for
+ * it costs the first core about what a voice or two does (the synth with no voices took 8 % of a block on the FM-1,
+ * eight hand-offs a block), so with fewer the first core renders them all */
+#define SYN_SPLIT_MIN 4
+
 static void syn_block(void)
 {
     int t;
+    uint32_t in0;
+    CS_MARK(t0);
     for (t = 0; t < NTRK; t++)
         lfo_tick(t, SYN_CTL);
     for (t = 1; t < NTRK; t++) {
@@ -2672,15 +2691,23 @@ static void syn_block(void)
         syn_mod(t, proj.lfo[t].dest, lfo_rt[t].out, (float)proj.lfo[t].depth / 64.0f);
     }
     syn_prepare();
-    if (cpu2 && plat_cpu2_on() && plat_cpu2_run(syn_job, 1u)) {
-        syn_job(0);
-        if (plat_cpu2_wait() != 0)        /* it was given up (cpu2_fallback): its half here */
+    {
+        CS_MARK(t1);
+        sy_t[SY_PREP] += t1 - t0;
+        if (cpu2 && syn_voices(-1) >= SYN_SPLIT_MIN && plat_cpu2_on() && plat_cpu2_run(syn_job, 1u)) {
+            syn_job(0);
+            if (plat_cpu2_wait() != 0)    /* it was given up (cpu2_fallback): its half here */
+                syn_job(1);
+        } else {
+            syn_job(0);
             syn_job(1);
-    } else {
-        syn_job(0);
-        syn_job(1);
+        }
+        t0 = plat_ticks24();
+        sy_t[SY_VOICES] += t0 - t1;
     }
+    in0 = cs_t[CS_FXIN];
     syn_mix(syn_l, syn_r, syn_rv, syn_dl);
+    sy_t[SY_MIX] += (plat_ticks24() - t0) - (cs_t[CS_FXIN] - in0);
     syn_at = 0;
 }
 
@@ -3400,8 +3427,18 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             const float u = (float)cs_t[i] * (1.0f / (float)PLAT_TICKS_PER_US);
             cs_us[i] += (u - cs_us[i]) * 0.02f;
             cs_pk[i] = u > cs_pk[i] ? u : cs_pk[i] * 0.997f;
-            if (u > cs_mx[i])
-                cs_mx[i] = u;
+            if (u > cs_mx[cs_mxi][i])
+                cs_mx[cs_mxi][i] = u;
+        }
+        if (++cs_mxn >= 344u) {           /* 2 s: the next bucket, started again */
+            cs_mxn = 0;
+            cs_mxi = (uint8_t)((cs_mxi + 1u) % CS_MXB);
+            for (i = 0; i < CS_NUM; i++)
+                cs_mx[cs_mxi][i] = 0.0f;
+        }
+        for (i = 0; i < SY_NUM; i++) {
+            sy_us[i] += ((float)sy_t[i] * (1.0f / (float)PLAT_TICKS_PER_US) - sy_us[i]) * 0.02f;
+            sy_t[i] = 0;
         }
         govern(cs_t[CS_DRUMS], cs_t[CS_SYNTH], cs_t[CS_FXIN], cs_t[CS_FX]);   /* the budgets, for the next block */
     }
@@ -9792,21 +9829,21 @@ static void speak(void)                   /* a screen reader that has just start
         }
         ann_say(t, 0, ANN_NOW);
         {   /* and the processor (0.5: read remotely while someone plays, tools/fm1_remote.py screen): each stage's
-             * share of a block, its mean and its worst block since the last asking; the blocks late; the voices
+             * share of a block, its mean and its worst block of the last 10 s; the blocks late; the voices
              * sounding, the budget's cap and the pool; what the budgets gave up (drum sounds cut, voices shed,
-             * effects taken out, and which are out now); the second core */
+             * effects taken out, and which are out now); the second core; the synth's parts */
             static const char *const NM[CS_NUM] = {"DRUMS", "SYNTH", "INSERTS", "REVERB", "MASTER", "OTHER", "CPU"};
             static const uint8_t SEQ[CS_NUM] = {CS_TOTAL, CS_DRUMS, CS_SYNTH, CS_FXIN, CS_FX, CS_MASTER, CS_REST};
             const float per = 100.0f * 44100.0f / (1.0e6f * (float)APP_BLOCK);
             char u[12];
             float mx[CS_NUM];
-            uint32_t f = plat_lock();
-            int i;
+            int i, b;
             for (i = 0; i < CS_NUM; i++) {
-                mx[i] = cs_mx[i];
-                cs_mx[i] = 0.0f;
+                mx[i] = 0.0f;
+                for (b = 0; b < CS_MXB; b++)
+                    if (cs_mx[b][i] > mx[i])
+                        mx[i] = cs_mx[b][i];
             }
-            plat_unlock(f);
             t[0] = 0;
             for (i = 0; i < CS_NUM; i++) {
                 int k = SEQ[i];
@@ -9850,6 +9887,23 @@ static void speak(void)                   /* a screen reader that has just start
             text_cat(t, u);
             text_cat(t, " KIT ");
             text_cat(t, drums_kit_name(proj.kit));
+            ann_say(t, 0, 0);
+            t[0] = 0;                     /* the synth's parts, us a block; what a voice is measured to cost */
+            text_cat(t, "SYNTH US PREP ");
+            int_text((int32_t)(sy_us[SY_PREP] + 0.5f), u);
+            text_cat(t, u);
+            text_cat(t, " VOICES ");
+            int_text((int32_t)(sy_us[SY_VOICES] + 0.5f), u);
+            text_cat(t, u);
+            text_cat(t, " MIX ");
+            int_text((int32_t)(sy_us[SY_MIX] + 0.5f), u);
+            text_cat(t, u);
+            text_cat(t, " A VOICE ");
+            int_text((int32_t)(gov.per_voice + 0.5f), u);
+            text_cat(t, u);
+            text_cat(t, " BASE ");
+            int_text((int32_t)(gov.syn_base + 0.5f), u);
+            text_cat(t, u);
             ann_say(t, 0, 0);
         }
     }

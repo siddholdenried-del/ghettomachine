@@ -1,5 +1,5 @@
-# The sections' budgets (0.5): the drums 20 %, the synth 30 %, the effects 25 % of a block's time (1161, 1741 and 1451
-# of its 5805 us). Over its share a section gives up its least important work: the synth's voices are capped at what
+# The sections' budgets (0.5): the drums 30 %, the synth 40 %, the effects 25 % of a block's time (1741, 2322 and 1451
+# of its 5805 us; 20 and 30 % at first, loosened once the FM-1 showed what they cut). Over its share a section gives up its least important work: the synth's voices are capped at what
 # its share buys (a voice over the cap fades out in about 10 ms, whatever its release), the drums' oldest ringing sound
 # is cut, a Color strip and then an insert leave the chain and come back when there is room. The simulator's clock is
 # the computer's, so the budgets see the times a test gives them (cpufakeN_US: stage N takes US microseconds a block;
@@ -37,7 +37,9 @@ key 9 down
 wait 100
 expect voices3 6
 expect govcap 16
-# the synth takes 3000 us a block with six voices: 500 a voice, so its 1741 us buy three; the others gone in 10 ms
+# the synth takes 3000 us a block with six voices: 500 a voice, so its 2322 us buy four; the test's time stays 3000 as
+# they go (750 a voice with four: three; 1000 with three), so the cap comes down to its floor of three voices, the
+# others gone in 10 ms
 expect cpufake1_3000 1
 wait 100
 expect govcap 3
@@ -153,3 +155,6 @@ said CAP 16 POOL 16
 where
 wait 100
 said KIT 909
+where
+wait 100
+said SYNTH US PREP
