@@ -2946,23 +2946,29 @@ void app_init(void)
 /* a snapshot is a whole pattern (all four tracks) */
 #define NUNDO 8
 typedef struct { pattern_t p; gen_t g[NINST]; uint8_t idx; } snap_t;   /* (the parts' generators with them) */
-static snap_t undo_s[NUNDO] PLAT_POOL, redo_s[NUNDO] PLAT_POOL;
+/* The total can never exceed NUNDO: a new edit drops redo, and undo/redo
+ * each move one item. Grow the stacks from opposite ends of one pool. */
+static snap_t history[NUNDO] PLAT_POOL;
 static int undo_n, redo_n;
 static uint32_t undo_t, undo_kind;
 
-static void undo_push_to(snap_t *s, int *n, uint8_t idx)
+static void undo_capture(snap_t *s, uint8_t idx)
 {
-    int i;
-    if (*n == NUNDO) {                    /* full: the oldest goes */
-        for (i = 1; i < NUNDO; i++)
-            s[i - 1] = s[i];
-        (*n)--;
+    s->p = proj.p[idx];
+    for (int i = 0; i < NINST; i++)
+        s->g[i] = proj.gen[idx][i];
+    s->idx = idx;
+}
+
+static void undo_push(uint8_t idx)
+{
+    redo_n = 0;                          /* edits invalidate the future */
+    if (undo_n == NUNDO) {
+        for (int i = 1; i < NUNDO; i++)
+            history[i - 1] = history[i]; /* discard the oldest past state */
+        undo_n--;
     }
-    s[*n].p = proj.p[idx];
-    for (i = 0; i < NINST; i++)
-        s[*n].g[i] = proj.gen[idx][i];
-    s[*n].idx = idx;
-    (*n)++;
+    undo_capture(&history[undo_n++], idx);
 }
 
 /* before an edit of the current pattern: a snapshot, unless the same kind of edit (a knob turned on, notes
@@ -2972,31 +2978,51 @@ static void undo_mark(uint32_t kind)
 {
     uint32_t now = plat_ms();
     if (!(kind && kind == undo_kind && now - undo_t < 1000u))
-        undo_push_to(undo_s, &undo_n, (uint8_t)edit_pat());
+        undo_push((uint8_t)edit_pat());
     undo_kind = kind;
     undo_t = now;
     redo_n = 0;
     dirty = 1;
 }
 
+/* At capacity the opposing stacks touch. Exchange the active pattern and
+ * the boundary snapshot in place using one byte of scratch, not a new slot. */
+static void undo_swap(void *live, void *saved, size_t len)
+{
+    unsigned char *a = live, *b = saved;
+    for (size_t i = 0; i < len; i++) {
+        unsigned char old = a[i];
+        a[i] = b[i];
+        b[i] = old;
+    }
+}
+
 static void undo_step(int redo)
 {
-    snap_t *from = redo ? redo_s : undo_s, *to = redo ? undo_s : redo_s;
-    int *nf = redo ? &redo_n : &undo_n, *nt = redo ? &undo_n : &redo_n, i;
+    snap_t *from, *to;
     uint32_t f;
     uint8_t idx;
-    if (*nf == 0) {
+    if (redo ? redo_n == 0 : undo_n == 0) {
         app_say(redo ? "REDO" : "UNDO", "NOTHING");
         return;
     }
-    idx = from[*nf - 1].idx;
-    undo_push_to(to, nt, idx);
+    from = &history[redo ? NUNDO - redo_n : undo_n - 1];
+    to = &history[redo ? undo_n : NUNDO - redo_n - 1];
+    idx = from->idx;
+    if (from != to)
+        undo_capture(to, idx);
     f = plat_lock();
-    proj.p[idx] = from[*nf - 1].p;
-    for (i = 0; i < NINST; i++)
-        proj.gen[idx][i] = from[*nf - 1].g[i];
+    if (from == to) {
+        undo_swap(&proj.p[idx], &from->p, sizeof from->p);
+        undo_swap(proj.gen[idx], from->g, sizeof from->g);
+    } else {
+        proj.p[idx] = from->p;
+        for (int i = 0; i < NINST; i++)
+            proj.gen[idx][i] = from->g[i];
+    }
     plat_unlock(f);
-    (*nf)--;
+    undo_n += redo ? 1 : -1;
+    redo_n += redo ? -1 : 1;
     undo_kind = 0;
     dirty = 1;
     app_say(redo ? "REDO" : "UNDO", "");
@@ -5464,8 +5490,7 @@ static void pattern_copy_to(int n)        /* the whole pattern, all four tracks 
     int i;
     if (n == proj.pat)
         return;
-    undo_push_to(undo_s, &undo_n, (uint8_t)n);
-    redo_n = 0;
+    undo_push((uint8_t)n);
     f = plat_lock();
     proj.p[n] = *cur();
     for (i = 0; i < NINST; i++)
