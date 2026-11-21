@@ -4,11 +4,11 @@
 
   tools/gen_logo.py OUT.h          (fm1.toml gen; from app/, with Pillow)
 
-GHETTO / MACHINE in Sedgwick Ave Display (assets/fonts, SIL OFL 1.1) and BONGTECH under it in Barlow Semi Condensed
-SemiBold (fm1-base's assets, SIL OFL 1.1), laid out on the 240 x 240 screen as the font preview did: the name as large
-as fits 212 px (at most 70 px), the tagline 16 px with 3 px between its letters, the block centred. Each part is kept
-as its lit box, alpha 0..15, two pixels a byte: LOGO_NAME and LOGO_TAG. The supplied full square art is sampled
-without cropping and encoded as 4-bit palette indices for a lean RGB565 boot image. No font or PNG decoder on device.
+Keep the GHETTO / MACHINE wordmark in Sedgwick Ave Display and BONGTECH in
+Barlow Semi Condensed SemiBold. Each text mask uses 4-bit alpha. The exact
+supplied square artwork fills all 240 × 240 pixels without cropping; nearest-
+neighbour scaling and a 16-colour RGB565 palette preserve its pixel-art edges
+in 28,800 B. The renderer composites the wordmarks over it in small stripes.
 """
 import sys
 from pathlib import Path
@@ -21,7 +21,7 @@ TAG_TTF = APP.parent / "third_party" / "fm1-base" / "assets" / "fonts" / "Barlow
 LINES, TAG = ("GHETTO", "MACHINE"), "BONGTECH"
 W = 240
 ART_PNG = APP / "assets" / "boot-grin.png"
-ART_SIZE, ART_Y = 96, 134
+ART_SIZE, ART_Y = W, 0
 FIT, MAX_PX, TAG_PX, TAG_TRACK, TAG_GAP = 175, 56, 14, 3, 10
 
 
@@ -35,7 +35,7 @@ def layout():
     name_font = ImageFont.truetype(str(NAME_TTF), size)
     tag_font = ImageFont.truetype(str(TAG_TTF), TAG_PX)
     lh = round(size * 1.02)
-    y0 = 7
+    y0 = 49
 
     name = Image.new("L", (W, W), 0)
     d = ImageDraw.Draw(name)
@@ -78,8 +78,8 @@ def c_array(name, data):
 def boot_art():
     im = Image.open(ART_PNG).convert("RGBA")
     # The square preview came from the supplied Affinity design. Show it uncropped.
-    if im.width != im.height:
-        raise SystemExit("gen_logo: expected the supplied square boot-art source")
+    if im.size != (512, 512):
+        raise SystemExit("gen_logo: expected the exact 512 × 512 square boot-art preview")
     bg = Image.new("RGBA", im.size, (0, 0, 0, 255))
     bg.alpha_composite(im)
     idx = bg.convert("RGB").resize((ART_SIZE, ART_SIZE), Image.Resampling.NEAREST).quantize(
@@ -103,8 +103,8 @@ def main():
         h.append(f"#define LOGO_{k}_X {x}\n#define LOGO_{k}_Y {y}\n#define LOGO_{k}_W {w}\n#define LOGO_{k}_H {hh}")
         h.append(c_array(f"LOGO_{k}", data))
     ax, ay, aw, palette, data = boot_art()
-    if ay < parts["TAG"][1] + parts["TAG"][3] + 5 or ay + aw > W:
-        raise SystemExit("gen_logo: tagline and art collide or the art would clip")
+    if (ax, ay, aw) != (0, 0, W) or len(data) != W * W // 2:
+        raise SystemExit("gen_logo: artwork must cover the entire screen in packed 4-bit indices")
     h.append(f"#define LOGO_ART_X {ax}\n#define LOGO_ART_Y {ay}\n#define LOGO_ART_W {aw}\n#define LOGO_ART_H {aw}")
     h.append("static const uint16_t LOGO_ART_RGB[16] = {" + ", ".join(f"0x{v:04x}" for v in palette) + "};")
     h.append(c_array("LOGO_ART", data))

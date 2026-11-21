@@ -9065,18 +9065,29 @@ static void logo_art(int32_t top, int32_t n)
     }
 }
 
+static void logo_outline(const uint8_t *mask, int32_t x, int32_t y, int32_t w, int32_t h,
+                         int32_t top, int32_t n)
+{
+    /* One-pixel dark outline using the same compact mask: no extra bitmap. */
+    logo_part(mask, x - 1, y, w, h, top, n, C_BLACK);
+    logo_part(mask, x + 1, y, w, h, top, n, C_BLACK);
+    logo_part(mask, x, y - 1, w, h, top, n, C_BLACK);
+    logo_part(mask, x, y + 1, w, h, top, n, C_BLACK);
+}
+
 void app_splash(void)
 {
-    const uint16_t paper = C_CANVAS;      /* preserve Dungeon BBS behind the supplied art */
-    const int32_t top = LOGO_NAME_Y, bot = LOGO_ART_Y + LOGO_ART_H;
-    int32_t y, n;
-    lcd_fill(0, 0, 240, 240, paper);
-    for (y = top; y < bot; y += n) {
-        n = bot - y < 48 ? bot - y : 48;
-        cv_begin(240, (uint32_t)n, paper);
+    int32_t y;
+    _Static_assert(LOGO_ART_X == 0 && LOGO_ART_Y == 0 &&
+                   LOGO_ART_W == 240 && LOGO_ART_H == 240, "full-bleed boot art");
+    for (y = 0; y < 240; y += 48) {
+        const int32_t n = 48;
+        cv_begin(240, (uint32_t)n, C_BLACK);
+        logo_art(y, n);
+        logo_outline(LOGO_NAME, LOGO_NAME_X, LOGO_NAME_Y, LOGO_NAME_W, LOGO_NAME_H, y, n);
+        logo_outline(LOGO_TAG, LOGO_TAG_X, LOGO_TAG_Y, LOGO_TAG_W, LOGO_TAG_H, y, n);
         logo_part(LOGO_NAME, LOGO_NAME_X, LOGO_NAME_Y, LOGO_NAME_W, LOGO_NAME_H, y, n, APP_SPLASH_RGB);
         logo_part(LOGO_TAG, LOGO_TAG_X, LOGO_TAG_Y, LOGO_TAG_W, LOGO_TAG_H, y, n, C_FOCUS);
-        logo_art(y, n);
         cv_blit(0, (uint32_t)y);
     }
     lcd_sync();
