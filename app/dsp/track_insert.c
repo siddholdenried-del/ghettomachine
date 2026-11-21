@@ -1,5 +1,4 @@
 #include "track_insert.h"
-#include <string.h>
 #include <stddef.h>
 
 static const char *const names[TI_MODES] = {"OFF", "PHASER", "TREM / PAN", "CHORUS", "FLANGER", "COMB", "ENV FILTER",
@@ -23,9 +22,15 @@ void track_insert_default(track_insert_param_t *p, int mode)
     p->mode = (uint8_t)((unsigned)mode < TI_MODES ? mode : TI_OFF);
     for (k = 0; k < 4; k++) p->v[k] = defaults[p->mode][k];
 }
+void track_insert_bind(track_insert_t *s, int16_t l[TI_DELAY], int16_t r[TI_DELAY])
+{
+    s->ring[0] = l; s->ring[1] = r;
+    track_insert_reset(s);
+}
 void track_insert_reset(track_insert_t *s)
 {
-    memset(s, 0, offsetof(track_insert_t, ring));
+    unsigned i;
+    for (i = 0; i < offsetof(track_insert_t, ring); i++) ((uint8_t *)s)[i] = 0;
     s->osc_c[0] = s->osc_c[1] = 1.f;
 }
 

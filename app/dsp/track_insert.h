@@ -11,12 +11,13 @@ typedef struct {
     float ap[2][4], fb[2], env, lp[2], band[2];
     float reson[2][2][2];
     uint16_t pos, hist;
-    int16_t ring[2][TI_DELAY]; /* last: reset invalidates history rather than clearing 4 KiB */
+    int16_t *ring[2]; /* last: reset retains storage and invalidates history */
 } track_insert_t;
 
 const char *track_insert_name(int mode);
 const char *track_insert_label(int mode, int knob);
 void track_insert_default(track_insert_param_t *p, int mode);
+void track_insert_bind(track_insert_t *s, int16_t l[TI_DELAY], int16_t r[TI_DELAY]);
 void track_insert_reset(track_insert_t *s);
 void track_insert_process(track_insert_t *s, const track_insert_param_t *p, float *l, float *r, unsigned n);
 #endif

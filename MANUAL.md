@@ -5,7 +5,7 @@ The BongTech GhettoMachine turns the M-VAVE FM-1 into a four-track groovebox:
 - **Drums:** a 909, 808 or 606 kit, with editable sounds.
 - **T2, T3, T4:** instrument tracks. Each is a MONO synth, a POLY synth or a SAMPLER.
 - **One sequencer** of up to 128 steps a track, 16 patterns, and a song chain.
-- **An LFO on every track,** an arpeggiator on T2–T4, and per-step locks.
+- **An LFO on every track,** an arpeggiator and one optional insert effect on T2–T4, and per-step locks.
 - **A mixer**, a reverb, a tempo delay, and **a master bus with a mastering chain**: EQ, compressor, tape saturation,
   stereo width and a limiter, with presets and a loudness meter.
 - **Made to be played live:** a scene grid (each track on its own pattern), seven perform keys (roll, fill, stutter,
@@ -115,6 +115,24 @@ A very dense collection of long parts can exceed the fixed FM-1 project save slo
   - **While playing:** what you play goes to the nearest step, with its gate from how long you held it.
   - **While stopped, on KEYS:** step recording. A note or a chord goes into the cursor's step, and the cursor moves on
     when you let go. SELECT moves the cursor, to leave a rest.
+
+### Instrument insert effects
+
+Pick **T2, T3 or T4**, then hold **SEL** and tap **FX**. Turn **SELECT** to choose the effect. **K1–K3** shape it; **K4 MIX** blends dry and effected signal (zero bypasses without losing the other knob values). Turn SELECT to **OFF** to remove the effect; selecting a new mode starts it at its defaults. Tap **FX** to leave this screen; plain FX from another page still opens the shared reverb, delay and filter.
+
+| Insert | K1 | K2 | K3 |
+| --- | --- | --- | --- |
+| Phaser | Sweep rate | Sweep depth | Feedback |
+| Trem / Pan | Sweep rate | Depth | Tremolo to stereo auto-pan |
+| Chorus | Modulation rate | Depth | Stereo width |
+| Flanger | Modulation rate | Depth | Feedback |
+| Comb | Tuning | Feedback | Damping |
+| Env Filter | Base cutoff | Level sensitivity | Resonance |
+| Freq Shift | Signed coarse Hz | Fine Hz | Opposite stereo offsets |
+| Micro Pitch | Detune depth | Delay | Stereo width |
+| Resonator | Tuning | Decay | Color/second resonance |
+
+Each track can run one insert at a time. It processes the instrument's stereo signal before mixer pan, the shared reverb/delay sends, and the USB stem. Mute clears the insert's own tail immediately; shared effects already fed by it can still ring out. Inserts are track-wide project settings, not per-pattern locks; older saves start with each insert OFF. Freq Shift adds or subtracts the same number of Hz from each frequency, rather than transposing by a musical interval; at low frequencies the hardware-friendly Hilbert filter has weaker rejection of the opposite sideband.
 
 ### The 303 generator (ACID)
 

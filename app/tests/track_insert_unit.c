@@ -9,6 +9,7 @@
 #define N 10240
 static float l[N], r[N], dry[N];
 static track_insert_t fx;
+static int16_t memory[2][TI_DELAY];
 
 static void run(const track_insert_param_t *p)
 {
@@ -49,6 +50,7 @@ int main(void)
 {
     track_insert_param_t p;
     int mode, i;
+    track_insert_bind(&fx,memory[0],memory[1]);
     for (i=0;i<N;i++) dry[i]=.31f*cos(2*PI*1260*i/44100)+.22f*cos(2*PI*2300*i/44100);
     for (mode=0;mode<TI_MODES;mode++) {
         double change=0, power=0;
@@ -74,6 +76,6 @@ int main(void)
         printf("%s: wet delta %.2f; hard-cut reset and exact bypass pass\n",track_insert_name(mode),change);
     }
     test_shift(1); test_shift(-1);
-    printf("three full track DSP states: %zu bytes\n",3*sizeof fx);
+    printf("three full track DSP states: %zu bytes\n",3*(sizeof fx+sizeof memory));
     return 0;
 }

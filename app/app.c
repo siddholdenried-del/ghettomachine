@@ -290,7 +290,11 @@ static const plat_file_t PROJ_FILE = {0x97000u, 0x9F000u, 8u * 4096u};
 _Static_assert(PROJ_V3_SIZE == 32120u, "format 3 as 0.4 saved it");
 
 static project_t proj PLAT_POOL;
-static track_insert_t insert_rt[NINST] PLAT_POOL;
+/* The FM-1 linker has distinct BSS/POOL budgets. Balance six fixed delay
+ * channels between them; no flash or sampler memory is borrowed. */
+static track_insert_t insert_rt[NINST];
+static int16_t insert_ring[(NINST * 2) - 1][TI_DELAY];
+static int16_t insert_pool[TI_DELAY] PLAT_POOL;
 static uint8_t (*kit_pots(int k))[NPOTS] { return k == KIT_606 ? proj.pots606 : proj.pots[k]; }
 static void kit606_defaults(void)
 {
@@ -2934,7 +2938,8 @@ void app_init(void)
     user_load();
     project_load();
     for (t = 1; t < NTRK; t++) {
-        track_insert_reset(&insert_rt[t-1]);
+        track_insert_bind(&insert_rt[t-1], insert_ring[(t-1)*2],
+                          t < NINST ? insert_ring[(t-1)*2+1] : insert_pool);
         insert_route(t);
     }
     bank_scan();
@@ -5252,7 +5257,7 @@ static void reload_sound(void)            /* SAVE + OCT-: the track's sound (the
                 for (r = 0; r <= NPADS; r++)
                     for (c = 0; c < NPOTS; c++)
                         kit_pots(k)[r][c] = pots[k][r][c];
-            if (fmt == 4) {
+            if (fmt >= 4) {
                 for (r = 0; r <= NPADS; r++)
                     for (c = 0; c < NPOTS; c++)
                         kit_pots(KIT_606)[r][c] = saved606[r][c];
@@ -5893,6 +5898,21 @@ static void insert_select(int tr, int e)
     app_say("INSERT", track_insert_name(mode));
 }
 
+static void insert_text(const track_insert_param_t *p, int k, char *text)
+{
+    int n = p->v[k];
+    if (p->mode == TI_SHIFT && k < 3) {
+        static const int scale[3] = {900, 25, 15};
+        int_text((n-64)*scale[k]/64, text);
+        text_cat(text, " HZ");
+    } else if (k == 3) {
+        int_text(n*100/127, text);
+        text_cat(text, "%");
+    } else {
+        int_text(n, text);
+    }
+}
+
 static void insert_knob(int tr, int k, int e)
 {
     track_insert_param_t *p = &proj.insert[tr-1];
@@ -5908,7 +5928,7 @@ static void insert_knob(int tr, int k, int e)
         plat_unlock(f);
     }
     dirty = 1;
-    int_text(v, value);
+    insert_text(p, k, value);
     app_say(track_insert_label(p->mode, k), value);
 }
 
@@ -6433,7 +6453,9 @@ static void input(void)
         track_pick(ui.trk + e);
     inst = ui.trk != TR_DRUM;
     if ((e = plat_enc(EN_SELECT)) != 0 && ui.page != PG_PICK) { /* SELECT: a held step's chance, the cursor, or the page within the page */
-        if (ui.held_step >= 0 && !(inst && (ui.page == PG_EDIT || ui.page == PG_ENV || ui.page == PG_LFO))) {
+        if (inst && ui.page == PG_INSERT) {
+            insert_select(ui.trk, e);
+        } else if (ui.held_step >= 0 && !(inst && (ui.page == PG_EDIT || ui.page == PG_ENV || ui.page == PG_LFO))) {
             /* (there: pages to lock on) */
             if (inst)
                 iheld_chance(e);
@@ -6454,8 +6476,6 @@ static void input(void)
                 ui.mixpage = (uint8_t)g;
             else
                 ui.mstpage = (uint8_t)(g - 4);
-        } else if (inst && ui.page == PG_INSERT) {
-            insert_select(ui.trk, e);
         } else if (ui.page == PG_FX) {
             ui.fxpage = (uint8_t)clamp(ui.fxpage + e, 0, NFXPAGE - 1);
         } else if (ui.page == PG_LFO) {
@@ -6994,8 +7014,8 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
     case KD_INSERT: {
         const track_insert_param_t *p = &proj.insert[tr-1];
         if (!p->mode) return 0;
-        int_text(p->v[k], t);
-        card_put(c, track_insert_label(p->mode, k), t, p->v[k], 0, 127, -1);
+        insert_text(p, k, t);
+        card_put(c, track_insert_label(p->mode, k), t, p->v[k], 0, 127, p->mode == TI_SHIFT && k < 3 ? 64 : -1);
         return 1;
     }
     case KD_SEQ: {
