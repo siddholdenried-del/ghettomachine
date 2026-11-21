@@ -1,0 +1,44 @@
+# Factory expansion must skip the reserved user range on a fresh project,
+# but it must not reassign those IDs. A fresh user slot still gets ID 24.
+wait 600
+turn ALGO 1
+wait 50
+expect trk 2
+expect preset2 0
+turn PRESET 24
+wait 50
+expect preset2 40
+expect type2 0
+expect snd2_0 4
+turn PRESET 7
+wait 50
+expect preset2 47
+expect type2 1
+tap SAVE
+wait 500
+reboot
+wait 600
+expect preset2 47
+expect type2 1
+press SAVE
+wait 30
+turn PRESET 1
+wait 30
+release SAVE
+wait 300
+expect preset2 24
+expect usnd1 1
+turn PRESET 1
+wait 50
+expect preset2 40
+turn PRESET -1
+wait 50
+expect preset2 24
+expect type2 1
+tap SAVE
+wait 500
+reboot
+wait 600
+expect preset2 24
+expect usnd1 1
+expect type2 1

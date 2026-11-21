@@ -59,6 +59,7 @@ const syn_param_t *syn_param(int id);
 void syn_param_text(int id, int v, char *buf);   /* the value as the screen shows it (buf: 16 bytes) */
 
 /* the factory sounds */
+#define SYN_FACTORY_LEGACY_COUNT 24       /* app project formats 2–5 put user slots immediately after these */
 int syn_presets(void);
 const char *syn_preset_name(int i);
 int syn_preset(int i, int8_t *v);         /* fills v[SP_NUM]; returns 1 for a MONO sound, 0 for POLY */

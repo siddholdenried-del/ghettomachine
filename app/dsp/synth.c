@@ -261,6 +261,7 @@ static const syn_preset_t PRESETS[] = {
      X(SP_SHTYPE, 3, SP_SHAPE, 60, SP_SHPOS, 1, MOD(1, MS_M1, MD_SHAPE, 60))},
     {"WOBBLE", 1, {0, 8, 64, -12, 0, 0, 64, 40, 40, 60, 0, 0, 64, 64, 20, 1, 1, 0, 0, 60, 110, 30, 0, 50, 60, 30},
      X(SP_L2SHAPE, 1, SP_L2RATE, 80, MOD(1, MS_LFO2, MD_CUTOFF, 35), MOD(2, MS_M1, MD_L2RATE, 40))},
+#include "synth_expansion.inc"
 };
 #define NPRESETS ((int)(sizeof PRESETS / sizeof PRESETS[0]))
 #undef X

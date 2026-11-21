@@ -48,6 +48,13 @@
 #define EIGHT_VERSION "0.4"
 #define NSONG 32                          /* the song chain's entries */
 #define NUSER 16                          /* user sounds (T2..T4) */
+/* IDs are persisted in tracks and per-pattern sounds: old factory 0..23, USER 1..16 at 24..39,
+ * new factory from 40. The physical PRESETS order follows those IDs (skipping empty user slots).
+ * The DSP factory table itself stays contiguous; never use its growing count as a user offset. */
+#define PRESET_USER_FIRST SYN_FACTORY_LEGACY_COUNT
+#define PRESET_NEW_FIRST (PRESET_USER_FIRST + NUSER)
+static int user_preset_slot(int id) { return id >= PRESET_USER_FIRST && id < PRESET_NEW_FIRST ? id - PRESET_USER_FIRST : -1; }
+static int factory_preset_index(int id) { return id >= PRESET_NEW_FIRST ? id - NUSER : id; }
 #define NUKIT 8                           /* user kits (the drums) */
 #define DPRESET_606 (2 + NUKIT)           /* append; keep every old user kit ID */
 #define DPRESET_COUNT (DPRESET_606 + 1)
@@ -918,7 +925,7 @@ static int proj_file_format(void)
 
 static uint8_t preset_from_v1(uint8_t p)  /* format 1's USER n came right after its 15 factory sounds */
 {
-    return (uint8_t)(p >= PRESETS_V1 ? p - PRESETS_V1 + syn_presets() : p);
+    return (uint8_t)(p >= PRESETS_V1 ? p - PRESETS_V1 + PRESET_USER_FIRST : p);
 }
 
 static int track_from_v1(int i, track_t *d)   /* format 1's track i (0..2) from the file: 0 read */
@@ -4267,22 +4274,24 @@ static void snd_turn(int id, int32_t e)   /* a sound's knob, on the EDIT or ENV 
     app_say(snd_label(tr, id), t);
 }
 
-/* the presets: an instrument track's (the factory sounds, then USER 1..16) and the drums' (909, 808, USER KIT 1..8) */
+/* the presets: an instrument track's (original factory sounds, USER 1..16, then expansion) and the drums' (909, 808, USER KIT 1..8) */
 static int npresets(void) { return syn_presets() + NUSER; }
 static int preset_ok(int i)
 {
-    return i >= 0 && (i < syn_presets() || (i < npresets() && user.snd[i - syn_presets()].used));
+    int s = user_preset_slot(i);
+    return i >= 0 && i < npresets() && (s < 0 || user.snd[s].used);
 }
 static void preset_name(int i, char *t)
 {
     char u[4];
+    int s = user_preset_slot(i);
     t[0] = 0;
-    if (i < syn_presets()) {
-        text_cat(t, syn_preset_name(i));
+    if (s < 0) {
+        text_cat(t, syn_preset_name(factory_preset_index(i)));
         return;
     }
     text_cat(t, "USER ");
-    int_text(i - syn_presets() + 1, u);
+    int_text(s + 1, u);
     text_cat(t, u);
 }
 static int dpreset_ok(int display)
@@ -4322,10 +4331,11 @@ static void preset_turn(int32_t e)        /* PRESETS on an instrument track: its
     track_t *ts = tset(tr);
     char t[16];
     uint32_t f;
-    if (i < syn_presets()) {
-        mono = syn_preset(i, ts->snd);
+    int s = user_preset_slot(i);
+    if (s < 0) {
+        mono = syn_preset(factory_preset_index(i), ts->snd);
     } else {
-        const usound_t *u = &user.snd[i - syn_presets()];
+        const usound_t *u = &user.snd[s];
         for (k = 0; k < SP_NUM; k++)
             ts->snd[k] = u->v[k];
         mono = u->mono;
@@ -4376,9 +4386,10 @@ static void save_target(int32_t e)        /* SAVE held + PRESETS: the user slot 
 {
     int inst = ui.trk != TR_DRUM, n = inst ? NUSER : NUKIT, s = ui.save_slot, k, used;
     char t[16], u[4];
+    int current = inst ? user_preset_slot(tset(ui.trk)->preset) : -1;
     if (s < 0) {                          /* the first turn: where the sound came from, else the first empty slot */
-        if (inst && tset(ui.trk)->preset >= syn_presets())
-            s = tset(ui.trk)->preset - syn_presets();
+        if (current >= 0)
+            s = current;
         else if (!inst && dpreset_user(proj.dpreset))
             s = proj.dpreset - 2;
         else
@@ -4414,7 +4425,7 @@ static void save_user(void)               /* SAVE let go after choosing a slot: 
         u->mono = (uint8_t)(ts->type == TY_MONO);
         for (k = 0; k < SP_NUM; k++)
             u->v[k] = ts->snd[k];
-        ts->preset = (uint8_t)(syn_presets() + s);
+        ts->preset = (uint8_t)(PRESET_USER_FIRST + s);
         ts->edited = 0;
         preset_name(ts->preset, t);
     } else {

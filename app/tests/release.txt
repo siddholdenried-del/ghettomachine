@@ -1,6 +1,6 @@
 # GhettoMachine 0.1's presets and song (phase 6) in the host simulator: tools/build.py ../../app --host, then
 #   app/build/host/ghettomachine_host app/tests/release.txt OUTDIR
-# presetN: 0..23 the factory sounds (15..23 the synth update's), 24.. USER 1..16; dpreset: 0 909, 1 808, 2.. USER KIT 1..8; usndS / ukitS: slot S used
+# presetN: 0..23 the original factory sounds, 24..39 USER 1..16, 40.. the expansion; dpreset: 0 909, 1 808, 2.. USER KIT 1..8; usndS / ukitS: slot S used
 # songeS_K: entry S, K 0 its pattern (1-based), 1 its bars; spos: the entry playing (0: none); scur: the SONG page's cursor
 wait 600
 # ---- a user sound: T2's SQR BASS with its CUTOFF up 20, saved as USER 1 (hold SAVE, turn PRESETS, let go)
@@ -29,7 +29,7 @@ expect usnd2 0
 expect preset2 24
 expect edited2 0
 # PRESETS: back to the factory's last (WOBBLE, MONO), WIND (POLY) ten before it, then USER 1 again (MONO, its
-# cutoff); nothing after it
+# cutoff); then the expansion, skipping empty USER slots
 turn PRESET -1
 wait 30
 expect preset2 23
@@ -44,6 +44,9 @@ expect preset2 24
 expect type2 0
 expect snd2_8 70
 turn PRESET 1
+wait 30
+expect preset2 40
+turn PRESET -1
 wait 30
 expect preset2 24
 shot user_preset.png
