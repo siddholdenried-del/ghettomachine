@@ -217,7 +217,7 @@ expect nsteps4 1
 expect note4_1_0 >0
 expect note4_1_3 >0
 shot chord_keys.png
-# ---- gates past 8 steps: hold step 1, K3 a step a detent over 2 steps, up to 31.9
+# ---- fast gate turns on a recorded chord can reach the new 128-step hold
 tap SEQ
 wait 30
 expect page 0
@@ -225,13 +225,10 @@ key 0 down
 wait 30
 turn K3 15
 wait 30
-expect gate4_1 56
-turn K3 30
-wait 30
-expect gate4_1 255
+expect gate4_1 1024
 key 0 up
 wait 30
-expect gate4_1 255
+expect gate4_1 1024
 tap PLAY
 wait 2200
 tap PLAY
@@ -248,4 +245,4 @@ expect clevel 7
 expect gate3_1 6
 expect chord4 5
 expect chordinv4 1
-expect gate4_1 255
+expect gate4_1 1024
