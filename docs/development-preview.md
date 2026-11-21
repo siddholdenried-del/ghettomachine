@@ -7,6 +7,6 @@ This is a browser release candidate, not a new numbered firmware release. No fir
 - Mutes cut an active drum or instrument immediately. An instrument's insert tail is cleared with its track; already-ringing shared delay/reverb can continue.
 - On T2–T4, hold **SEL** and tap **FX** for a single insert, then use SELECT to choose a mode/OFF and K4 for wet mix. It is independent of the two shared sends and the master.
 - Dark Dungeon BBS display and supplied boot art, on the same sequencer and audio paths.
-- Project format 5 reads old formats 1–4. Older firmware may not read projects re-saved by this preview; keep a backup for downgrades.
+- This preview reads project formats 1–5 and 7, and saves format 7. Format 6 from private development builds is not supported. Earlier firmware cannot open a format 7 save; keep a backup for downgrades. If an existing project opens blank or shows the default pattern, don’t save over it.
 
 Browser engine and site compiler provenance, hashes and device artifact status are listed separately in `site/public/release.json`. The how-it-works tour explicitly describes the historical 0.5 build.

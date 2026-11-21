@@ -77,7 +77,7 @@
       "path": "guide/sounds/index.html"
     },
     {
-      "literal": "reads project formats 1\u20136 and saves format 7.",
+      "literal": "reads project formats 1\u20135 and 7, and saves format 7. It does not read format 6",
       "path": "guide/setup/index.html"
     },
     {
