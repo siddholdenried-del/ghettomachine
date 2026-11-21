@@ -38,23 +38,27 @@
 #define FX_RM_BLK 16
 /* The lines' lengths in samples, in their places in the mix (the order matters: see fxbus.c), and the
  * longest. All must be equal modulo 16 (fx_rm_fetch_all). */
-#define FX_RM_L0 1123
-#define FX_RM_L1 1459
-#define FX_RM_L2 1747
-#define FX_RM_L3 1571
-#define FX_RM_L4 1283
-#define FX_RM_L5 2083
-#define FX_RM_L6 2243
-#define FX_RM_L7 1907
+/* GhettoMachine 0.5 (CPU): ROOM runs at half the rate, 22.05 kHz (FX_RM_SR; fxbus.c fx_room): the lines are primes
+ * near half of X0X's (1123 1459 1747 1571 1283 2083 2243 1907 at 44.1 kHz), all 13 mod 16, so the room keeps its size
+ * in milliseconds (within 2 %) at half the work and half the memory; the reverb gives up what it held above 11 kHz */
+#define FX_RM_SR 22050.0f
+#define FX_RM_L0 557
+#define FX_RM_L1 733
+#define FX_RM_L2 877
+#define FX_RM_L3 797
+#define FX_RM_L4 653
+#define FX_RM_L5 1021
+#define FX_RM_L6 1117
+#define FX_RM_L7 941
 #define FX_RM_LMAX FX_RM_L6
 #define FX_RM_NB(l) ((l) / FX_RM_BLK + 1)
 #define FX_RM_BLOCKS (FX_RM_NB(FX_RM_L0) + FX_RM_NB(FX_RM_L1) + FX_RM_NB(FX_RM_L2) + FX_RM_NB(FX_RM_L3) + \
                       FX_RM_NB(FX_RM_L4) + FX_RM_NB(FX_RM_L5) + FX_RM_NB(FX_RM_L6) + FX_RM_NB(FX_RM_L7))
 /* The input diffusers' lengths and gains, and their lines' total. */
-#define FX_RM_D0 211
-#define FX_RM_D1 157
-#define FX_RM_D2 397
-#define FX_RM_D3 293
+#define FX_RM_D0 107                        /* (half of X0X's 211 157 397 293: the half rate) */
+#define FX_RM_D1 79
+#define FX_RM_D2 199
+#define FX_RM_D3 149
 #define FX_RM_G0 0.7f
 #define FX_RM_G1 0.7f
 #define FX_RM_G2 0.65f
@@ -80,6 +84,10 @@ typedef struct {
     float out_gain;
     int32_t quiet;
     uint8_t pos;
+    /* the half rate (fx_room): a full-rate sample waiting for its pair, whether one waits, the last pair's average
+     * (the lift's tap), and the last half-rate outputs (the read back's line from them) */
+    float rh_carry, rh_xp, rh_yl, rh_yr;
+    int32_t rh_has;
     /* each line's ring: its first block in exp / man, its number of blocks, and the block being
      * written (the read's first block too: see above) */
     uint16_t base[FX_RM_N], nblk[FX_RM_N], wblk[FX_RM_N];

@@ -33,6 +33,12 @@
 #define D9_UNLIKELY(x) (x)
 #define D9_MAY_ALIAS
 #endif
+/* the helpers below: always inlined into a unit with code in RAM (GhettoMachine 0.5: FM_ALWAYS_INLINE, fastmath.h) */
+#ifdef FM_ALWAYS_INLINE
+#define D9_HELPER static inline __attribute__((always_inline))
+#else
+#define D9_HELPER static inline
+#endif
 /* Loop unrolling, for the loop that follows: by n, completely, or not at all. Clang's pragmas; other
  * compilers unroll as they choose. On the FM-1's core a taken branch costs about 8 cycles. */
 #if defined(__clang__)
@@ -52,7 +58,7 @@
 #define D9_PHASE_PER_HZ 97391.548752834467f   /* 2^32 / 44100 */
 
 /* ---- exp(x) to about an ulp for |x| < 0.35 (envelope and detector rates) ---- */
-static inline float d9_exp_small(float x)
+D9_HELPER float d9_exp_small(float x)
 {
     if (x < -0.35f || x > 0.35f)
         return fm_expf(x);
@@ -67,7 +73,7 @@ static inline float d9_exp_small(float x)
 }
 
 /* ceil for 0 <= x < 2^31 */
-static inline int32_t d9_ceil(float x)
+D9_HELPER int32_t d9_ceil(float x)
 {
     int32_t i = (int32_t)x;
     return (float)i < x ? i + 1 : i;
@@ -89,7 +95,7 @@ typedef struct {
     int32_t left;   /* ticks of ramp left (0 = constant)     */
 } d9_env_t;
 
-static inline void d9_env_set(d9_env_t *e, float v)
+D9_HELPER void d9_env_set(d9_env_t *e, float v)
 {
     e->v = v;
     e->cur = v;
@@ -124,7 +130,7 @@ D9_NOINLINE void d9_env_exp(d9_env_t *e, float v1, float t1)
     e->cur = v0;
 }
 
-static inline float d9_env_tick(d9_env_t *e)
+D9_HELPER float d9_env_tick(d9_env_t *e)
 {
     const float o = e->v;
     e->cur = o;
@@ -138,7 +144,7 @@ static inline float d9_env_tick(d9_env_t *e)
 }
 
 /* back onto the closed form; once per block */
-static inline void d9_env_anchor(d9_env_t *e)
+D9_HELPER void d9_env_anchor(d9_env_t *e)
 {
     if (e->left)
         e->v = e->v0 * fm_exp2f(e->l2r * ((float)(e->k - e->left) / e->t1));
@@ -154,7 +160,7 @@ typedef struct {
     float x1, x2, y1, y2;
 } d9_biquad_t;
 
-static inline void d9_biquad_set(d9_biquad_t *f, int type, float freq, float q)
+D9_HELPER void d9_biquad_set(d9_biquad_t *f, int type, float freq, float q)
 {
     float fc = freq / (D9_SR * 0.5f);
     if (fc >= 1.0f) fc = 0.9999f;
@@ -179,9 +185,9 @@ static inline void d9_biquad_set(d9_biquad_t *f, int type, float freq, float q)
     f->a1 = a1 * inv; f->a2 = a2 * inv;
 }
 
-static inline void d9_biquad_reset(d9_biquad_t *f) { f->x1 = f->x2 = f->y1 = f->y2 = 0.0f; }
+D9_HELPER void d9_biquad_reset(d9_biquad_t *f) { f->x1 = f->x2 = f->y1 = f->y2 = 0.0f; }
 
-static inline float d9_biquad_tick(d9_biquad_t *f, float in)
+D9_HELPER float d9_biquad_tick(d9_biquad_t *f, float in)
 {
     const float y = f->b0 * in + f->b1 * f->x1 + f->b2 * f->x2 - f->a1 * f->y1 - f->a2 * f->y2;
     f->x2 = f->x1; f->x1 = in;
@@ -192,10 +198,10 @@ static inline float d9_biquad_tick(d9_biquad_t *f, float in)
 /* ===================================================================== */
 /* Oscillator: Web Audio triangle on a uint32 phase                       */
 /* ===================================================================== */
-static inline uint32_t d9_inc(float hz) { return (uint32_t)(hz * D9_PHASE_PER_HZ); }
+D9_HELPER uint32_t d9_inc(float hz) { return (uint32_t)(hz * D9_PHASE_PER_HZ); }
 
 /* 4p - 1 rising over the first half, 3 - 4p falling over the second */
-static inline float d9_tri(uint32_t ph)
+D9_HELPER float d9_tri(uint32_t ph)
 {
     const uint32_t u = ph ^ (uint32_t)((int32_t)ph >> 31);
     return (float)(int32_t)u * (1.0f / 1073741824.0f) - 1.0f;
@@ -204,7 +210,7 @@ static inline float d9_tri(uint32_t ph)
 /* ===================================================================== */
 /* tanh from the table                                                    */
 /* ===================================================================== */
-static inline float d9_tanh(float u)
+D9_HELPER float d9_tanh(float u)
 {
     const float a = fm_fabsf(u) * X0X_TANH_SCALE;
     float t;
@@ -228,7 +234,7 @@ typedef struct {
     float c1, c2;  /* type-specific constants (see prep) */
 } d9_shape_t;
 
-static inline void d9_shape_prep(d9_shape_t *s, float drive, int type)
+D9_HELPER void d9_shape_prep(d9_shape_t *s, float drive, int type)
 {
     const float k = drive > 0.01f ? drive : 0.01f;
     s->type = type;
@@ -315,7 +321,7 @@ D9_INLINE float d9_shape(const d9_shape_t *s, float x, float *st)
 /* ===================================================================== */
 /* White noise: xorshift32, uniform [-1, 1) (9W9's wa_noise)              */
 /* ===================================================================== */
-static inline float d9_noise(uint32_t *s)
+D9_HELPER float d9_noise(uint32_t *s)
 {
     uint32_t x = *s;
     x ^= x << 13;

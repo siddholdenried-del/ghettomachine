@@ -1,2 +1,2 @@
-Felucca-Engines (MIT), https://github.com/hugelton/Felucca-Engines: felucca_engine.h, dsp.c and eng_analog.c, and tools/gen_engine_tables.py (in app/tools). eng_analog.c is changed for GhettoMachine (see its header). Commit:
+Felucca-Engines (MIT), https://github.com/hugelton/Felucca-Engines: felucca_engine.h, dsp.c and eng_analog.c, and tools/gen_engine_tables.py (in app/tools). eng_analog.c and dsp.c are changed for GhettoMachine (see their headers). Commit:
 d0260074ce100a47675814b7f38d61f11176c926 Wed Oct 28 20:49:44 2026 +0900

@@ -3,6 +3,15 @@
 /* Shared DSP building blocks for the Felucca engines (all fixed point).
  * Voice output convention: add sample * amp to out[], where a full-scale
  * oscillator at amp = 1.0 (Q15 32767) contributes VOICE_FS. */
+/* Changed for GhettoMachine (21 Nov 2026, 0.5): the helpers are FE_INLINE and the render loops FE_RAM, which the host
+ * (synth.c) may define (always inline; a section in RAM: its voices run from RAM, out of the XIP cache's way); by
+ * default static inline and nothing, as they were. */
+#ifndef FE_INLINE
+#define FE_INLINE static inline
+#endif
+#ifndef FE_RAM
+#define FE_RAM
+#endif
 #define VOICE_FS 24000           /* per-voice level: one voice peaks near -6 dBFS before the master */
 
 /* ---------------------------------------------------------- the rate --- */
@@ -52,37 +61,37 @@
 #define FE_WHEEL_CLKDEC 24576    /* WHEEL key click decay a block, Q15: tau ~2.5 ms */
 #define fe_pole(a) (a)           /* a one-pole coefficient (Q15) designed at 44.1 kHz, at FS */
 #else
-static inline int32_t fe_pole(int32_t a)                /* a: 0..32767 */
+FE_INLINE int32_t fe_pole(int32_t a)                /* a: 0..32767 */
 {
     int32_t i = a >> 8;
     return FE_POLE[i] + (((FE_POLE[i + 1] - FE_POLE[i]) * (a & 255)) >> 8);
 }
 #endif
 
-static inline int32_t mulq15(int32_t a, int32_t b) { return (a * b) >> 15; }
+FE_INLINE int32_t mulq15(int32_t a, int32_t b) { return (a * b) >> 15; }
 /* a * k / 65536 without 64-bit: a up to 2^31, k Q16 */
-static inline int32_t mulq16(int32_t a, uint32_t k)
+FE_INLINE int32_t mulq16(int32_t a, uint32_t k)
 {
     return (int32_t)(((a >> 16) * (int32_t)k) + (int32_t)(((uint32_t)(a & 0xFFFF) * k) >> 16));
 }
-static inline int32_t clamp(int32_t v, int32_t lo, int32_t hi) { return v < lo ? lo : v > hi ? hi : v; }
+FE_INLINE int32_t clamp(int32_t v, int32_t lo, int32_t hi) { return v < lo ? lo : v > hi ? hi : v; }
 /* a * b and x << n wrapped to 32 bits in unsigned arithmetic (defined in C; a signed overflow or a left shift
  * of a negative value is not), back to int32_t modulo 2^32 (GCC, Clang): the bits a two's-complement multiply
  * or shift gives */
-static inline int32_t mul_wrap(int32_t a, int32_t b) { return (int32_t)((uint32_t)a * (uint32_t)b); }
-static inline int32_t shl(int32_t x, uint32_t n) { return (int32_t)((uint32_t)x << n); }
+FE_INLINE int32_t mul_wrap(int32_t a, int32_t b) { return (int32_t)((uint32_t)a * (uint32_t)b); }
+FE_INLINE int32_t shl(int32_t x, uint32_t n) { return (int32_t)((uint32_t)x << n); }
 
 /* sine, linearly interpolated between the 1024 table points (plain lookup: THD -55 dB) */
-static inline int32_t sine_i(uint32_t ph)
+FE_INLINE int32_t sine_i(uint32_t ph)
 {
     uint32_t i = ph >> 22;
     int32_t a = SINE[i], b = SINE[(i + 1u) & 1023u];
     return a + (((b - a) * (int32_t)((ph >> 7) & 0x7FFFu)) >> 15);
 }
-static inline int32_t osc_sine(uint32_t ph) { return sine_i(ph); }
+FE_INLINE int32_t osc_sine(uint32_t ph) { return sine_i(ph); }
 
 /* polyBLEP residual (Q15) around a wrap of a phase accumulator */
-static inline int32_t blep(uint32_t ph, uint32_t inc)
+FE_INLINE int32_t blep(uint32_t ph, uint32_t inc)
 {
     uint32_t d = inc >> 15;
     int32_t x;
@@ -99,17 +108,17 @@ static inline int32_t blep(uint32_t ph, uint32_t inc)
     return 0;
 }
 
-static inline int32_t osc_saw(uint32_t ph, uint32_t inc)
+FE_INLINE int32_t osc_saw(uint32_t ph, uint32_t inc)
 {
     return ((int32_t)(ph >> 16) - 32768) - blep(ph, inc);
 }
 
-static inline int32_t osc_pulse(uint32_t ph, uint32_t inc, uint32_t pw)
+FE_INLINE int32_t osc_pulse(uint32_t ph, uint32_t inc, uint32_t pw)
 {
     return (osc_saw(ph, inc) - osc_saw(ph + pw, inc)) >> 1;
 }
 
-static inline int32_t osc_tri(uint32_t ph)
+FE_INLINE int32_t osc_tri(uint32_t ph)
 {
     int32_t s = (int32_t)(ph >> 15);                 /* 0..131071 */
     return s < 65536 ? s - 32768 : 98303 - s;
@@ -117,7 +126,7 @@ static inline int32_t osc_tri(uint32_t ph)
 
 /* tanh(x / 32768) * 32767, linearly interpolated (a plain lookup gives
  * 256-unit steps, audible on quiet signals) */
-static inline int32_t softclip(int32_t x)
+FE_INLINE int32_t softclip(int32_t x)
 {
     int32_t a = x < 0 ? -x : x, i = a >> 8, y;
     if (i >= 256)
@@ -128,7 +137,7 @@ static inline int32_t softclip(int32_t x)
 }
 
 /* xorshift32 */
-static inline uint32_t noise32(int32_t *st)
+FE_INLINE uint32_t noise32(int32_t *st)
 {
     uint32_t s = (uint32_t)*st;
     s ^= s << 13;
@@ -141,7 +150,7 @@ static inline uint32_t noise32(int32_t *st)
 /* Trapezoidal SVF (A. Simper), unconditionally stable. Coefficients per
  * block in Q13; signals stay within +-150000 so products fit in 32 bits. */
 typedef struct { int32_t a1, a2, a3; } tsvf_t;
-static inline void tsvf_coef_k(tsvf_t *c, int32_t cut, int32_t k)   /* cut: 0..127 << 8, k: damping Q12 */
+FE_INLINE void tsvf_coef_k(tsvf_t *c, int32_t cut, int32_t k)   /* cut: 0..127 << 8, k: damping Q12 */
 {
     int32_t i, g, den;
     cut = clamp(cut, 0, 127 << 8);
@@ -154,12 +163,12 @@ static inline void tsvf_coef_k(tsvf_t *c, int32_t cut, int32_t k)   /* cut: 0..1
     c->a2 = (c->a1 * g) >> 12;
     c->a3 = (c->a2 * g) >> 12;
 }
-static inline void tsvf_coef(tsvf_t *c, int32_t cut, int32_t reso)   /* reso 0..127: damping 2.0 .. ~0.15 */
+FE_INLINE void tsvf_coef(tsvf_t *c, int32_t cut, int32_t reso)   /* reso 0..127: damping 2.0 .. ~0.15 */
 {
     tsvf_coef_k(c, cut, 8192 - reso * 7600 / 127);
 }
 
-static inline int32_t tsvf_lp(const tsvf_t *c, int32_t in, int32_t *ic1, int32_t *ic2)
+FE_INLINE int32_t tsvf_lp(const tsvf_t *c, int32_t in, int32_t *ic1, int32_t *ic2)
 {
     int32_t v3 = in - *ic2;
     int32_t v1 = (c->a1 * *ic1 + c->a2 * v3) >> 13;
@@ -176,7 +185,7 @@ static inline int32_t tsvf_lp(const tsvf_t *c, int32_t in, int32_t *ic1, int32_t
 #if (1 << CTL_LOG2) != CTL
 #error "CTL_LOG2 does not match CTL"
 #endif
-static inline int32_t amp_at(const vmod_t *m, uint32_t i)
+FE_INLINE int32_t amp_at(const vmod_t *m, uint32_t i)
 {
     int32_t x = (m->amp1 - m->amp0) * (int32_t)i;
     return m->amp0 + ((x + ((x >> 31) & (CTL - 1))) >> CTL_LOG2);
@@ -184,13 +193,13 @@ static inline int32_t amp_at(const vmod_t *m, uint32_t i)
 
 /* a voice's sample s (Q15) at the amplitude ramp's sample i, scaled to the voice level (VOICE_FS);
  * engines whose signal peaks near half scale add it << 1 */
-static inline int32_t voice_amp(int32_t s, const vmod_t *m, uint32_t i)
+FE_INLINE int32_t voice_amp(int32_t s, const vmod_t *m, uint32_t i)
 {
     return mulq15(mulq15(s, amp_at(m, i)), VOICE_FS);
 }
 
 /* linear up to k, then a soft knee: only the peaks above k saturate (|y| - k must stay < 2^30) */
-static inline int32_t soft_knee(int32_t y, int32_t k)
+FE_INLINE int32_t soft_knee(int32_t y, int32_t k)
 {
     int32_t a = y < 0 ? -y : y;
     if (a <= k)
@@ -201,7 +210,7 @@ static inline int32_t soft_knee(int32_t y, int32_t k)
 
 /* phase increment of pitch16 (1/16 semitone) plus ct cents: whole 1/16 semitones from the table,
  * the rest (and fine, in 1/4096) as a factor (1 ct = 2.367 / 4096) */
-static inline uint32_t cents_inc(int32_t pitch16, int32_t ct, int32_t fine)
+FE_INLINE uint32_t cents_inc(int32_t pitch16, int32_t ct, int32_t fine)
 {
     int32_t d16 = ct * 16 / 100, rem = ct * 16 - d16 * 100;          /* rem: 1/1600 semitone */
     uint32_t inc = pitch_inc(clamp(pitch16 + d16, 0, 2047));

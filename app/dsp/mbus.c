@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* GhettoMachine's master bus stages (see mbus.h). */
+#define FM_ALWAYS_INLINE                  /* (code in RAM here: fastmath.h, gm_ram.h) */
 #include "mbus.h"
 #include "fastmath.h"
+#include "gm_ram.h"
 
 #define FS 44100.0f
 
@@ -83,7 +85,7 @@ static void bq_bell(mb_bq_t *q, float hz, float db, float qv)
 }
 
 /* one biquad over a block, side c of its state */
-static void bq_run(mb_bq_t *q, float *x, int n, int c)
+GM_RAM static void bq_run(mb_bq_t *q, float *x, int n, int c)
 {
     float b0 = q->b0, b1 = q->b1, b2 = q->b2, a1 = q->a1, a2 = q->a2, z1 = q->z1[c], z2 = q->z2[c];
     int i;
@@ -99,7 +101,7 @@ static void bq_run(mb_bq_t *q, float *x, int n, int c)
 
 /* one biquad over a block, both sides together: two independent recursions in one loop, so an in-order FPU works on
  * one while the other waits for its result */
-static void bq_run2(mb_bq_t *q, float *l, float *r, int n)
+GM_RAM static void bq_run2(mb_bq_t *q, float *l, float *r, int n)
 {
     float b0 = q->b0, b1 = q->b1, b2 = q->b2, a1 = q->a1, a2 = q->a2;
     float zl1 = q->z1[0], zl2 = q->z2[0], zr1 = q->z1[1], zr2 = q->z2[1];
@@ -226,8 +228,8 @@ void mbus_set(mbus_t *m, int i, int v)
         stereo_coefs(m);
 }
 
-/* ---- the audio */
-void mbus_eq(mbus_t *m, float *l, float *r, int n)
+/* ---- the audio (GhettoMachine 0.5, CPU: from RAM, gm_ram.h: fx_master calls it) */
+GM_RAM void mbus_eq(mbus_t *m, float *l, float *r, int n)
 {
     int b;
     for (b = 0; b < 4; b++)
@@ -235,7 +237,7 @@ void mbus_eq(mbus_t *m, float *l, float *r, int n)
             bq_run2(&m->eq[b], l, r, n);
 }
 
-static void tape_run(mbus_t *m, float *x, int n, int c)
+GM_RAM static void tape_run(mbus_t *m, float *x, int n, int c)
 {
     float k = m->drive, b = m->bias, tb = m->tb, nrm = m->norm, ta = m->tone_a, mix = m->mix;
     float lp = m->lp[c], dx = m->dc_x[c], dy = m->dc_y[c];
@@ -262,7 +264,7 @@ static void tape_run(mbus_t *m, float *x, int n, int c)
     m->dc_y[c] = fm_flush(dy);
 }
 
-void mbus_tape_stereo(mbus_t *m, float *l, float *r, int n)
+GM_RAM void mbus_tape_stereo(mbus_t *m, float *l, float *r, int n)
 {
     int i;
     if (m->tape_on) {
@@ -305,7 +307,7 @@ void mbus_meter_on(mbus_t *m, int on)
     m->meter_on = (uint8_t)(on != 0);
 }
 
-void mbus_meter(mbus_t *m, const float *l, const float *r, int n)
+GM_RAM void mbus_meter(mbus_t *m, const float *l, const float *r, int n)
 {
     float kl[256], kr[256], acc = m->lu_acc, lr = m->c_lr, ll = m->c_ll, rr = m->c_rr;
     const float a = 7.558e-5f;                   /* the correlation's averages: 300 ms */
@@ -327,7 +329,8 @@ void mbus_meter(mbus_t *m, const float *l, const float *r, int n)
             acc += kl[i] * kl[i] + kr[i] * kr[i];
             if (++cnt == 4410) {                 /* a 100 ms block */
                 m->lu_blk[m->lu_pos] = acc * (1.0f / 4410.0f);
-                m->lu_pos = (m->lu_pos + 1) % MB_LU_BLOCKS;
+                if (++m->lu_pos == MB_LU_BLOCKS)   /* (no divide: RAM code calls no helper) */
+                    m->lu_pos = 0;
                 if (m->lu_have < MB_LU_BLOCKS)
                     m->lu_have++;
                 acc = 0.0f;

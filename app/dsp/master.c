@@ -13,8 +13,10 @@
  * Filter: Zavalishin's TPT state-variable filter (stable at any cutoff), the coefficient
  * glides so a fast sweep does not zipper (ReBirth's PCF idea: sweep the whole mix).
  * Limiter: instant-attack peak follower, ~150 ms release, then a tanh knee above -1 dBFS. */
+#define FM_ALWAYS_INLINE                  /* (code in RAM here: fastmath.h, gm_ram.h) */
 #include "master.h"
 #include "fastmath.h"
+#include "gm_ram.h"
 
 #define FS 44100.0f
 
@@ -192,7 +194,7 @@ void master_key(master_t *m, int kit, float vel)
 }
 
 /* static curve: gain reduction (dB, >= 0) for a level (dB), soft knee */
-static float gr_of(const master_t *m, float lv)
+GM_INLINE float gr_of(const master_t *m, float lv)
 {
     float over = lv - m->thr_db, h = 0.5f * m->knee;
     if (over <= -h)
@@ -296,19 +298,21 @@ void master_process(master_t *m, float *x, int n, float volume)
     m->gr_view = grmax > m->gr_view ? grmax : m->gr_view * 0.93f;   /* the meter: peak, falling */
 }
 
-/* the limiter's last stage: a soft knee over k rounding toward the ceiling c, its slope 1 where it starts (X0X's
- * was over 0.89 toward 1.0: master_process keeps it) */
-static inline float lim_knee(float s, float k, float c)
+/* the limiter's last stage: a soft knee over k rounding toward the ceiling c (w = c - k wide; iw = 1 / w, worked out
+ * once a block), its slope 1 where it starts (X0X's was over 0.89 toward 1.0: master_process keeps it) */
+GM_INLINE float lim_knee(float s, float k, float w, float iw)
 {
-    float w = c - k;
     if (s > k)
-        return k + w * fm_tanhf((s - k) / w);
+        return k + w * fm_tanhf((s - k) * iw);
     if (s < -k)
-        return -k - w * fm_tanhf((-s - k) / w);
+        return -k - w * fm_tanhf((-s - k) * iw);
     return s;
 }
 
-void master_pre_st(master_t *m, float *xl, float *xr, int n)
+/* GhettoMachine 0.5 (CPU): master_pre_st, master_post_st and master_volume_st run from RAM (gm_ram.h), with their
+ * running state in locals for the block: xl and xr may alias the struct for all the compiler knows, so it loaded and
+ * stored every field of it each sample. The same arithmetic, in the same order. */
+GM_RAM void master_pre_st(master_t *m, float *xl, float *xr, int n)
 {
     int i, mode = m->pot[MST_MODE], comp = m->comp_on && !m->byp;
     float k = m->k, grmax = 0.0f;
@@ -316,123 +320,155 @@ void master_pre_st(master_t *m, float *xl, float *xr, int n)
         m->gr_view *= 0.93f;
         return;
     }
+    const float a_det = m->a_det, a_att = m->a_att, a_rel = m->a_rel, a_pump = m->a_pump, slope = m->slope;
+    const float makeup = m->makeup, mix = m->mix, g_t = m->g_t;
+    float ms = m->ms, want = m->want, gr = m->gr, pump = m->pump, pump_tgt = m->pump_tgt;
+    float g_lin = m->g_lin, g_step = m->g_step;
+    int cr = m->cr;
+    float g = m->g, a1 = m->a1, ic1 = m->ic1, ic2 = m->ic2, ic1r = m->ic1r, ic2r = m->ic2r;
     for (i = 0; i < n; i++) {
         float s = xl[i], sr = xr[i];
         if (comp) {
-            float lv, want, total, wet;
+            float lv, total, wet;
             /* the level: mean square over ~8 ms, x2 so a sine reads its peak. Read sample by sample
              * (|x|), the reduction chased every cycle of a bass note and grabbed each kick within a
              * millisecond: audio-rate gain movement, heard as clicks */
             /* both sides' power, each term as master_process forms it, so l == r gives its value */
-            m->ms = fm_flush(m->a_det * m->ms + 0.5f * ((1.0f - m->a_det) * s * s + (1.0f - m->a_det) * sr * sr));
-            if (m->cr == 0) {                                /* the static curve, every MST_CR samples */
-                lv = 2.0f * m->ms;
-                m->want = (lv > 1e-12f && m->slope > 0.0f) ? gr_of(m, 3.0103f * fm_log2f(lv)) : 0.0f;
+            ms = fm_flush(a_det * ms + 0.5f * ((1.0f - a_det) * s * s + (1.0f - a_det) * sr * sr));
+            if (cr == 0) {                                   /* the static curve, every MST_CR samples */
+                lv = 2.0f * ms;
+                want = (lv > 1e-12f && slope > 0.0f) ? gr_of(m, 3.0103f * fm_log2f(lv)) : 0.0f;
             }
-            want = m->want;
-            m->gr = want > m->gr ? m->a_att * m->gr + (1.0f - m->a_att) * want
-                                 : m->a_rel * m->gr + (1.0f - m->a_rel) * want;
-            if (m->pump_tgt > m->pump) {                     /* PUMP: rise to the kick's depth ... */
-                m->pump = m->a_pump * m->pump + (1.0f - m->a_pump) * m->pump_tgt;
-                if (m->pump_tgt - m->pump < 0.05f)
-                    m->pump_tgt = 0.0f;                      /* ... then let go: the release swells back */
+            gr = want > gr ? a_att * gr + (1.0f - a_att) * want
+                           : a_rel * gr + (1.0f - a_rel) * want;
+            if (pump_tgt > pump) {                           /* PUMP: rise to the kick's depth ... */
+                pump = a_pump * pump + (1.0f - a_pump) * pump_tgt;
+                if (pump_tgt - pump < 0.05f)
+                    pump_tgt = 0.0f;                         /* ... then let go: the release swells back */
             } else {
-                m->pump = fm_flush(m->a_rel * m->pump);
+                pump = fm_flush(a_rel * pump);
             }
-            total = m->gr + m->pump;
+            total = gr + pump;
             if (total > grmax)
                 grmax = total;
-            if (m->cr == 0) {                                /* the gain, linear, ramped over MST_CR samples */
-                m->g_step = (m->makeup * fm_db2lin(-total) - m->g_lin) * (1.0f / MST_CR);
-                m->cr = MST_CR;
+            if (cr == 0) {                                   /* the gain, linear, ramped over MST_CR samples */
+                g_step = (makeup * fm_db2lin(-total) - g_lin) * (1.0f / MST_CR);
+                cr = MST_CR;
             }
-            m->cr--;
-            m->g_lin += m->g_step;
-            wet = s * m->g_lin;
-            s = s + (wet - s) * m->mix;
-            wet = sr * m->g_lin;
-            sr = sr + (wet - sr) * m->mix;
+            cr--;
+            g_lin += g_step;
+            wet = s * g_lin;
+            s = s + (wet - s) * mix;
+            wet = sr * g_lin;
+            sr = sr + (wet - sr) * mix;
         }
         if (mode) {
-            float g = m->g, a1;
-            if (g != m->g_t) {                               /* the cutoff moving: its coefficient too */
-                g = m->g += (m->g_t - m->g) * 0.0625f;
-                if (fm_fabsf(m->g_t - g) < 1e-6f * m->g_t)
-                    g = m->g = m->g_t;
-                m->a1 = 1.0f / (1.0f + g * (g + k));
+            if (g != g_t) {                                  /* the cutoff moving: its coefficient too */
+                g += (g_t - g) * 0.0625f;
+                if (fm_fabsf(g_t - g) < 1e-6f * g_t)
+                    g = g_t;
+                a1 = 1.0f / (1.0f + g * (g + k));
             }
-            a1 = m->a1;
-            float v3 = s - m->ic2;
-            float v1 = a1 * m->ic1 + g * a1 * v3;
-            float v2 = m->ic2 + g * v1;
-            m->ic1 = fm_flush(2.0f * v1 - m->ic1);
-            m->ic2 = fm_flush(2.0f * v2 - m->ic2);
+            float v3 = s - ic2;
+            float v1 = a1 * ic1 + g * a1 * v3;
+            float v2 = ic2 + g * v1;
+            ic1 = fm_flush(2.0f * v1 - ic1);
+            ic2 = fm_flush(2.0f * v2 - ic2);
             s = mode == 1 ? v2 : mode == 2 ? v1 : s - k * v1 - v2;
-            v3 = sr - m->ic2r;
-            v1 = a1 * m->ic1r + g * a1 * v3;
-            v2 = m->ic2r + g * v1;
-            m->ic1r = fm_flush(2.0f * v1 - m->ic1r);
-            m->ic2r = fm_flush(2.0f * v2 - m->ic2r);
+            v3 = sr - ic2r;
+            v1 = a1 * ic1r + g * a1 * v3;
+            v2 = ic2r + g * v1;
+            ic1r = fm_flush(2.0f * v1 - ic1r);
+            ic2r = fm_flush(2.0f * v2 - ic2r);
             sr = mode == 1 ? v2 : mode == 2 ? v1 : sr - k * v1 - v2;
         }
         xl[i] = s;
         xr[i] = sr;
     }
+    m->ms = ms;
+    m->want = want;
+    m->gr = gr;
+    m->pump = pump;
+    m->pump_tgt = pump_tgt;
+    m->g_lin = g_lin;
+    m->g_step = g_step;
+    m->cr = (uint8_t)cr;
+    m->g = g;
+    m->a1 = a1;
+    m->ic1 = ic1;
+    m->ic2 = ic2;
+    m->ic1r = ic1r;
+    m->ic2r = ic2r;
     m->gr_view = grmax > m->gr_view ? grmax : m->gr_view * 0.93f;   /* the meter: peak, falling */
 }
 
-void master_post_st(master_t *m, float *xl, float *xr, int n)
+_Static_assert((MST_LA & (MST_LA - 1)) == 0, "MST_LA: a power of two (the look-ahead's ring wraps by a mask)");
+GM_RAM void master_post_st(master_t *m, float *xl, float *xr, int n)
 {
     int i;
     float lt = m->byp ? 1.0f : m->lgain, lc = m->lg_cur < 0.0f ? lt : m->lg_cur, gmin = 1.0f;
-    float thr = m->lim_thr, kk = m->knee_k, cc = m->ceil_c;
-    for (i = 0; i < n; i++) {
-        float s = xl[i], sr = xr[i];
-        if (lc != lt) {                              /* GAIN glides (~10 ms): no zipper */
-            lc += (lt - lc) * 0.0022651f;
-            if (fm_fabsf(lt - lc) < 1e-5f)
-                lc = lt;
-        }
-        s *= lc;
-        sr *= lc;
-        if (m->pot[MST_LIMIT]) {
+    if (m->pot[MST_LIMIT]) {
+        const float thr = m->lim_thr, kk = m->knee_k, kw = m->ceil_c - m->knee_k, kiw = 1.0f / kw;
+        const float env_dec = m->env_dec, inv_dec = m->inv_dec;
+        float env = m->env, inv_env = m->inv_env, gain = m->gain, *la = m->la, *la_r = m->la_r;
+        int hold = m->hold, pos = m->la_pos;
+        for (i = 0; i < n; i++) {
+            float s = xl[i], sr = xr[i];
+            if (lc != lt) {                          /* GAIN glides (~10 ms): no zipper */
+                lc += (lt - lc) * 0.0022651f;
+                if (fm_fabsf(lt - lc) < 1e-5f)
+                    lc = lt;
+            }
+            s *= lc;
+            sr *= lc;
             /* look ahead MST_LA samples: a peak is seen when it enters, the gain eases down over the
              * MST_LA samples it takes to come out, and is held for them. (It used to halve the
              * distance every sample: a step in the waveform, a click on every limited kick.) */
             float a = fm_maxf(fm_fabsf(s), fm_fabsf(sr)), d, dr;
-            if (a >= m->env) {
-                m->env = a;
-                m->hold = MST_LA;
+            if (a >= env) {
+                env = a;
+                hold = MST_LA;
                 /* a divide only for a new peak over the threshold. The compiler computes the divide
                  * before the test, so it must be safe on its own: a clamp INSIDE the branch is folded
                  * away (a > thr there) and 0.2-beta crashed here on 1 / 0 (firmware/hal/fm1_irq.h). */
                 float r = 1.0f / fm_maxf(a, thr);
-                m->inv_env = a > thr ? r : 0.0f;
-            } else if (m->hold) {
-                m->hold--;
+                inv_env = a > thr ? r : 0.0f;
+            } else if (hold) {
+                hold--;
             } else {
-                m->env *= m->env_dec;
-                m->inv_env *= m->inv_dec;
+                env *= env_dec;
+                inv_env *= inv_dec;
             }
             {
-                float want = m->env > thr ? thr * m->inv_env : 1.0f;
-                m->gain += (want - m->gain) * (want < m->gain ? (5.0f / MST_LA) : 0.002f);
+                float want = env > thr ? thr * inv_env : 1.0f;
+                gain += (want - gain) * (want < gain ? (5.0f / MST_LA) : 0.002f);
             }
-            if (m->gain < gmin)
-                gmin = m->gain;
-            d = m->la[m->la_pos];
-            dr = m->la_r[m->la_pos];
-            m->la[m->la_pos] = s;
-            m->la_r[m->la_pos] = sr;
-            m->la_pos = (m->la_pos + 1) % MST_LA;
-            s = lim_knee(d * m->gain, kk, cc);
-            sr = lim_knee(dr * m->gain, kk, cc);
-        } else {
-            s = fm_clampf(s, -1.0f, 1.0f);
-            sr = fm_clampf(sr, -1.0f, 1.0f);
+            if (gain < gmin)
+                gmin = gain;
+            d = la[pos];
+            dr = la_r[pos];
+            la[pos] = s;
+            la_r[pos] = sr;
+            pos = (pos + 1) & (MST_LA - 1);
+            xl[i] = lim_knee(d * gain, kk, kw, kiw);
+            xr[i] = lim_knee(dr * gain, kk, kw, kiw);
         }
-        xl[i] = s;
-        xr[i] = sr;
+        m->env = env;
+        m->inv_env = inv_env;
+        m->gain = gain;
+        m->hold = hold;
+        m->la_pos = pos;
+    } else {
+        for (i = 0; i < n; i++) {
+            float s = xl[i], sr = xr[i];
+            if (lc != lt) {                          /* GAIN glides (~10 ms): no zipper */
+                lc += (lt - lc) * 0.0022651f;
+                if (fm_fabsf(lt - lc) < 1e-5f)
+                    lc = lt;
+            }
+            xl[i] = fm_clampf(s * lc, -1.0f, 1.0f);
+            xr[i] = fm_clampf(sr * lc, -1.0f, 1.0f);
+        }
     }
     m->lg_cur = lc;
     {
@@ -441,7 +477,7 @@ void master_post_st(master_t *m, float *xl, float *xr, int n)
     }
 }
 
-void master_volume_st(master_t *m, float *xl, float *xr, int n, float volume)
+GM_RAM void master_volume_st(master_t *m, float *xl, float *xr, int n, float volume)
 {
     int i;
     float vc = m->vol_cur < 0.0f ? volume : m->vol_cur;

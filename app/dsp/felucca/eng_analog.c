@@ -5,7 +5,8 @@
  * OSC 1 at the host's P_SUB level (0..127), joins the mix before the drive and the filter (its phase in ph[2]).
  * Changed again (20 Nov 2026, the synth update): analog_render_r (WAVE 0..4 with OSC 2's own wave, FM, RING, the
  * SHAPER or the matrix's OSC 2 pitch, P_INTV now -24..24) and the SHAPER in analog_render_x (SYNC, SUB; P_O2 on SYNC's
- * OSC 2 too). With none of them the loops are as they were. */
+ * OSC 2 too). With none of them the loops are as they were. And (21 Nov 2026, 0.5) the helpers FE_INLINE and the render
+ * loops FE_RAM (dsp.c): run from RAM on GhettoMachine's FM-1. */
 /* ANALOG: two band-limited oscillators (saw / square / tri / sine / PWM),
  * noise, drive and a trapezoidal state-variable filter: low-pass, or (1.5, TYPE) band-pass / high-pass.
  * WAVE SYNC and SUB (#104, appended: WAVE 0..4 play as they always did) are two more oscillator pairs (analog_osc_x):
@@ -25,7 +26,7 @@ static const param_desc_t ANALOG_SUB = {"SUB", F_PCT, 0, 127, 64, 0, 0};      /*
  * outputs (dsp.c tsvf_lp, written out here with the taps: Simper's trapezoidal state-variable filter), 0 LP the
  * low-pass as always (the same steps, bit for bit), 1 BP its band-pass v1, 2 HP in - k v1 - v2. At the cutoff the three peak alike (1/k, k the damping
  * RES sets: 2 at RES 0, ~0.15 at 127), so the soft knee after them and the level stay as LP's */
-static inline int32_t analog_tap(const tsvf_t *c, int32_t k, int32_t in, int32_t *ic1, int32_t *ic2, uint32_t ft)
+FE_INLINE int32_t analog_tap(const tsvf_t *c, int32_t k, int32_t in, int32_t *ic1, int32_t *ic2, uint32_t ft)
 {
     int32_t v3 = in - *ic2;
     int32_t v1 = (c->a1 * *ic1 + c->a2 * v3) >> 13;
@@ -71,7 +72,7 @@ typedef struct {
 } shp_t;
 #define SHP_G0 163u                       /* FOLD at 1: 0.64x, Q8 (PHASE's PD_FOLD_G0) */
 #define SHP_REF ((uint32_t)((440ull << 32) / FS))
-static inline void shp_begin(shp_t *h, const int16_t *p, const voice_t *v, uint32_t inc)
+FE_INLINE void shp_begin(shp_t *h, const int16_t *p, const voice_t *v, uint32_t inc)
 {
     uint32_t a = (uint32_t)clamp(p[P_SHA], 0, 127);
     h->type = p[P_SHT];
@@ -99,7 +100,7 @@ static inline void shp_begin(shp_t *h, const int16_t *p, const voice_t *v, uint3
         break;
     }
 }
-static inline int32_t shp_run(shp_t *h, int32_t s)   /* s within +-65535: the same back */
+FE_INLINE int32_t shp_run(shp_t *h, int32_t s)   /* s within +-65535: the same back */
 {
     int32_t x = s + h->bias, y;
     switch (h->type) {
@@ -123,7 +124,7 @@ static inline int32_t shp_run(shp_t *h, int32_t s)   /* s within +-65535: the sa
     h->x1 = y;
     return clamp(h->hp, -65535, 65535);
 }
-static inline void shp_end(const shp_t *h, voice_t *v)
+FE_INLINE void shp_end(const shp_t *h, voice_t *v)
 {
     v->s[4] = h->x1;
     v->s[5] = h->hp;
@@ -131,7 +132,7 @@ static inline void shp_end(const shp_t *h, voice_t *v)
     v->s[7] = h->cnt;
 }
 
-static inline int32_t osc_w(uint32_t w, uint32_t ph, uint32_t inc, uint32_t pw)   /* WAVE 0..4 */
+FE_INLINE int32_t osc_w(uint32_t w, uint32_t ph, uint32_t inc, uint32_t pw)   /* WAVE 0..4 */
 {
     switch (w) {
     case 1: return osc_pulse(ph, inc, 0x80000000u);
@@ -148,7 +149,7 @@ static inline int32_t osc_w(uint32_t w, uint32_t ph, uint32_t inc, uint32_t pw) 
  *         squared), less above A5 (1/f); OSC 1's band-limiting steps by how far its phase really moved
  *   RING  the mix crossfades to OSC 1 x OSC 2 */
 #define FM_REF ((uint32_t)((880ull << 32) / FS))
-static __attribute__((noinline)) void analog_render_r(track_t *t, voice_t *v, int32_t *out, uint32_t n,
+FE_RAM static __attribute__((noinline)) void analog_render_r(track_t *t, voice_t *v, int32_t *out, uint32_t n,
                                                       const vmod_t *m)
 {
     const int16_t *p = t->p;
@@ -221,7 +222,7 @@ static __attribute__((noinline)) void analog_render_r(track_t *t, voice_t *v, in
 
 /* WAVE SYNC / SUB: OSC 1 a saw, OSC 2 the synced saw / the sub square; then noise, drive and the filter as
  * analog_render. Its own function: analog_render's loop stays what it was */
-static __attribute__((noinline)) void analog_render_x(track_t *t, voice_t *v, int32_t *out, uint32_t n,
+FE_RAM static __attribute__((noinline)) void analog_render_x(track_t *t, voice_t *v, int32_t *out, uint32_t n,
                                                       const vmod_t *m)
 {
     const int16_t *p = t->p;
@@ -369,12 +370,12 @@ static inline __attribute__((always_inline)) void analog_osc(track_t *t, voice_t
     v->s[1] = ic2;
     v->s[2] = nst;
 }
-static __attribute__((noinline)) void analog_render_f(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
+FE_RAM static __attribute__((noinline)) void analog_render_f(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
     analog_osc(t, v, out, n, m, (uint32_t)t->p[P_FTYPE]);
 }
 
-static void analog_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
+FE_RAM static void analog_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
     const int16_t *p = t->p;
     if (p[P_E0] >= AW_SYNC)

@@ -19,8 +19,9 @@ GhettoMachine, part of the BongWare firmware line engineered by BongTech, turns 
 > 0.5 now keeps a deeper USB buffer, MASTER no longer changes what a computer records, and the drum steps' beats glow
 > (1, 5, 9, 13): that build went on the FM-1 on 21 Nov, and a recording from it had no clicks. REC + GLO (erase the
 > track's part, to record it again) went on it the same day, and later the 808 brought up to the 909's level with the
-> Dungeon BBS screen. The CPU pass (SETUP's CPU view; a cheaper 606, Color and phaser; effects that sleep on silence) is
-> in the source, not on the FM-1 yet. 0.5 is 0.4 plus the USB stems. 0.4 is 0.3 plus the 303 generator, the new name and the boot screen's logo; 0.3 is 0.2 plus the performance
+> Dungeon BBS screen. The CPU pass (SETUP's CPU view; a cheaper 606, Color and phaser; effects that sleep on silence) went
+> on it the same day. A second pass (the reverb at half the rate; the synth's voices, the reverb, the delay and the master
+> bus run from RAM) is in the source, not on the FM-1 yet. 0.5 is 0.4 plus the USB stems. 0.4 is 0.3 plus the 303 generator, the new name and the boot screen's logo; 0.3 is 0.2 plus the performance
 > update (the scene grid onwards) and the synth update. 0.5 passes its simulator tests (2,136 checks, 39 more on the
 > synth itself and 48 on the master bus's sound). It reads a project saved by 0.2, 0.3 or 0.4.
 
@@ -542,7 +543,14 @@ the sound saved with the pattern it's on.
   606's clap renders at 22.05 kHz (its filters hold under 1 % of their energy above 11 kHz: it sounds the same at a third
   of the work), its hats and cymbal skip a sine per line per 32 samples, Color skips an inaudible DIGITAL and works out
   WOW's delays every 16 samples, the phaser its coefficients every 16, and a silent track's Color and insert sleep: a
-  busy scene costs about a fifth less, and a quiet one two-thirds less (counted in instructions on the Mac).
+  busy scene costs about a fifth less, and a quiet one two-thirds less (counted in instructions on the Mac). The second
+  pass (21 Nov, later): the reverb runs at 22.05 kHz (every octave band of its tail within 0.8 dB of before, its decay
+  times the same; it gives up what it held above 11 kHz) for a third less reverb and delay; the master bus does the same
+  sums with fewer memory trips (its sound bit for bit as it was), a sixth less; and the synth's voices, the reverb, the
+  delay and the master bus run from the FM-1's RAM instead of through its flash's cache, which both cores share. The
+  synth's sound is bit for bit as it was. What costs most on the FM-1, roughly: the 606 (about 2.5 times the 909, 8 times
+  the 707), then each synth voice sounding (a unison stack such as SUPERSAW is 4 a note, and a pad's long release keeps
+  the last chord's voices going under the next), then the reverb and delay, then the master bus.
 - The first recording of the stems from the FM-1 had each track on its own pair, but the USB buffer ran dry about a
   dozen times in 9 seconds, each a click in the recording (not in the FM-1's own sound). 0.5 now keeps a deeper buffer
   (about 6 ms more delay); recorded from on 21 Nov with MASTER at 0, it had no clicks and the master pair kept its

@@ -1,10 +1,12 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* GhettoMachine's effects and master bus: X0X's fxbus and master, and mbus, behind fx.h. */
+#define FM_ALWAYS_INLINE                  /* (code in RAM here: fastmath.h, gm_ram.h) */
 #include "fx.h"
 #include "fxbus.h"
 #include "master.h"
 #include "mbus.h"
 #include "fastmath.h"
+#include "gm_ram.h"
 
 #ifdef PLAT_HOST
 #define FX_POOL
@@ -157,26 +159,19 @@ void fx_process(const float *dry_l, const float *dry_r, const float *rev, const 
     fxbus_process_st(&fxb, dry_l, dry_r, rev, dly, out_l, out_r, n);
 }
 
-static float peak_of(const float *l, const float *r, int n, float pk)
-{
-    int i;
-    for (i = 0; i < n; i++) {
-        float a = fm_maxf(fm_fabsf(l[i]), fm_fabsf(r[i]));
-        if (a > pk)
-            pk = a;
-    }
-    return pk;
-}
-
-void fx_master(float *l, float *r, int n, float volume)
+/* (GhettoMachine 0.5, CPU: from RAM, with everything it calls (gm_ram.h); the trim and the input's peak in one pass) */
+GM_RAM void fx_master(float *l, float *r, int n, float volume)
 {
     int i, byp = own[1];
-    float pk;
+    float pk = 0.0f;
     for (i = 0; i < n; i++) {
-        l[i] *= BUS_TRIM;
-        r[i] *= BUS_TRIM;
+        float a = l[i] * BUS_TRIM, b = r[i] * BUS_TRIM, p;
+        l[i] = a;
+        r[i] = b;
+        p = fm_maxf(fm_fabsf(a), fm_fabsf(b));
+        if (p > pk)
+            pk = p;
     }
-    pk = peak_of(l, r, n, 0.0f);
     in_pk[0] = fm_maxf(in_pk[0], pk);
     in_pk[1] = fm_maxf(in_pk[1], pk);
     if (!byp)

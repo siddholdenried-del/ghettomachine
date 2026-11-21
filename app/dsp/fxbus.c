@@ -2,7 +2,9 @@
 /* From X0X v1.2.2 (Charles Vestal, GPL-3.0); GhettoMachine skips the delay while dl_off. */
 /* Send reverb (ROOM, X0X's own), synced delay and master stage. The delay and the master are a port
  * of 9W9's er99_dly_tick, master distortion and master_glue (GPL-3.0). See fxbus.h. */
+#define FM_ALWAYS_INLINE                  /* (code in RAM here: fastmath.h, gm_ram.h) */
 #include "fxbus.h"
+#include "gm_ram.h"
 
 static void fx_room_coeffs(fxbus_t *f);
 static void fx_room_reset(fxbus_t *f);
@@ -199,7 +201,7 @@ void fxbus_init(fxbus_t *f, int16_t *dly_buf, int dly_len)
 /* ===================================================================== */
 /* Delay (er99_dly_tick), adds its return into out                        */
 /* ===================================================================== */
-static inline float fx_psin(uint32_t ph)                 /* parabolic sine of a turn */
+GM_INLINE float fx_psin(uint32_t ph)                 /* parabolic sine of a turn */
 {
     const float x = (float)(int32_t)ph * (1.0f / 2147483648.0f);
     return 4.0f * x * (1.0f - fm_fabsf(x));
@@ -238,10 +240,10 @@ static const float fx_rm_dif_gain[4] = { FX_RM_G0, FX_RM_G1, FX_RM_G2, FX_RM_G3 
  * the lines' low frequencies, where a tail ends, by 1 - FX_RM_EMPH. */
 #define FX_RM_TINY (1e-6f * (1.0f - FX_RM_EMPH))
 
-static inline fx_room_t *fx_rm(fxbus_t *f) { return &f->room; }
+GM_INLINE fx_room_t *fx_rm(fxbus_t *f) { return &f->room; }
 
 /* Return 2^e as a float (e within the normal range). */
-static inline float fx_pow2i(int32_t e)
+GM_INLINE float fx_pow2i(int32_t e)
 {
     fm_bits_t b;
     b.u = (uint32_t)(127 + e) << 23;
@@ -347,7 +349,7 @@ _Static_assert(FX_RM_OFF(FX_RM_L1) == FX_RM_OFF(FX_RM_L0) && FX_RM_OFF(FX_RM_L2)
                FX_RM_OFF(FX_RM_L7) == FX_RM_OFF(FX_RM_L0), "ROOM's lengths: all the same modulo 16");
 _Static_assert(FX_RM_OFF(FX_RM_L0) != 0,
                "ROOM's lengths: not a multiple of 16 (fx_rm_unpack needs from < to)");
-D9_NOINLINE void fx_rm_fetch_all(fx_room_t *rm)
+GM_RAM D9_NOINLINE void fx_rm_fetch_all(fx_room_t *rm)
 {
     D9_NO_UNROLL
     for (int j = 0; j < FX_RM_N; ++j)
@@ -356,7 +358,7 @@ D9_NOINLINE void fx_rm_fetch_all(fx_room_t *rm)
 
 /* Commit all eight lines' finished blocks, and move each line's write on a block. Return whether any
  * block was nonzero. */
-D9_NOINLINE int fx_rm_commit_all(fx_room_t *rm)
+GM_RAM D9_NOINLINE int fx_rm_commit_all(fx_room_t *rm)
 {
     int heard = 0;
     for (int j = 0; j < FX_RM_N; ++j) {
@@ -379,18 +381,21 @@ D9_NOINLINE int fx_rm_commit_all(fx_room_t *rm)
  * they keep within 1.15x below 5 kHz. */
 #define FX_RM_LREF \
     ((float)(FX_RM_L0 + FX_RM_L1 + FX_RM_L2 + FX_RM_L3 + FX_RM_L4 + FX_RM_L5 + FX_RM_L6 + FX_RM_L7) / FX_RM_N)
-#define FX_RM_COS_M 0.9100351f                                         /* cos(2 pi 3000 / 44100) */
+/* (GhettoMachine 0.5: the reference damper is X0X's at 44.1 kHz, its response at 3 kHz taken there (FX_RM_COS_X);
+ * each line's damper, at the half rate, matches it at 3 kHz (FX_RM_COS_M), so the tail decays at 3 kHz as before) */
+#define FX_RM_COS_X 0.9100351f                                         /* cos(2 pi 3000 / 44100) */
+#define FX_RM_COS_M 0.6563278f                                         /* cos(2 pi 3000 / 22050): the half rate */
 static void fx_room_times(fx_room_t *rm, float t_dc, float t_ny)
 {
     /* the reference's damper, and its response at 3 kHz relative to DC, squared, as log2 */
-    const float sref = FX_RM_LREF * (1.0f / D9_SR);
+    const float sref = FX_RM_LREF * (1.0f / FX_RM_SR);                  /* (seconds: the same at either rate) */
     const float gn = fm_minf(1.0f, fm_exp2f(-9.9657843f * sref / t_ny               /* 3 log2(10) */
                                             + 9.9657843f * sref / t_dc));
     const float ar = (1.0f - gn) / (1.0f + gn);
-    const float lq2 = fm_log2f((1.0f - ar) * (1.0f - ar) / (1.0f - 2.0f * ar * FX_RM_COS_M + ar * ar));
+    const float lq2 = fm_log2f((1.0f - ar) * (1.0f - ar) / (1.0f - 2.0f * ar * FX_RM_COS_X + ar * ar));
     float g_sum = 0.0f, a_sum = 0.0f;
     for (int j = 0; j < FX_RM_N; ++j) {
-        const float sec = (float)fx_rm_len[j] * (1.0f / D9_SR);
+        const float sec = (float)fx_rm_len[j] * (1.0f / FX_RM_SR);
         const float g = fm_exp2f(-9.9657843f * sec / t_dc);
         /* the pole a whose response at 3 kHz relative to DC, squared, is r: (1 - a)^2 = r (1 - 2 a cos + a^2),
          * the smaller root, in the form that stays exact as r -> 1 (no damping: a = 0) */
@@ -521,11 +526,11 @@ D9_INLINE void fx_rm_net(fx_room_t *rm, const float *xin, int32_t pos, int m, fl
 
 /* Run fx_rm_net over a whole block, or over part of one. Each is its own function so that the compiler
  * keeps more of it in registers; the whole-block one has its counts as constants. */
-D9_NOINLINE void fx_rm_net_blk(fx_room_t *rm, const float *xin, float *out, float *out_r, float lvl)
+GM_RAM D9_NOINLINE void fx_rm_net_blk(fx_room_t *rm, const float *xin, float *out, float *out_r, float lvl)
 {
     fx_rm_net(rm, xin, 0, FX_RM_BLK, out, out_r, lvl);
 }
-D9_NOINLINE void fx_rm_net_part(fx_room_t *rm, const float *xin, int32_t pos, int m, float *out, float *out_r,
+GM_RAM D9_NOINLINE void fx_rm_net_part(fx_room_t *rm, const float *xin, int32_t pos, int m, float *out, float *out_r,
                                 float lvl)
 {
     fx_rm_net(rm, xin, pos, m, out, out_r, lvl);
@@ -557,16 +562,9 @@ D9_INLINE float fx_rm_ap(int16_t **pp, int16_t *buf, int32_t len, float g, float
  *   - when the block is full, commit it to the rings.
  * The high-pass and the diffusers are written out here rather than as inline helpers: as helpers, the
  * same code compiled (device clang) to 5 to 17 more instructions here, with more spills. */
-static void fx_room(fxbus_t *f, const float *in, float *out, float *out_r, int n)
+GM_RAM static void fx_room_core(fxbus_t *f, const float *in, float *out, float *out_r, int n)
 {
     fx_room_t *const rm = fx_rm(f);
-    if (rm->quiet >= FX_RM_QUIET) {
-        int any = 0;
-        for (int i = 0; i < n; ++i)
-            any |= in[i] != 0.0f;
-        if (!any)
-            return;                         /* silent in, silent lines: 0 out */
-    }
     const float lvl = f->rv_level * rm->out_gain * 0.35355339f * rm->tap_k;   /* 1/sqrt(8): the taps' sum */
     int32_t pos = rm->pos, quiet = rm->quiet;
 
@@ -577,22 +575,9 @@ static void fx_room(fxbus_t *f, const float *in, float *out, float *out_r, int n
         if (pos == 0)
             fx_rm_fetch_all(rm);
 
-        /* High-pass the input into xin, in the diffusers' units (d9_biquad_tick, with its state held
-         * in registers). */
-        {
-            d9_biquad_t *h = &f->rv_hp;
-            const float b0 = h->b0 * FX_RM_DSCALE, b1 = h->b1 * FX_RM_DSCALE, b2 = h->b2 * FX_RM_DSCALE;
-            const float a1 = h->a1, a2 = h->a2;
-            float x1 = h->x1, x2 = h->x2, y1 = h->y1 * FX_RM_DSCALE, y2 = h->y2 * FX_RM_DSCALE;
-            D9_UNROLL(4)
-            for (int t = 0; t < m; ++t) {
-                const float x = in[i0 + t], y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
-                x2 = x1; x1 = x;
-                y2 = y1; y1 = y;
-                xin[t] = y;
-            }
-            h->x1 = x1; h->x2 = x2; h->y1 = y1 * (1.0f / FX_RM_DSCALE); h->y2 = y2 * (1.0f / FX_RM_DSCALE);
-        }
+        /* (the input: high-passed and in the diffusers' units already, by fx_room at the full rate) */
+        for (int t = 0; t < m; ++t)
+            xin[t] = in[i0 + t];
 
         /* Run the four input diffusers in series, in place, then pre-emphasize (FX_RM_EMPH). All four
          * run on a sample before the next sample, so that it stays in a register between them. */
@@ -639,8 +624,115 @@ static void fx_room(fxbus_t *f, const float *in, float *out, float *out_r, int n
     rm->quiet = quiet;
 }
 
+/* ROOM at half the rate (GhettoMachine 0.5, CPU): the send high-passed at the full rate (X0X's biquad, in the
+ * diffusers' units), each pair of samples averaged into one at 22.05 kHz, the network run on those (fx_room_core),
+ * and its output read back at the full rate by a straight line between its samples (half a pair late: a reverb
+ * doesn't mind). A pair may start in one block and end in the next (rh_has, rh_carry). The network's work and its
+ * lines' memory are halved; what the reverb held above 11 kHz goes. The pair's average and the read back's line dull
+ * the top below that too (-1 dB at 4 kHz, -3.5 at 8): the averaged input is lifted back by one tap, a + FX_RH_LIFT
+ * (a - a[-1]), which puts every octave band of the tail within 0.8 dB of X0X's, at every DECAY and TONE (its decay
+ * times by band within 20 ms), and the whole by FX_RH_GAIN. In chunks of FX_RH_CH samples: its scratch stays small
+ * (the audio interrupt's stack). */
+#define FX_RH_CH 64
+#define FX_RH_LIFT 0.25f
+#define FX_RH_GAIN 1.05f
+GM_RAM static void fx_room(fxbus_t *f, const float *in, float *out, float *out_r, int n)
+{
+    fx_room_t *const rm = fx_rm(f);
+    if (rm->quiet >= FX_RM_QUIET && rm->rh_yl == 0.0f && rm->rh_yr == 0.0f) {
+        int any = 0;
+        for (int i = 0; i < n; ++i)
+            any |= in[i] != 0.0f;
+        if (!any) {
+            rm->rh_carry = rm->rh_xp = 0.0f;
+            return;                         /* silent in, silent lines: 0 out */
+        }
+    }
+    d9_biquad_t *const h = &f->rv_hp;
+    const float b0 = h->b0 * FX_RM_DSCALE, b1 = h->b1 * FX_RM_DSCALE, b2 = h->b2 * FX_RM_DSCALE;
+    const float a1 = h->a1, a2 = h->a2;
+    const float g1 = FX_RH_GAIN * (1.0f + FX_RH_LIFT), g2 = FX_RH_GAIN * FX_RH_LIFT;
+    for (int i0 = 0; i0 < n; i0 += FX_RH_CH) {
+        const int cnt = n - i0 < FX_RH_CH ? n - i0 : FX_RH_CH;
+        const float *x = in + i0;
+        float xd[FX_RH_CH / 2 + 1], yl[FX_RH_CH / 2 + 1], yr[FX_RH_CH / 2 + 1];
+        const int has = rm->rh_has;
+        int m = 0, t = 0;
+        {   /* high-pass at the full rate (d9_biquad_tick, its state in registers), the pairs averaged and lifted */
+            float x1 = h->x1, x2 = h->x2, y1 = h->y1 * FX_RM_DSCALE, y2 = h->y2 * FX_RM_DSCALE;
+            float xp = rm->rh_xp, av;
+#define FX_RH_HP(xin, yout)                                                       \
+    do {                                                                          \
+        const float xi_ = (xin);                                                  \
+        (yout) = b0 * xi_ + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;                \
+        x2 = x1; x1 = xi_; y2 = y1; y1 = (yout);                                  \
+    } while (0)
+            if (has) {                      /* the pair the last block began */
+                float y;
+                FX_RH_HP(x[0], y);
+                av = 0.5f * (rm->rh_carry + y);
+                xd[m++] = g1 * av - g2 * xp;
+                xp = av;
+                t = 1;
+            }
+            for (; t + 1 < cnt; t += 2) {
+                float ya, yb;
+                FX_RH_HP(x[t], ya);
+                FX_RH_HP(x[t + 1], yb);
+                av = 0.5f * (ya + yb);
+                xd[m++] = g1 * av - g2 * xp;
+                xp = av;
+            }
+            if (t < cnt) {                  /* a pair begun: the next block ends it */
+                float y;
+                FX_RH_HP(x[t], y);
+                rm->rh_carry = y;
+                rm->rh_has = 1;
+            } else {
+                rm->rh_has = 0;
+            }
+#undef FX_RH_HP
+            h->x1 = x1; h->x2 = x2; h->y1 = y1 * (1.0f / FX_RM_DSCALE); h->y2 = y2 * (1.0f / FX_RM_DSCALE);
+            rm->rh_xp = xp;
+        }
+        for (int k = 0; k < m; ++k)
+            yl[k] = yr[k] = 0.0f;
+        if (m)
+            fx_room_core(f, xd, yl, yr, m);
+        {   /* read back: a pair's first sample the last output, its second halfway to the new one */
+            float pl = rm->rh_yl, pr = rm->rh_yr, *ol = out + i0, *orr = out_r + i0;
+            int k = 0;
+            t = 0;
+            if (has) {
+                ol[0] += 0.5f * (pl + yl[0]);
+                orr[0] += 0.5f * (pr + yr[0]);
+                pl = yl[0];
+                pr = yr[0];
+                k = 1;
+                t = 1;
+            }
+            for (; t + 1 < cnt; t += 2, ++k) {
+                ol[t] += pl;
+                orr[t] += pr;
+                ol[t + 1] += 0.5f * (pl + yl[k]);
+                orr[t + 1] += 0.5f * (pr + yr[k]);
+                pl = yl[k];
+                pr = yr[k];
+            }
+            if (t < cnt) {
+                ol[t] += pl;
+                orr[t] += pr;
+            }
+            if (rm->quiet >= FX_RM_QUIET && fm_fabsf(pl) < 1e-9f && fm_fabsf(pr) < 1e-9f)
+                pl = pr = 0.0f;             /* (idle: the read back's line ends at silence too) */
+            rm->rh_yl = pl;
+            rm->rh_yr = pr;
+        }
+    }
+}
+
 /* the line at d samples behind w, interpolated (X0X: the ping-pong tap) */
-static inline float dl_tap(const int16_t *buf, int32_t len, float flen, int32_t w, float d)
+GM_INLINE float dl_tap(const int16_t *buf, int32_t len, float flen, int32_t w, float d)
 {
     float rp = (float)w - d;
     while (rp < 0.0f) rp += flen;
@@ -656,7 +748,7 @@ static inline float dl_tap(const int16_t *buf, int32_t len, float flen, int32_t 
  * the right at twice it, the loop fed from the right: echoes alternate L R L R, one time apart, as far
  * apart as the width puts them (fx_dl_width). The line holds both, so PING needs twice the time
  * to fit (a 2 s line: 1 s); past that it plays centred. */
-static void fx_delay(fxbus_t *f, const float *in, float *out, float *out_r, int n)
+GM_RAM static void fx_delay(fxbus_t *f, const float *in, float *out, float *out_r, int n)
 {
     const float target = f->dl_time_ms * 0.001f * D9_SR;
     const int32_t len = f->dlen;
@@ -798,8 +890,8 @@ void fxbus_process(fxbus_t *f, const float *dry, const float *rev, const float *
         out[i] = dry[i];
         discard[i] = 0.0f;
     }
-    fx_room(f, rev, out, discard, n);
-    fx_delay(f, dly, out, 0, n);
+    GM_FAR(fx_room)(f, rev, out, discard, n);   /* (RAM code: gm_ram.h) */
+    GM_FAR(fx_delay)(f, dly, out, 0, n);
 
     if (f->dist_mode >= 1) {
         const float k = f->drive;
@@ -845,9 +937,9 @@ void fxbus_process_st(fxbus_t *f, const float *dry_l, const float *dry_r, const 
         out_l[i] = dry_l[i];
         out_r[i] = dry_r[i];
     }
-    fx_room(f, rev, out_l, out_r, n);
+    GM_FAR(fx_room)(f, rev, out_l, out_r, n);   /* (RAM code, GhettoMachine 0.5: gm_ram.h) */
     if (!f->dl_off)                   /* GhettoMachine */
-        fx_delay(f, dly, out_l, out_r, n);
+        GM_FAR(fx_delay)(f, dly, out_l, out_r, n);
     if (f->dist_mode >= 1) {
         const float k = f->drive;
         for (int i = 0; i < n; ++i) {

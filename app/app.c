@@ -2610,7 +2610,7 @@ static uint32_t syn_at = SYN_CTL;
 static uint8_t cpu2;                      /* the second core takes half the voices */
 static uint8_t pool_max, pool_now;        /* the voices allowed: 16 on two cores, 8 on one; fewer while the CPU is short */
 
-static void syn_job(uint32_t half) { syn_half(half); }
+static void syn_job(uint32_t half) { PLAT_FAR(syn_half)(half); }   /* (RAM code, 0.5: dsp/gm_ram.h) */
 
 static void syn_block(void)
 {
@@ -2623,12 +2623,12 @@ static void syn_block(void)
     }
     syn_prepare();
     if (cpu2 && plat_cpu2_on() && plat_cpu2_run(syn_job, 1u)) {
-        syn_half(0);
+        syn_job(0);
         if (plat_cpu2_wait() != 0)        /* it was given up (cpu2_fallback): its half here */
-            syn_half(1);
+            syn_job(1);
     } else {
-        syn_half(0);
-        syn_half(1);
+        syn_job(0);
+        syn_job(1);
     }
     syn_mix(syn_l, syn_r, syn_rv, syn_dl);
     syn_at = 0;
@@ -3058,7 +3058,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         }
     {
         CS_MARK(cs_m0);
-        fx_master(mix_out_l, mix_out_r, (int)n, gain);   /* compressor, filter, MASTER (gliding), limiter */
+        PLAT_FAR(fx_master)(mix_out_l, mix_out_r, (int)n, gain);   /* compressor, filter, MASTER (gliding), limiter (RAM) */
         cs_t[CS_MASTER] += plat_ticks24() - cs_m0;
     }
     if (perf.on & (1u << PF_STUT | 1u << PF_TAPE | 1u << PF_CRUSH) || perf.fade < 1.0f)

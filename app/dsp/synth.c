@@ -5,6 +5,7 @@
  * ask, in one unit with their host; eng_analog.c gained a sub level and an interval for OSC 2). The host around it, the
  * envelopes, glide, unison, the note stack, the caps and the pool, is GhettoMachine's. The factory sounds are after
  * Felucca's ANALOG presets, retuned to this host's envelope times. */
+#define FM_ALWAYS_INLINE                  /* (code in RAM here: fastmath.h, gm_ram.h) */
 #include "synth.h"
 
 /* ---------------------------------------------- the engine, as it asks to be built --- */
@@ -19,6 +20,11 @@ typedef struct track {
     int16_t p[P_NUM];                     /* the engine's view of a track's sound (push below) */
 } track_t;
 static track_t trk[NPART];
+/* GhettoMachine 0.5 (CPU): the voices run from RAM (gm_ram.h), out of the XIP cache's way, on both cores: the render
+ * loops in RAM (FE_RAM: dsp.c), every helper they use inlined into them (FE_INLINE) */
+#include "gm_ram.h"
+#define FE_INLINE GM_INLINE
+#define FE_RAM GM_RAM
 #include "fe_tables.h"
 #include "felucca/dsp.c"
 #include "felucca/eng_analog.c"
@@ -522,7 +528,7 @@ void syn_set(int t, int id, int v)
 }
 
 /* ------------------------------------------------------------- SAMPLER source --- */
-static inline int32_t s12_q15(const uint8_t *d, uint32_t i)   /* frame i, Q15 */
+GM_INLINE int32_t s12_q15(const uint8_t *d, uint32_t i)   /* frame i, Q15 */
 {
     const uint8_t *b = d + (i >> 1) * 3u;
     int32_t v = (i & 1u) ? (int32_t)(b[1] >> 4) | (int32_t)b[2] << 4 : (int32_t)b[0] | (int32_t)(b[1] & 0x0Fu) << 8;
@@ -618,7 +624,7 @@ uint32_t syn_sample_frames(int t) { return t >= 1 && t < SYN_TRACKS ? tk[t].fram
 
 /* a SAMPLER voice's block: the sample read at its step, linearly between frames, round its loop or ending at its end,
  * then the drive and the filter as ANALOG's, and the amplitude */
-static void sample_render(int t, int i, const track_t *tp, int32_t *out, uint32_t n)
+GM_RAM static void sample_render(int t, int i, const track_t *tp, int32_t *out, uint32_t n)
 {
     voice_t *v = &vv[i];
     vx_t *x = &vx[i];
@@ -671,14 +677,14 @@ static void sample_render(int t, int i, const track_t *tp, int32_t *out, uint32_
         shp_end(&sh, v);
 }
 
-static void render_voice(int i, int32_t *out)
+GM_INLINE void render_voice(int i, int32_t *out)
 {
     int t = vx[i].trk;
     const track_t *tp = vx[i].usep ? &vx[i].pv : &trk[t];   /* the matrix moved some of its parameters: its own */
     if (tk[t].sampler)
         sample_render(t, i, tp, out, SYN_CTL);
-    else
-        ENG_ANALOG.render((track_t *)tp, &vv[i], out, SYN_CTL, &vx[i].m);
+    else                                  /* (ENG_ANALOG.render, called directly: RAM code calls no pointer) */
+        analog_render((track_t *)tp, &vv[i], out, SYN_CTL, &vx[i].m);
 }
 
 void syn_mixer(int t, int pan, float rev, float dly)
@@ -1218,7 +1224,7 @@ void syn_prepare(void)
     }
 }
 
-void syn_half(uint32_t h)
+GM_RAM void syn_half(uint32_t h)
 {
     int32_t *tmp = acc_t[h];
     int i, k, t;
