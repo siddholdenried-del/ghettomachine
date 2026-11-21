@@ -262,10 +262,34 @@ static const syn_preset_t PRESETS[] = {
     {"WOBBLE", 1, {0, 8, 64, -12, 0, 0, 64, 40, 40, 60, 0, 0, 64, 64, 20, 1, 1, 0, 0, 60, 110, 30, 0, 50, 60, 30},
      X(SP_L2SHAPE, 1, SP_L2RATE, 80, MOD(1, MS_LFO2, MD_CUTOFF, 35), MOD(2, MS_M1, MD_L2RATE, 40))},
 #include "synth_expansion.inc"
+#define ENTRY(name,mono,color,vals,ext) {name,mono,vals,ext},
+#define V(...) {__VA_ARGS__}
+#include "preset_bank_house.inc"
+#include "preset_bank_electro.inc"
+#include "preset_bank_warehouse.inc"
+#include "preset_bank_dub.inc"
+#undef V
+#undef ENTRY
 };
 #define NPRESETS ((int)(sizeof PRESETS / sizeof PRESETS[0]))
 #undef X
 #undef MOD
+
+#define ENTRY(name,mono,color,vals,ext) SYN_PRESET_COLOR_##color,
+static const uint8_t NEW_COLOR[] = {
+#include "preset_bank_house.inc"
+#include "preset_bank_electro.inc"
+#include "preset_bank_warehouse.inc"
+#include "preset_bank_dub.inc"
+};
+#undef ENTRY
+#define OLD_FACTORY_TOTAL (SYN_FACTORY_LEGACY_COUNT + SYN_MOTOR_CITY_COUNT)
+_Static_assert(sizeof NEW_COLOR == SYN_NEW_BANKS * SYN_BANK_SIZE, "four banks of 21 factory sounds");
+_Static_assert(NPRESETS == OLD_FACTORY_TOTAL + (int)sizeof NEW_COLOR, "factory table and recipes agree");
+int syn_preset_color(int i)
+{
+    return i >= OLD_FACTORY_TOTAL && i < NPRESETS ? NEW_COLOR[i - OLD_FACTORY_TOTAL] : SYN_PRESET_COLOR_KEEP;
+}
 
 int syn_presets(void) { return NPRESETS; }
 const char *syn_preset_name(int i) { return i >= 0 && i < NPRESETS ? PRESETS[i].name : ""; }

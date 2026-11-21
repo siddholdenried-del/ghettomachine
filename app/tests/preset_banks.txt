@@ -1,0 +1,154 @@
+# Bank jumps are on instrument tracks, never change presets for another track.
+# These tests use fixtures only, not any real device/user data.
+wait 600
+turn ALGO 1
+wait 50
+expect trk 2
+expect preset2 0
+press SEL
+wait 30
+turn PRESET 1
+wait 30
+release SEL
+wait 40
+expect preset2 40
+expect preset3 9
+expect color2_5 0
+press SEL
+wait 30
+turn PRESET 1
+wait 30
+release SEL
+wait 40
+expect preset2 61
+expect color2_5 0
+turn PRESET 1
+wait 40
+expect preset2 62
+expect color2_5 1
+expect color2_0 26
+expect color2_1 45
+expect color3_5 0
+# Go back to Motor City: original bank does not alter active track Color.
+press SEL
+wait 30
+turn PRESET -1
+wait 30
+release SEL
+wait 40
+expect preset2 40
+expect color2_5 1
+expect color2_0 26
+# Back to clean House 61: bypass but don't wipe the track's module settings.
+press SEL
+wait 30
+turn PRESET 1
+wait 30
+release SEL
+wait 40
+expect preset2 61
+expect color2_5 0
+expect color2_1 45
+press SEL
+wait 30
+turn PRESET 3
+wait 30
+release SEL
+wait 40
+expect preset2 124
+turn PRESET 20
+wait 40
+expect preset2 144
+turn PRESET 100
+wait 40
+expect preset2 144
+expect color1_5 0
+expect color3_5 0
+expect color4_5 0
+tap SAVE
+wait 500
+reboot
+wait 600
+expect projfmt 6
+expect preset2 144
+expect trk 2
+press SAVE
+wait 30
+press SEL
+wait 30
+turn PRESET 1
+wait 30
+release SEL
+wait 30
+release SAVE
+wait 350
+expect preset2 24
+expect usnd1 1
+press SEL
+wait 30
+turn PRESET -1
+wait 30
+release SEL
+wait 40
+expect preset2 0
+press SEL
+wait 30
+turn PRESET 1
+wait 30
+release SEL
+wait 40
+expect preset2 24
+# Per-pattern patch IDs above 127 survive an actual save and clip change.
+tap HOME
+wait 30
+expect page 3
+tap HOME
+wait 30
+expect page 11
+tap HOME
+wait 30
+expect page 13
+spin K2 1
+wait 30
+expect sounds 1
+tap HOME
+wait 30
+press SEL
+wait 30
+turn PRESET 5
+wait 30
+release SEL
+wait 40
+expect preset2 124
+shot preset_bank.png
+turn PRESET 20
+wait 40
+expect preset2 144
+tap SAVE
+wait 500
+reboot
+wait 600
+expect preset2 144
+expect psnd1_2 1
+tap HOME
+wait 40
+expect page 3
+key 3 down
+wait 30
+key 2 down
+wait 30
+key 2 up
+wait 30
+key 3 up
+wait 30
+expect clip2 2
+key 3 down
+wait 30
+key 0 down
+wait 30
+key 0 up
+wait 30
+key 3 up
+wait 30
+expect clip2 1
+expect preset2 144

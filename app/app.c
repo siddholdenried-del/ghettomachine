@@ -18,6 +18,7 @@
 #include "dsp/synth.h"
 #include "dsp/track_insert.h"
 #include "dsp/color.h"
+#include "dsp/preset_color.h"
 #include "dsp/fx.h"
 #include "dsp/uimath.h"
 #include "logo.h"                       /* tools/gen_logo.py: the boot screen's logo */
@@ -54,6 +55,9 @@
  * The DSP factory table itself stays contiguous; never use its growing count as a user offset. */
 #define PRESET_USER_FIRST SYN_FACTORY_LEGACY_COUNT
 #define PRESET_NEW_FIRST (PRESET_USER_FIRST + NUSER)
+#define PRESET_EXTRA_FIRST (PRESET_NEW_FIRST + SYN_MOTOR_CITY_COUNT)
+#define PRESET_LIMIT (PRESET_EXTRA_FIRST + SYN_NEW_BANKS * SYN_BANK_SIZE)
+_Static_assert(PRESET_LIMIT <= 256, "project and per-pattern preset IDs are unsigned bytes");
 static int user_preset_slot(int id) { return id >= PRESET_USER_FIRST && id < PRESET_NEW_FIRST ? id - PRESET_USER_FIRST : -1; }
 static int factory_preset_index(int id) { return id >= PRESET_NEW_FIRST ? id - NUSER : id; }
 #define NUKIT 8                           /* user kits (the drums) */
@@ -4415,9 +4419,9 @@ static int preset_step(int i, int32_t e, int n, int (*ok)(int))   /* e presets o
     return i;
 }
 
-static void preset_turn(int32_t e)        /* PRESETS on an instrument track: its sound (and MONO / POLY) */
+static void preset_load(int tr, int i, const char *bank)  /* one selected sound, not a search over intermediate presets */
 {
-    int tr = ui.trk, i = preset_step(tset(tr)->preset, e, npresets(), preset_ok), k, mono;
+    int k, mono;
     track_t *ts = tset(tr);
     char t[16];
     uint32_t f;
@@ -4437,10 +4441,60 @@ static void preset_turn(int32_t e)        /* PRESETS on an instrument track: its
     syn_release(tr, 0);
     syn_source(tr, 0);
     syn_sound(tr, ts->snd);
+    if (s < 0 && preset_color_apply(&proj.color[tr], syn_preset_color(factory_preset_index(i)))) {
+        color_reset(&color_rt[tr]);
+        insert_route(tr);
+    }
     plat_unlock(f);
     dirty = 1;
     preset_name(i, t);
-    app_say(t, TYPE_NAME[ts->type]);
+    if (bank)
+        app_say(bank, t);
+    else
+        app_say(t, TYPE_NAME[ts->type]);
+}
+
+static void preset_turn(int32_t e)
+{
+    int tr = ui.trk, old = tset(tr)->preset, i = preset_step(old, e, npresets(), preset_ok);
+    /* A turn beyond the last new entry isn't a command to erase manual Color edits. */
+    if (i == old && i >= PRESET_EXTRA_FIRST)
+        return;
+    preset_load(tr, i, 0);
+}
+
+static void preset_bank_turn(int32_t e)
+{
+    static const uint16_t START[] = {0, PRESET_USER_FIRST, PRESET_NEW_FIRST, PRESET_EXTRA_FIRST,
+        PRESET_EXTRA_FIRST + SYN_BANK_SIZE, PRESET_EXTRA_FIRST + 2 * SYN_BANK_SIZE,
+        PRESET_EXTRA_FIRST + 3 * SYN_BANK_SIZE, PRESET_LIMIT};
+    static const char *const NAME[] = {"ORIGINAL", "USER SOUNDS", "MOTOR CITY", "AFTER HOURS",
+        "MACHINE FUNK", "WAREHOUSE", "DUB / BROKEN"};
+    int tr = ui.trk, p = tset(tr)->preset, n = (int)(sizeof NAME / sizeof NAME[0]);
+    int bank = 0, start, direction = e < 0 ? -1 : 1;
+    unsigned jumps = e < 0 ? 0u - (uint32_t)e : (uint32_t)e;
+    while (bank < n - 1 && p >= START[bank + 1])
+        bank++;
+    start = bank;
+    while (jumps--) {
+        int next = bank + direction;
+        if (next == 1) {              /* no empty User bank on the panel */
+            int i = PRESET_USER_FIRST;
+            while (i < PRESET_NEW_FIRST && !preset_ok(i)) i++;
+            if (i == PRESET_NEW_FIRST) next += direction;
+        }
+        if (next < 0 || next >= n) break;
+        bank = next;
+    }
+    if (bank != start) {
+        int i = START[bank];
+        while (i < START[bank + 1] && !preset_ok(i)) i++;
+        preset_load(tr, i, NAME[bank]);
+    } else {
+        char t[16];
+        preset_name(p, t);
+        app_say(NAME[bank], t);
+    }
 }
 
 static void kit_turn(int32_t e)
@@ -6472,7 +6526,7 @@ static void input(void)
         app_say("RECORD", ui.rec ? "ON" : "OFF");
     }
     if ((released >> B_SEL & 1u) && !ui.sel_used)
-        app_say("SEL + PAD KEYS 1-4", "PICK A TRACK");
+        app_say("SEL+PADS: TRACK", inst ? "SEL+PRESETS: BANK" : "PADS 1-4");
     if ((released >> B_SAVE & 1u) && !ui.save_used)
         do_save();
     else if ((released >> B_SAVE & 1u) && ui.save_slot >= 0)   /* SAVE held + PRESETS, let go: a user preset */
@@ -6629,6 +6683,9 @@ static void input(void)
         if (ui.btn >> B_SAVE & 1u) {
             ui.save_used = 1;
             save_target(e);
+        } else if (inst && (ui.btn >> B_SEL & 1u)) {
+            ui.sel_used = 1;
+            preset_bank_turn(e);
         } else if (inst) {
             preset_turn(e);
         } else {

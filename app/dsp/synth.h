@@ -60,6 +60,12 @@ void syn_param_text(int id, int v, char *buf);   /* the value as the screen show
 
 /* the factory sounds */
 #define SYN_FACTORY_LEGACY_COUNT 24       /* app project formats 2–5 put user slots immediately after these */
+#define SYN_MOTOR_CITY_COUNT 21
+#define SYN_BANK_SIZE 21
+#define SYN_NEW_BANKS 4
+enum { SYN_PRESET_COLOR_KEEP, SYN_PRESET_COLOR_CLEAN, SYN_PRESET_COLOR_TAPE, SYN_PRESET_COLOR_DRIFT,
+       SYN_PRESET_COLOR_EDGE, SYN_PRESET_COLOR_DUST };
+int syn_preset_color(int i); /* a contiguous DSP factory index (not a user's project ID) */
 int syn_presets(void);
 const char *syn_preset_name(int i);
 int syn_preset(int i, int8_t *v);         /* fills v[SP_NUM]; returns 1 for a MONO sound, 0 for POLY */
