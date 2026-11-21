@@ -7,8 +7,8 @@
 GHETTO / MACHINE in Sedgwick Ave Display (assets/fonts, SIL OFL 1.1) and BONGTECH under it in Barlow Semi Condensed
 SemiBold (fm1-base's assets, SIL OFL 1.1), laid out on the 240 x 240 screen as the font preview did: the name as large
 as fits 212 px (at most 70 px), the tagline 16 px with 3 px between its letters, the block centred. Each part is kept
-as its lit box only, alpha 0..15, two pixels a byte (high nibble first), rows top to bottom: LOGO_NAME and LOGO_TAG,
-with their place on the screen. The firmware never carries the fonts, only these pixels.
+as its lit box, alpha 0..15, two pixels a byte: LOGO_NAME and LOGO_TAG. The supplied full square art is sampled
+without cropping and encoded as 4-bit palette indices for a lean RGB565 boot image. No font or PNG decoder on device.
 """
 import sys
 from pathlib import Path
@@ -20,7 +20,9 @@ NAME_TTF = APP / "assets" / "fonts" / "SedgwickAveDisplay-Regular.ttf"
 TAG_TTF = APP.parent / "third_party" / "fm1-base" / "assets" / "fonts" / "BarlowSemiCondensed-SemiBold.ttf"
 LINES, TAG = ("GHETTO", "MACHINE"), "BONGTECH"
 W = 240
-FIT, MAX_PX, TAG_PX, TAG_TRACK, TAG_GAP = 212, 70, 16, 3, 14
+ART_PNG = APP / "assets" / "boot-grin.png"
+ART_SIZE, ART_Y = 96, 134
+FIT, MAX_PX, TAG_PX, TAG_TRACK, TAG_GAP = 175, 56, 14, 3, 10
 
 
 def text_w(font, s):
@@ -33,8 +35,7 @@ def layout():
     name_font = ImageFont.truetype(str(NAME_TTF), size)
     tag_font = ImageFont.truetype(str(TAG_TTF), TAG_PX)
     lh = round(size * 1.02)
-    block = lh * len(LINES) + TAG_GAP + TAG_PX
-    y0 = (W - block) // 2
+    y0 = 7
 
     name = Image.new("L", (W, W), 0)
     d = ImageDraw.Draw(name)
@@ -74,6 +75,23 @@ def c_array(name, data):
     return f"static const uint8_t {name}[{len(data)}] = {{\n    " + ",\n    ".join(rows) + "\n};\n"
 
 
+def boot_art():
+    im = Image.open(ART_PNG).convert("RGBA")
+    # The square preview came from the supplied Affinity design. Show it uncropped.
+    if im.width != im.height:
+        raise SystemExit("gen_logo: expected the supplied square boot-art source")
+    bg = Image.new("RGBA", im.size, (0, 0, 0, 255))
+    bg.alpha_composite(im)
+    idx = bg.convert("RGB").resize((ART_SIZE, ART_SIZE), Image.Resampling.NEAREST).quantize(
+        colors=16, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE
+    )
+    rgb = idx.getpalette()[:48]
+    palette = [((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3) for r, g, b in zip(rgb[::3], rgb[1::3], rgb[2::3])]
+    px = idx.tobytes()
+    packed_pixels = bytes(px[i] << 4 | px[i+1] for i in range(0, len(px), 2))
+    return (W-ART_SIZE)//2, ART_Y, ART_SIZE, palette, packed_pixels
+
+
 def main():
     if len(sys.argv) != 2:
         raise SystemExit(__doc__)
@@ -84,8 +102,14 @@ def main():
     for k, (x, y, w, hh, data) in parts.items():
         h.append(f"#define LOGO_{k}_X {x}\n#define LOGO_{k}_Y {y}\n#define LOGO_{k}_W {w}\n#define LOGO_{k}_H {hh}")
         h.append(c_array(f"LOGO_{k}", data))
+    ax, ay, aw, palette, data = boot_art()
+    if ay < parts["TAG"][1] + parts["TAG"][3] + 5 or ay + aw > W:
+        raise SystemExit("gen_logo: tagline and art collide or the art would clip")
+    h.append(f"#define LOGO_ART_X {ax}\n#define LOGO_ART_Y {ay}\n#define LOGO_ART_W {aw}\n#define LOGO_ART_H {aw}")
+    h.append("static const uint16_t LOGO_ART_RGB[16] = {" + ", ".join(f"0x{v:04x}" for v in palette) + "};")
+    h.append(c_array("LOGO_ART", data))
     Path(sys.argv[1]).write_text("\n".join(h))
-    total = sum(len(p[4]) for p in parts.values())
+    total = sum(len(p[4]) for p in parts.values()) + len(data) + 2*len(palette)
     print(f"gen_logo: {size} px, name {parts['NAME'][2]} x {parts['NAME'][3]} at y {parts['NAME'][1]}, "
           f"tag {parts['TAG'][2]} x {parts['TAG'][3]} at y {parts['TAG'][1]}: {total} B -> {sys.argv[1]}")
 

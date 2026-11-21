@@ -8940,9 +8940,8 @@ static void speak(void)                   /* a screen reader that has just start
     ann_tick(plat_ms());
 }
 
-/* the boot screen: GHETTO / MACHINE in Sedgwick Ave Display, BONGTECH under it, on paper. gen_logo.py drew both
- * parts (alpha 0..15, two pixels a byte); the platform calls this once at power-on, before app_ui_init. Drawn in
- * strips of 48 rows, so any canvas size will do. */
+/* Boot screen: two text masks and the supplied paletted art on paper. The
+ * platform calls this at power-on before app_ui_init, drawn in 48-row strips. */
 static void logo_part(const uint8_t *a, int32_t x0, int32_t y0, int32_t w, int32_t h, int32_t top, int32_t n,
                       uint16_t c)
 {
@@ -8973,10 +8972,28 @@ static void logo_part(const uint8_t *a, int32_t x0, int32_t y0, int32_t w, int32
     }
 }
 
+static void logo_art(int32_t top, int32_t n)
+{
+    int32_t y, x;
+    for (y = top; y < top + n; y++) {
+        const uint8_t *row;
+        uint16_t *out;
+        if (y < LOGO_ART_Y || y >= LOGO_ART_Y + LOGO_ART_H)
+            continue;
+        row = LOGO_ART + (y - LOGO_ART_Y) * (LOGO_ART_W / 2);
+        out = cv_px + (y - top) * 240 + LOGO_ART_X;
+        for (x = 0; x < LOGO_ART_W; x += 2) {
+            uint8_t pair = row[x / 2];
+            out[x] = swap16(LOGO_ART_RGB[pair >> 4]);
+            out[x+1] = swap16(LOGO_ART_RGB[pair & 15u]);
+        }
+    }
+}
+
 void app_splash(void)
 {
     const uint16_t paper = RGB(250, 244, 232);
-    const int32_t top = LOGO_NAME_Y, bot = LOGO_TAG_Y + LOGO_TAG_H;
+    const int32_t top = LOGO_NAME_Y, bot = LOGO_ART_Y + LOGO_ART_H;
     int32_t y, n;
     lcd_fill(0, 0, 240, 240, paper);
     for (y = top; y < bot; y += n) {
@@ -8984,6 +9001,7 @@ void app_splash(void)
         cv_begin(240, (uint32_t)n, paper);
         logo_part(LOGO_NAME, LOGO_NAME_X, LOGO_NAME_Y, LOGO_NAME_W, LOGO_NAME_H, y, n, APP_SPLASH_RGB);
         logo_part(LOGO_TAG, LOGO_TAG_X, LOGO_TAG_Y, LOGO_TAG_W, LOGO_TAG_H, y, n, RGB(150, 136, 118));
+        logo_art(y, n);
         cv_blit(0, (uint32_t)y);
     }
     lcd_sync();
