@@ -1,0 +1,34 @@
+# Test factory kit selection and sequencer output through the normal panel.
+wait 600
+expect kit 0
+expect dpreset 0
+expect hits0 4
+expect hits7 4
+turn PRESET 1
+wait 40
+expect kit 1
+expect dpreset 1
+turn PRESET 1
+wait 40
+expect kit 2
+expect dpreset 10
+expect hits0 4
+expect hits7 4
+tap PLAY
+wait 30
+wav beat606.wav
+wait 2000
+wavstop
+expect peak_db_min -24
+tap PLAY
+wait 400
+turn PRESET -1
+wait 40
+expect kit 1
+expect dpreset 1
+turn PRESET -1
+wait 40
+expect kit 0
+expect dpreset 0
+expect hits0 4
+expect hits7 4

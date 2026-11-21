@@ -28,6 +28,7 @@
 #define STEP_WORDS (NSTEPS / 32)
 #define NPOTS 12                          /* knob positions kept per pad (the engines have at most 11) */
 #define NLOCKS 16                         /* per drum part: a step's chance or a knob locked for one pad's step */
+#define LK_KIT606 0x40u                    /* 606 locks keep their own pots */
 #define LK_KIT808 0x80u                   /* lock_t.param: the 808's knob (else the 909's) */
 #define LK_PROB 0x7Fu                     /* lock_t.param: the step's chance, either kit */
 #define NTRK 4                            /* tracks: the drums, then T2..T4 */
@@ -45,6 +46,14 @@
 #define NSONG 32                          /* the song chain's entries */
 #define NUSER 16                          /* user sounds (T2..T4) */
 #define NUKIT 8                           /* user kits (the drums) */
+#define DPRESET_606 (2 + NUKIT)           /* append; keep every old user kit ID */
+#define DPRESET_COUNT (DPRESET_606 + 1)
+static int dpreset_factory(int i) { return i >= 0 && i < 2 ? i : i == DPRESET_606 ? KIT_606 : -1; }
+static int kit_factory(int i) { return i == KIT_606 ? DPRESET_606 : i; }
+static int dpreset_user(int i) { return i >= 2 && i < DPRESET_606; }
+static int dpreset_display(int i) { return i == DPRESET_606 ? 2 : dpreset_user(i) ? i + 1 : i; }
+static int dpreset_id(int i) { return i == 2 ? DPRESET_606 : i > 2 ? i - 1 : i; }
+
 
 /* ------------------------------------------------------------------ project --- */
 enum { RATE_16, RATE_8, RATE_32, RATE_16T, RATE_8T, NRATES };
@@ -153,12 +162,12 @@ typedef struct {                          /* a part's 303 generator (the ACID pa
 
 typedef struct {
     uint32_t magic;
-    uint8_t kit;                          /* KIT_909 / KIT_808 */
+    uint8_t kit;                          /* KIT_909 / KIT_808 / KIT_606 */
     uint8_t pat;                          /* the pattern playing and edited */
     uint8_t swing;                        /* 50..75 % */
     uint8_t tmute;                        /* a bit per track: muted (HOME + pad keys 1-4) */
     uint16_t bpm10;                       /* tempo x10: 600..2400 */
-    uint8_t dpreset;                      /* the drums' preset: 0 909, 1 808, 2.. a user kit */
+    uint8_t dpreset;                      /* 0=909, 1=808, 2..9=user kits, 10=606 */
     uint8_t version;                      /* PROJ_VERSION */
     track_t tr[NINST];
     lfo_t lfo[NTRK];
@@ -177,15 +186,16 @@ typedef struct {
         uint8_t pat, bars;                /* a pattern (0..15) for 1..16 bars */
     } song[NSONG];
     pattern_t p[NPAT];
-    uint8_t pots[KIT_NUM][NPADS + 1][NPOTS];   /* each kit's knobs: pads, then the kit */
+    uint8_t pots[2][NPADS + 1][NPOTS];   /* each kit's knobs: pads, then the kit */
     /* appended in 0.2's performance update: a project saved before it loads, these zeroed (project_load) */
     psound_t psnd[NPAT][NINST];           /* SOUNDS PER PATTERN: each pattern's T2..T4 sound */
     uint8_t pkit[NPAT];                   /* and its drum kit: the preset + 1 (0: none yet) */
     uint8_t follow[NPAT];                 /* a scene's follow action: bits 0-2 OFF NEXT PREV FIRST RANDOM, 3-6 bars - 1 */
     /* appended in 0.4 (format 3): a format-2 file (0.3's) loads, these zeroed */
     gen_t gen[NPAT][NINST];               /* each part's 303 generator */
+    uint8_t pots606[NPADS + 1][NPOTS];    /* appended in format 4; legacy prefix and tail stay fixed */
 } project_t;
-/* Freeze the persisted 64-step layouts. Header and tail fields did not change in format 4. */
+/* Freeze the persisted 64-step layouts; legacy files end before the 606 pots. */
 typedef struct {
     uint32_t hit[NPADS][2], acc[2];
     uint16_t mute;
@@ -206,7 +216,8 @@ typedef struct { dpart_old_t d; ipart_old_t t[NINST]; } pattern_old_t;
 #define PROJ_TAIL ((uint32_t)offsetof(project_t, pots))
 #define PROJ_TAIL_BYTES (sizeof(project_t) - PROJ_TAIL)
 #define OLD_TAIL (PROJ_PREFIX + NPAT * sizeof(pattern_old_t))
-#define PROJ_V3_SIZE (OLD_TAIL + PROJ_TAIL_BYTES)
+#define PROJ_LEGACY_TAIL_BYTES ((uint32_t)offsetof(project_t, pots606) - PROJ_TAIL)
+#define PROJ_V3_SIZE (OLD_TAIL + PROJ_LEGACY_TAIL_BYTES)
 #define PROJ_V2_SIZE (PROJ_V3_SIZE - sizeof(((project_t *)0)->gen))
 #define PROJ_CAPACITY (8u * 4096u - PLAT_FILE_HEAD)
 #define PROJ_META (PROJ_PREFIX + PROJ_TAIL_BYTES)
@@ -258,7 +269,7 @@ typedef struct {
         uint8_t pat, bars;
     } song[NSONG];
     pattern_v1_t p[NPAT];
-    uint8_t pots[KIT_NUM][NPADS + 1][NPOTS];
+    uint8_t pots[2][NPADS + 1][NPOTS];
     psound_v1_t psnd[NPAT][NINST];
     uint8_t pkit[NPAT];
     uint8_t follow[NPAT];
@@ -276,6 +287,15 @@ static const plat_file_t PROJ_FILE = {0x97000u, 0x9F000u, 8u * 4096u};
 _Static_assert(PROJ_V3_SIZE == 32120u, "format 3 as 0.4 saved it");
 
 static project_t proj PLAT_POOL;
+static uint8_t (*kit_pots(int k))[NPOTS] { return k == KIT_606 ? proj.pots606 : proj.pots[k]; }
+static void kit606_defaults(void)
+{
+    for (int pad = 0; pad <= NPADS; ++pad)
+        for (int i = 0; i < NPOTS; ++i) {
+            const x0x_param_t *p = drums_param(KIT_606, pad, i);
+            proj.pots606[pad][i] = p ? p->def : 0;
+        }
+}
 static uint8_t dirty;                     /* changed since the last save: SAVE is lit */
 
 /* the screen's meters, written where the sound is made (the audio interrupt), read and let go by the screen */
@@ -513,7 +533,7 @@ static int step_locked(const dpart_t *p, int step, int pad)
     return 0;
 }
 
-static int lk_param(int kit, int i) { return (kit == KIT_808 ? (int)LK_KIT808 : 0) | i; }
+static int lk_param(int kit, int i) { return (kit == KIT_606 ? (int)LK_KIT606 : kit == KIT_808 ? (int)LK_KIT808 : 0) | i; }
 
 /* the default project: a beat in pattern 1, the rest empty; T2 a mono bass an octave down, T3 a pluck, T4 a pad */
 static void project_default(void)
@@ -587,7 +607,7 @@ static void pots_from_engines(void)
     for (k = 0; k < KIT_NUM; k++)
         for (pad = 0; pad <= NPADS; pad++)
             for (i = 0; i < NPOTS; i++)
-                proj.pots[k][pad][i] = (uint8_t)(i < drums_nparams(k, pad) ? drums_get(k, pad, i) : 0);
+                kit_pots(k)[pad][i] = (uint8_t)(i < drums_nparams(k, pad) ? drums_get(k, pad, i) : 0);
 }
 
 static void pots_apply(void)              /* (the lock held, or the interrupt) */
@@ -598,7 +618,7 @@ static void pots_apply(void)              /* (the lock held, or the interrupt) *
             for (pad = 0; pad <= NPADS; pad++)
                 for (i = 0; i < drums_nparams(k, pad) && i < NPOTS; i++)
                     if (param_is_switch_sound(drums_param(k, pad, i)) == (pass == 0))
-                        drums_set(k, pad, i, proj.pots[k][pad][i]);
+                        drums_set(k, pad, i, kit_pots(k)[pad][i]);
 }
 
 static void pots_to_engines(void)
@@ -781,15 +801,15 @@ static void project_check(void)           /* a loaded project's values kept in r
             for (k = 0; k < SP_NUM; k++)
                 q->snd[k] = (int8_t)clamp(q->snd[k], syn_param(k)->min, syn_param(k)->max);
         }
-        if (proj.pkit[i] > 2u + NUKIT)
+        if (proj.pkit[i] > DPRESET_COUNT)
             proj.pkit[i] = 0;
         if ((proj.follow[i] & 7u) > 4u)
             proj.follow[i] = 0;
         proj.follow[i] &= 0x7Fu;
     }
     proj.version = PROJ_VERSION;
-    if (proj.dpreset >= 2 + NUKIT)
-        proj.dpreset = proj.kit;
+    if (proj.dpreset >= DPRESET_COUNT)
+        proj.dpreset = (uint8_t)kit_factory(proj.kit);
     if (proj.song_n > NSONG)
         proj.song_n = 0;
     proj.song_on &= 1u;
@@ -898,7 +918,7 @@ static int project_load_v23(int fmt)
     static ipart_old_t old;
     int i, t, k;
     if (plat_file_read(&PROJ_FILE, 0, &proj, PROJ_PREFIX) ||
-        plat_file_read(&PROJ_FILE, OLD_TAIL, proj.pots, fmt == 2 ? PROJ_V2_SIZE - OLD_TAIL : PROJ_TAIL_BYTES))
+        plat_file_read(&PROJ_FILE, OLD_TAIL, proj.pots, fmt == 2 ? PROJ_V2_SIZE - OLD_TAIL : PROJ_LEGACY_TAIL_BYTES))
         return -1;
     for (i = 0; i < NPAT; i++) {
         uint32_t at = PROJ_PREFIX + (uint32_t)i * sizeof(pattern_old_t);
@@ -984,6 +1004,7 @@ static int project_load(void)
     dirty = 0;
     for (i = 0; i < sizeof proj; i++)
         ((uint8_t *)&proj)[i] = 0;
+    kit606_defaults();
     if (fmt == 4) {
         r = project_decode(plat_file_data(&PROJ_FILE), (uint32_t)plat_file_size(&PROJ_FILE));
     } else if (fmt >= 2) {
@@ -1333,20 +1354,22 @@ static int user_save(void) { return plat_store_save(OBJ_USER, &user, sizeof user
  * tracks keep one sound whatever the pattern */
 static int sounds_pp(void) { return (int)(proj.recq >> 6 & 1u); }
 
-static void kit_raw(int i)                /* the drums' preset i: 909, 808 or a user kit (the lock held / interrupt) */
+static void kit_raw(int i)                /* a factory preset or a user kit (lock held / interrupt) */
 {
-    int r, c;
-    if (i >= 2) {
+    int r, c, factory = dpreset_factory(i);
+    if (dpreset_user(i)) {
         const ukit_t *u = &user.kit[i - 2];
-        if (i >= 2 + NUKIT || !u->used)
+        if (!u->used || u->kit >= KIT_NUM)
             return;
         for (r = 0; r <= NPADS; r++)
             for (c = 0; c < NPOTS; c++)
-                proj.pots[u->kit][r][c] = u->pots[r][c];
+                kit_pots(u->kit)[r][c] = u->pots[r][c];
         proj.kit = u->kit;
         pots_apply();
+    } else if (factory >= 0) {
+        proj.kit = (uint8_t)factory;
     } else {
-        proj.kit = (uint8_t)i;
+        return;
     }
     proj.dpreset = (uint8_t)i;
 }
@@ -1438,13 +1461,15 @@ static void psnd_fetch_all(void)          /* loading: the focused pattern's soun
         psnd_fetch(t, proj.pat);
     if (proj.pkit[proj.pat] && proj.pkit[proj.pat] - 1 != proj.dpreset) {
         int i = proj.pkit[proj.pat] - 1, r, c;
-        if (i >= 2 && i < 2 + NUKIT && user.kit[i - 2].used) {
+        if (dpreset_user(i) && user.kit[i - 2].used && user.kit[i - 2].kit < KIT_NUM) {
             for (r = 0; r <= NPADS; r++)
                 for (c = 0; c < NPOTS; c++)
-                    proj.pots[user.kit[i - 2].kit][r][c] = user.kit[i - 2].pots[r][c];
+                    kit_pots(user.kit[i - 2].kit)[r][c] = user.kit[i - 2].pots[r][c];
             proj.kit = user.kit[i - 2].kit;
-        } else if (i < 2) {
-            proj.kit = (uint8_t)i;
+        } else if (dpreset_factory(i) >= 0) {
+            proj.kit = (uint8_t)dpreset_factory(i);
+        } else {
+            return;
         }
         proj.dpreset = (uint8_t)i;
     }
@@ -1797,9 +1822,9 @@ static void locks_apply(const dpart_t *p, int step, int pad)
     int i;
     for (i = 0; i < p->nlk; i++) {
         const lock_t *l = &p->lk[i];
-        int k = l->param & 0x7F;
+        int k = l->param & 0x3F;
         if (l->step != step || l->pad != pad || l->param == LK_PROB || k >= NPOTS ||
-            (l->param & LK_KIT808 ? KIT_808 : KIT_909) != proj.kit)
+            (l->param & LK_KIT606 ? KIT_606 : l->param & LK_KIT808 ? KIT_808 : KIT_909) != proj.kit)
             continue;
         if (!(ovr_mask[pad] >> k & 1u))
             ovr_base[pad][k] = (uint8_t)drums_get(proj.kit, pad, k);
@@ -2963,7 +2988,7 @@ static const uint8_t WK[16] = PLAT_WHITE_KEYS, BK[11] = PLAT_BLACK_KEYS;
 #define C_RED RGB(232, 76, 60)
 #define C_GREEN RGB(90, 210, 130)
 #define C_MUTEBG RGB(70, 18, 14)
-static const uint16_t KIT_RGB[KIT_NUM] = {RGB(255, 120, 40), RGB(70, 160, 255)};
+static const uint16_t KIT_RGB[KIT_NUM] = {RGB(255, 120, 40), RGB(70, 160, 255), RGB(192, 124, 232)};
 static const uint16_t TRK_RGB[NTRK] = {0, RGB(90, 210, 130), RGB(185, 125, 255), RGB(245, 205, 60)};
 
 static struct {
@@ -4132,13 +4157,17 @@ static void preset_name(int i, char *t)
     int_text(i - syn_presets() + 1, u);
     text_cat(t, u);
 }
-static int dpreset_ok(int i) { return i == 0 || i == 1 || (i >= 2 && i < 2 + NUKIT && user.kit[i - 2].used); }
+static int dpreset_ok(int display)
+{
+    int i = dpreset_id(display);
+    return dpreset_factory(i) >= 0 || (dpreset_user(i) && user.kit[i - 2].used && user.kit[i - 2].kit < KIT_NUM);
+}
 static void dpreset_name(int i, char *t)
 {
     char u[4];
     t[0] = 0;
-    if (i < 2) {
-        text_cat(t, i ? "808" : "909");
+    if (dpreset_factory(i) >= 0) {
+        text_cat(t, drums_kit_name(dpreset_factory(i)));
         return;
     }
     text_cat(t, "USER KIT ");
@@ -4188,31 +4217,31 @@ static void preset_turn(int32_t e)        /* PRESETS on an instrument track: its
 
 static void kit_turn(int32_t e)           /* PRESETS on the drums: 909, 808, the user kits */
 {
-    int i = preset_step(proj.dpreset, e, 2 + NUKIT, dpreset_ok), r, c;
+    int i = dpreset_id(preset_step(dpreset_display(proj.dpreset), e, DPRESET_COUNT, dpreset_ok)), r, c;
     char t[16];
     uint32_t f = plat_lock();
     locks_release();                      /* the old kit's knobs back to their own values first */
     plat_unlock(f);
-    if (i >= 2) {                         /* a user kit: its kit, and all its knobs */
+    if (dpreset_user(i)) {                /* a user kit: its kit, and all its knobs */
         const ukit_t *u = &user.kit[i - 2];
         pots_from_engines();              /* (the other kit's knobs as they are) */
         for (r = 0; r <= NPADS; r++)
             for (c = 0; c < NPOTS; c++)
-                proj.pots[u->kit][r][c] = u->pots[r][c];
+                kit_pots(u->kit)[r][c] = u->pots[r][c];
         f = plat_lock();
         proj.kit = u->kit;
         plat_unlock(f);
         pots_to_engines();
     } else {
         f = plat_lock();
-        proj.kit = (uint8_t)i;
+        proj.kit = (uint8_t)dpreset_factory(i);
         plat_unlock(f);
     }
     proj.dpreset = (uint8_t)i;
     dirty = 1;
     ui.epage = 0;
     dpreset_name(i, t);
-    app_say(t, i >= 2 ? (proj.kit == KIT_808 ? "808" : "909") : "");
+    app_say(t, dpreset_user(i) ? drums_kit_name(proj.kit) : "");
 }
 
 static void save_target(int32_t e)        /* SAVE held + PRESETS: the user slot that letting go of SAVE saves to */
@@ -4222,7 +4251,7 @@ static void save_target(int32_t e)        /* SAVE held + PRESETS: the user slot 
     if (s < 0) {                          /* the first turn: where the sound came from, else the first empty slot */
         if (inst && tset(ui.trk)->preset >= syn_presets())
             s = tset(ui.trk)->preset - syn_presets();
-        else if (!inst && proj.dpreset >= 2)
+        else if (!inst && dpreset_user(proj.dpreset))
             s = proj.dpreset - 2;
         else
             for (s = 0, k = n - 1; k >= 0; k--)
@@ -4270,7 +4299,7 @@ static void save_user(void)               /* SAVE let go after choosing a slot: 
         u->kit = proj.kit;
         for (r = 0; r <= NPADS; r++)
             for (c = 0; c < NPOTS; c++)
-                u->pots[r][c] = proj.pots[proj.kit][r][c];
+                u->pots[r][c] = kit_pots(proj.kit)[r][c];
         proj.dpreset = (uint8_t)(2 + s);
         dpreset_name(proj.dpreset, t);
     }
@@ -4966,7 +4995,7 @@ static void track_pick(int tr)
         ui.spage = 0;
         ui.epage = 0;
     }
-    app_say(TRK_NAME[tr], tr == TR_DRUM ? (proj.kit == KIT_808 ? "808" : "909") : TYPE_NAME[tset(tr)->type]);
+    app_say(TRK_NAME[tr], tr == TR_DRUM ? drums_kit_name(proj.kit) : TYPE_NAME[tset(tr)->type]);
 }
 
 static int edit_pat(void) { return clip_of(ui.trk); }
@@ -5106,7 +5135,10 @@ static void reload_sound(void)            /* SAVE + OCT-: the track's sound (the
         return;
     }
     if (tr == TR_DRUM) {
-        static uint8_t pots[KIT_NUM][NPADS + 1][NPOTS];
+        static uint8_t pots[2][NPADS + 1][NPOTS], saved606[NPADS + 1][NPOTS];
+        const uint32_t fmt4_606_off = PROJ_PREFIX + (uint32_t)offsetof(project_t, pots606) - PROJ_TAIL;
+        if (fmt == 4 && plat_file_read(&PROJ_FILE, fmt4_606_off, saved606, sizeof saved606) != 0)
+            return;
         if (plat_file_read(&PROJ_FILE, fmt == 4 ? PROJ_PREFIX : fmt >= 2 ? OLD_TAIL : V1_OFF(pots), pots,
                            sizeof pots) != 0)
             return;
@@ -5114,10 +5146,17 @@ static void reload_sound(void)            /* SAVE + OCT-: the track's sound (the
         locks_release();
         {
             int k, r, c;
-            for (k = 0; k < KIT_NUM; k++)
+            for (k = 0; k < 2; k++)
                 for (r = 0; r <= NPADS; r++)
                     for (c = 0; c < NPOTS; c++)
-                        proj.pots[k][r][c] = pots[k][r][c];
+                        kit_pots(k)[r][c] = pots[k][r][c];
+            if (fmt == 4) {
+                for (r = 0; r <= NPADS; r++)
+                    for (c = 0; c < NPOTS; c++)
+                        kit_pots(KIT_606)[r][c] = saved606[r][c];
+            } else {
+                kit606_defaults();
+            }
         }
         pots_apply();
         plat_unlock(f);
@@ -7475,7 +7514,7 @@ static void hits_take(void)
 /* ---- the pages */
 static void kit_band(const char *title, const char *ctx, int npg, int pg)
 {
-    band_set(KIT_RGB[proj.kit], proj.kit == KIT_808 ? "808" : "909", title, ctx, npg, pg);
+    band_set(KIT_RGB[proj.kit], drums_kit_name(proj.kit), title, ctx, npg, pg);
 }
 
 static void steps_text(char *t)           /* "STEPS 17-32" */
@@ -7991,7 +8030,7 @@ static void page_lfo(void)                /* the track's LFO: its shape, where i
     t[0] = 0;
     text_cat(t, "TO ");
     text_cat(t, d);
-    band_set(col, tr == TR_DRUM ? (proj.kit == KIT_808 ? "808" : "909") : TRK_NAME[tr],
+    band_set(col, tr == TR_DRUM ? drums_kit_name(proj.kit) : TRK_NAME[tr],
              tr == TR_DRUM ? (pg ? "LFO MORE" : "LFO") : LFO_PAGE_NAME[pg], t, lfo_pages(tr), pg);
     rrect(4, 4, 232, 124, 6, C_PANEL);
     cv_rect(10, 64, 220, 1, C_GRID);
@@ -8133,7 +8172,7 @@ static void page_home(void)               /* the scene grid: 16 patterns across 
         uint16_t tc = trk_rgb(t);
         /* the track: its name, muted or stopped, its level */
         rrect(1, y, 29, 27, 4, muted || clip[t] < 0 ? C_PANEL : tc);
-        text_c(15, y + 1, &FONT_S, t == TR_DRUM ? (proj.kit == KIT_808 ? "808" : "909") : TRK_NAME[t],
+        text_c(15, y + 1, &FONT_S, t == TR_DRUM ? drums_kit_name(proj.kit) : TRK_NAME[t],
                muted ? TH_RED : C_INK);
         h = db_h(lvl[t], 23, 48.0f);
         cv_rect(4, y + 21, 23, 3, muted || clip[t] < 0 ? C_GRID : mix565(tc, C_INK, 90));
@@ -8242,7 +8281,7 @@ static void page_mix(void)                /* the mixer: a strip a track, its met
         uint16_t col = trk_rgb(t);
         rrect(x, 2, 56, 128, 6, t == ui.trk ? C_PANEL : mix565(C_BODY, C_INK, 12));
         rrect(x + 4, 6, 48, 18, 4, muted ? C_GRID : col);
-        text_c(x + 28, 7, &FONT_S, t == TR_DRUM ? (proj.kit == KIT_808 ? "808" : "909") : TRK_NAME[t],
+        text_c(x + 28, 7, &FONT_S, t == TR_DRUM ? drums_kit_name(proj.kit) : TRK_NAME[t],
                muted ? TH_RED : C_INK);
         h = db_h(lvl[t], 92, 48.0f);      /* the meter, -48..0 dBFS */
         rrect(x + 6, 30, 8, 92, 3, C_GRID);

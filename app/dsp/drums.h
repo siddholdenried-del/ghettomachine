@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* GhettoMachine: the drum track's two kits behind one small interface.
+/* GhettoMachine: the drum track's three kits behind one small interface.
  *
  * The 909 (X0X's drum909, after 9W9) and the 808 (X0X's drum808, after 8W8) share one pad layout,
  * so a pattern keeps its meaning when the kit changes:
@@ -7,6 +7,7 @@
  *   pad   0  1  2  3  4  5  6  7  8  9  10
  *   909   BD SD LT MT HT RS CP CH OH CR RD
  *   808   BD SD LT MT HT RS CP CH OH CY CB
+ *   606   BD SD LT -- HT -- CP CH OH CY --
  *
  * This unit is compiled on its own (fm1.toml o2), so the engines' headers (and X0X's fastmath.h)
  * never meet the platform's in the unity build: the app sees only this header.
@@ -22,7 +23,8 @@
 #define DRUMS_MAX_BLOCK 256
 #define DRUMS_VEL_NORMAL (88.0f / 127.0f)   /* an unaccented sequencer hit; 1.0 is an accent */
 
-enum { KIT_909, KIT_808, KIT_NUM };
+enum { KIT_909 = 0, KIT_808 = 1, KIT_606 = 2, KIT_NUM };
+const char *drums_kit_name(int kit);
 
 void drums_init(void);
 /* vel 0..1: DRUMS_VEL_NORMAL for a plain step, 1.0 for an accented one; a played key's velocity in between */
