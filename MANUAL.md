@@ -4,7 +4,7 @@ The BongTech GhettoMachine turns the M-VAVE FM-1 into a four-track groovebox:
 
 - **Drums:** a 909 or an 808 kit, every pad editable.
 - **T2, T3, T4:** instrument tracks. Each is a MONO synth, a POLY synth or a SAMPLER.
-- **One sequencer** of up to 64 steps a track, 16 patterns, and a song chain.
+- **One sequencer** of up to 128 steps a track, 16 patterns, and a song chain.
 - **An LFO on every track,** an arpeggiator on T2–T4, and per-step locks.
 - **A mixer**, a reverb, a tempo delay, and **a master bus with a mastering chain**: EQ, compressor, tape saturation,
   stereo width and a limiter, with presets and a loudness meter.
@@ -84,7 +84,7 @@ at the top and the knob cards are dark, lettered in it. Three parts, top to bott
 - **Pads:** the 11 black keys are BD, SD, LT, MT, HT, RS, CP, CH, OH and CR/RD (909) or CY/CB (808). Pressing one picks it
   and plays it.
 - **Steps (SEQ):** the 16 white keys are the picked pad's steps. Press an empty step to light it; press and let go of a
-  lit one to clear it. OCT− / OCT+ or SELECT move through step pages up to 64. The beats, steps 1, 5, 9 and 13 of the
+  lit one to clear it. OCT− / OCT+ or SELECT move through step pages up to 128. The beats, steps 1, 5, 9 and 13 of the
   page, glow dimly while they're empty, and the screen's grid gives them a darker column, so a bar is easy to count.
   - Hold **SEQ** and press steps: accents.
   - Hold a step and turn **SELECT**: its chance (100 % to 5 %).
@@ -93,6 +93,12 @@ at the top and the knob cards are dark, lettered in it. Three parts, top to bott
   - Hold a step and turn a knob: that value for that step only (a lock). Held step + OCT− clears its locks.
 - **ENV:** the MUTE page. Pad keys mute pads in this pattern. OCT+ unmutes them all.
 - **Knobs on the steps page:** LENGTH and RATE of this track's part, SWING and TEMPO.
+
+Hold **SEQ** and tap **OCT+** to repeat the selected track’s part into a second half, or **OCT−** to keep its first half (rounding an odd length down). This copies notes, accents, chance and locks without changing the track’s rate. The second half is erased on halving. A full repeat is blocked if it would exceed 128 steps or the part’s lock capacity. **EDIT + OCT−** undoes, **EDIT + OCT+** redoes. On instrument STEPS, black keys 1–8 pick the available banks of 16.
+
+On instrument STEPS, hold a step and turn **K3 GATE**. Slow turns edit in eighths of a step; a fast turn snaps to whole bars at the selected rate. A note can hold for up to 128 steps.
+
+A very dense collection of long parts can exceed the fixed FM-1 project save slot. If SAVE reports **PROJECT TOO LARGE**, the previous save is kept and the current edits stay in memory. Shorten or clear unused parts before saving again.
 
 ## The instrument tracks (T2–T4)
 
@@ -496,5 +502,5 @@ the sound saved with the pattern it's on.
   average (up to 6). Continue starts from the top. The clock is sent out of USB only.
 - Sounds per pattern keeps the tracks' sounds and the kit, not the mixer, FX or master bus.
 - The 303 generator: no per-step dice locking (keep this step, re-roll the rest), no 303-style transpose track, no
-  drum generator. A 32- or 64-step part gets a line of that length, not a 16-step line repeated. The arpeggiator
+  drum generator. A part of any length, up to 128 steps, gets a line of that length, not a 16-step line repeated. The arpeggiator
   ignores slides (it plays each note as its own).

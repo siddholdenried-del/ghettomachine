@@ -35,7 +35,7 @@
 #define TR_DRUM 0
 #define NCHORD 4                          /* notes a step holds */
 #define GATE_DEF 6                        /* a new step's gate: 6/8 of a step */
-#define GATE_MAX 255                      /* the longest: 31.9 steps, nearly 2 bars at 1/16 (LEGATO ties up to it) */
+#define GATE_MAX (NSTEPS * 8)             /* 128 steps, still edited in eighths of one step */
 #define NKEYS 27
 #define KEY_NOTE0 53                      /* key 0 (F3) at octave 0 */
 #define PROJ_MAGIC 0x31544745u            /* "EGT1": fm1-eight 0.1's project; another magic loads the default project */
@@ -70,8 +70,8 @@ typedef struct {                          /* the drum track's part of a pattern 
 typedef struct {                          /* an instrument step (format 1 had a spare byte more: nstep_v1_t) */
     uint8_t note[NCHORD];                 /* MIDI notes, packed from the first; note[0] == 0: the step is off */
     uint8_t vel;                          /* 1..127 */
-    uint8_t gate;                         /* eighths of a step, 1..GATE_MAX */
     uint8_t prob;                         /* chance, 5..100 % */
+    uint16_t gate;                        /* eighths of a step, 1..GATE_MAX */
 } nstep_t;
 
 /* a 303's marks in the steps' spare top bits (0.4; no file before has them set): the velocity's, an accent; the
@@ -192,7 +192,11 @@ typedef struct {
     lock_t lk[NLOCKS];
 } dpart_old_t;
 typedef struct {
-    nstep_t st[OLD_STEPS];
+    uint8_t note[NCHORD], vel, gate, prob;
+} nstep_old_t;
+_Static_assert(sizeof(nstep_old_t) == 7u && sizeof(nstep_t) == 8u, "stable legacy and format-4 step layouts");
+typedef struct {
+    nstep_old_t st[OLD_STEPS];
     uint8_t len, rate, nlk, rsv;
     ilock_t lk[NILOCKS];
 } ipart_old_t;
@@ -666,7 +670,7 @@ static void project_check(void)           /* a loaded project's values kept in r
                     continue;
                 }
                 st->vel = (uint8_t)((st->vel & NS_ACC) | (uint32_t)clamp(ns_vel(st), 1, 127));
-                st->gate = (uint8_t)clamp(st->gate, 1, GATE_MAX);
+                st->gate = (uint16_t)clamp(st->gate, 1, GATE_MAX);
                 st->prob = (uint8_t)((st->prob & NS_SLIDE) | (uint32_t)clamp(ns_prob(st), 5, 100));
             }
         }
@@ -907,8 +911,13 @@ static int project_load_v23(int fmt)
             d->len = old.len; d->rate = old.rate; d->nlk = old.nlk;
             for (k = 0; k < NILOCKS; k++)
                 d->lk[k] = old.lk[k];
-            for (k = 0; k < OLD_STEPS; k++)
-                d->st[k] = old.st[k];
+            for (k = 0; k < OLD_STEPS; k++) {
+                int n;
+                for (n = 0; n < NCHORD; n++) d->st[k].note[n] = old.st[k].note[n];
+                d->st[k].vel = old.st[k].vel;
+                d->st[k].prob = old.st[k].prob;
+                d->st[k].gate = old.st[k].gate;
+            }
         }
     }
     return 0;
@@ -1884,6 +1893,18 @@ static float step_samples(int tr, int step)
     return (step & 1) ? 2.0f * base * (1.0f - sw) : 2.0f * base * sw;
 }
 
+/* Duration through the actual swung step clock, including odd-length
+ * wraps. Sum alternating long/short steps in O(1), then the fractional step. */
+static int32_t note_gate_samples(int tr, int step, int len, int gate)
+{
+    int whole = gate / 8, first = whole < len - step ? whole : len - step;
+    int after = whole - first, last = (step + whole) % len;
+    int swing_units = (first & 1) * ((step & 1) ? -1 : 1) + (len & 1) * (after / len) + (after % len & 1);
+    float base = base_step(tr), delta = (proj.swing - 50) * .02f * base;
+    return (int32_t)(base * whole + delta * swing_units +
+                     (gate & 7) * .125f * (base + ((last & 1) ? -delta : delta)));
+}
+
 static float bar_samples(void) { return 4.0f * 44100.0f * 60.0f / ((float)proj.bpm10 * 0.1f); }
 
 /* the metronome (hold REC): a click a beat, the bar's first higher; OFF, ON while playing, REC while recording. And
@@ -1998,7 +2019,7 @@ static void seq_inst(int tr)              /* audio interrupt: an instrument part
     if ((proj.tmute >> tr & 1u) || (ns_prob(s) < 100 && (int)rnd100() >= ns_prob(s)))
         return;
     ilocks_apply(tr, p, next);
-    gate = (int32_t)((float)s->gate * 0.125f * sq.t[tr].dur);
+    gate = note_gate_samples(tr, next, p->len, s->gate);
     marks = (s->vel & NS_ACC) ? SN_ACCENT : 0;   /* a 303's marks: on any sound (a slide: the chord's first note) */
     for (i = 0; i < NCHORD && s->note[i]; i++) {
         if (ts->arp_mode)                 /* arpeggiated: the notes are the arpeggiator's, for the gate */
@@ -2978,6 +2999,9 @@ static struct {
     uint32_t msg_until;
     uint32_t keys, btn;
     uint8_t edit_used, save_used, sel_used, rec_used;   /* EDIT / SAVE / SEL / REC held as a modifier: no tap */
+    uint32_t gate_t;
+    int8_t gate_dir;
+    uint8_t gate_run;
     int8_t held_step;                     /* a step held (white key down on the step pages), -1 none */
     uint8_t held_key, held_was_on, held_used;   /* its key; on before the press; a knob or SELECT used on it */
     uint32_t last_ticks;
@@ -3381,7 +3405,7 @@ static void live_rec_off(int key, int tr)  /* the key let go: the step's gate is
     g = clamp((int32_t)((float)held / base_step(tr) * 8.0f + 0.5f), 1, GATE_MAX);
     f = plat_lock();
     if (p->st[s].note[0])
-        p->st[s].gate = (uint8_t)g;
+        p->st[s].gate = (uint16_t)g;
     plat_unlock(f);
 }
 
@@ -3519,14 +3543,14 @@ static void legato(void)
     for (s = 0; s < len; s++)
         if (p->st[s].note[0]) {
             if (prev >= 0)
-                p->st[prev].gate = (uint8_t)clamp((s - prev) * 8 + 1, 1, GATE_MAX);
+                p->st[prev].gate = (uint16_t)clamp((s - prev) * 8 + 1, 1, GATE_MAX);
             else
                 first = s;
             prev = s;
             n++;
         }
     if (prev >= 0)                        /* the last: round the loop to the first */
-        p->st[prev].gate = (uint8_t)clamp((first + len - prev) * 8 + 1, 1, GATE_MAX);
+        p->st[prev].gate = (uint16_t)clamp((first + len - prev) * 8 + 1, 1, GATE_MAX);
     plat_unlock(f);
     int_text(n, t);
     text_cat(t, n == 1 ? " NOTE" : " NOTES");
@@ -3724,6 +3748,26 @@ static void istep_up(int k)
     ui.redraw = 1;
 }
 
+/* Fine detents always edit one eighth of a step. A burst snaps to
+ * musical bar boundaries for this track division, so eight bars don't
+ * take 1024 detents. Reset on a new step or on a different held knob. */
+static int gate_edit(int gate, int rate, int32_t e)
+{
+    static const int per_bar[NRATES] = {128, 64, 256, 192, 96};
+    uint32_t now = plat_ms();
+    int dir = e < 0 ? -1 : 1, moves = clamp(e < 0 ? -e : e, 1, 8);
+    if (ui.gate_dir != dir || now - ui.gate_t > 85u) ui.gate_run = 0;
+    ui.gate_t = now;
+    ui.gate_dir = (int8_t)dir;
+    ui.gate_run = (uint8_t)clamp(ui.gate_run + moves, 0, 3);
+    if (ui.gate_run < 3) return clamp(gate + e, 1, GATE_MAX);
+    {
+        int bar = per_bar[rate];
+        int snap = dir > 0 ? (gate / bar + moves) * bar : ((gate - 1) / bar - moves + 1) * bar;
+        return clamp(snap, 1, GATE_MAX);
+    }
+}
+
 static void iheld_knob(int k, int32_t e)  /* a step held: K1 its notes (the chord moves), K2 velocity, K3 gate */
 {
     int tr = ui.trk, i, lo = 127, hi = 0;
@@ -3734,6 +3778,7 @@ static void iheld_knob(int k, int32_t e)  /* a step held: K1 its notes (the chor
         return;
     if (!ui.held_used)
         undo_mark(0);
+    if (!ui.held_used || k != 2) ui.gate_run = 0;
     ui.held_used = 1;
     f = plat_lock();
     if (k == 0) {
@@ -3748,8 +3793,7 @@ static void iheld_knob(int k, int32_t e)  /* a step held: K1 its notes (the chor
         int v = clamp(ns_vel(s) + ((s->vel & NS_ACC) ? 1 : 0) + e, 1, 128);
         s->vel = (uint8_t)(v > 127 ? 127u | NS_ACC : (uint32_t)v);
     } else {
-        int st = (e > 0 ? s->gate >= 16 : s->gate > 16) ? 8 : 1;   /* over 2 steps: a step a detent */
-        s->gate = (uint8_t)clamp(s->gate + e * st, 1, GATE_MAX);
+        s->gate = (uint16_t)gate_edit(s->gate, ipart(tr)->rate, e);
     }
     plat_unlock(f);
     if (k == 0) {
@@ -3811,7 +3855,7 @@ static void iheld_len(void)               /* a step held + OCT+: its length as a
         s->gate = GATE_HALF;
         m = 0;
     } else if (m == 1) {
-        s->gate = (uint8_t)whole_gate(p, ui.held_step);
+        s->gate = (uint16_t)whole_gate(p, ui.held_step);
     } else {
         s->gate = GATE_SLIDE;
         s->prob |= NS_SLIDE;
@@ -5354,7 +5398,7 @@ static void gen_make(const gen_t *g, int len, nstep_t *out)   /* the part's firs
             int k = 1;
             while (s + k < len && !on[s + k])
                 k++;
-            st->gate = (uint8_t)(8 * k - 1 > GATE_MAX ? GATE_MAX : 8 * k - 1);
+            st->gate = (uint16_t)(8 * k - 1 > GATE_MAX ? GATE_MAX : 8 * k - 1);
         } else {
             st->gate = GATE_HALF;
         }

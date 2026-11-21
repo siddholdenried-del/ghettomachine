@@ -216,7 +216,7 @@ LANDING = """<div class="hero gm-home">
   <div class="screen">
     <div class="top"><span class="label">Firmware for the M-VAVE FM-1</span><span class="ver">V0.4</span></div>
     <h1><span class="logo">GhettoMachine</span></h1>
-    <p class="sub">Four-track groovebox firmware. A 909 or 808, three synth or sampler tracks, and a 64-step sequencer.</p>
+    <p class="sub">Four-track groovebox firmware. A 909 or 808, three synth or sampler tracks, and a 128-step sequencer.</p>
   </div>
   <p class="lede">Make a beat in the browser or look up the controls for the FM-1.</p>
   <div class="gm-actions" id="play">
