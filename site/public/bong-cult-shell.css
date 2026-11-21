@@ -1,3 +1,4 @@
+@import url("/dungeon-bbs-tokens.css");
 /* Dungeon BBS shared frame for GhettoMachine’s editorial pages.
    The separate /emu/ instrument is not styled by this file. */
 :root {
@@ -59,7 +60,7 @@ body.gm-bong-cult {
 .bc-badge {
   margin: 0;
   padding: .28rem clamp(.9rem, 3vw, 1.55rem);
-  border: 1px solid var(--bc-rule);
+  border: var(--bbs-line, 1px) solid var(--bc-rule);
   background: #10100f;
   color: #ded9b9;
   font: 700 clamp(.72rem, 1.4vw, .95rem)/1.2 "Courier New", Courier, monospace;
@@ -75,7 +76,7 @@ body.gm-bong-cult {
   grid-template-columns: clamp(10rem, 16vw, 13rem) minmax(0,1fr);
   width: min(94%, 73rem);
   margin: 1.65rem auto 0;
-  border: 1px solid var(--bc-paper);
+  border: var(--bbs-line, 1px) solid var(--bc-paper);
   background: var(--bc-panel);
 }
 .bc-sidebar {
@@ -96,7 +97,7 @@ body.gm-bong-cult {
   min-height: 2.75rem;
   align-items: center;
   padding: .25rem;
-  border: 1px solid;
+  border: var(--bbs-line, 1px) solid;
   border-color: var(--bc-highlight) var(--bc-shadow) var(--bc-shadow) var(--bc-highlight);
   background: #161613;
   color: #ded9b9;
@@ -114,15 +115,15 @@ body.gm-bong-cult {
   padding: 0 clamp(.85rem, 2.3vw, 1.75rem) clamp(1.25rem, 3vw, 2.25rem);
   overflow-wrap: anywhere;
 }
-.gm-bong-cult .hero .screen { border: 1px solid #ded9b9; border-radius: 0; }
-.gm-bong-cult .band { border: 1px solid #ded9b9; border-radius: 0; }
+.gm-bong-cult .hero .screen { border: var(--bbs-line, 1px) solid #ded9b9; border-radius: 0; }
+.gm-bong-cult .band { border: var(--bbs-line, 1px) solid #ded9b9; border-radius: 0; }
 .gm-bong-cult .band .tag { white-space: normal; text-align: right; }
 .gm-bong-cult .wrap a { color: var(--bc-yellow); }
 .gm-bong-cult .emu-frame {
   width: 100%;
   margin: 14px 0 6px;
   transform: none;
-  border: 1px solid var(--bc-rule);
+  border: var(--bbs-line, 1px) solid var(--bc-rule);
   border-radius: 0;
 }
 .gm-bong-cult .emu-frame iframe { height: clamp(610px, 72vw, 740px); }
@@ -156,7 +157,7 @@ body.gm-bong-cult {
   min-height: 2.75rem;
   align-items: center;
   padding: .5rem .8rem;
-  border: 1px solid;
+  border: var(--bbs-line, 1px) solid;
   border-color: var(--bc-highlight) var(--bc-shadow) var(--bc-shadow) var(--bc-highlight);
   background: #161613;
   color: #ded9b9;
@@ -259,7 +260,7 @@ body.gm-bong-cult {
 .gm-bong-cult .gm-toc a {
   display: block;
   padding: .41rem .44rem;
-  border: 1px solid transparent;
+  border: var(--bbs-line, 1px) solid transparent;
   min-height: 0;
   color: #ded9b9;
   background: transparent;
@@ -309,13 +310,13 @@ body.gm-bong-cult {
 .gm-guide caption {
   padding: .45rem .55rem;
   background: var(--panel);
-  border: 1px solid var(--rule);
+  border: var(--bbs-line, 1px) solid var(--rule);
   color: var(--bc-white);
   font-weight: 700;
   text-align: left;
 }
 .gm-guide kbd {
-  border: 1px solid var(--bc-rule);
+  border: var(--bbs-line, 1px) solid var(--bc-rule);
   border-bottom-width: 2px;
   padding: .05em .26em;
   background: var(--panel);
@@ -330,7 +331,7 @@ body.gm-bong-cult {
   padding: 0;
   list-style: none;
 }
-.gm-book-index > ul > li { margin: 0; padding: .65rem; border: 1px solid var(--bc-rule); }
+.gm-book-index > ul > li { margin: 0; padding: .65rem; border: var(--bbs-line, 1px) solid var(--bc-rule); }
 .gm-book-index h3 { margin: 0; color: var(--bc-white); }
 .gm-book-index ol { padding: 0; list-style: none; }
 .gm-book-index p { margin: .14rem 0 .55rem; color: var(--muted); font-size: .9em; }
@@ -365,7 +366,7 @@ body.gm-bong-cult {
   .gm-toc-mobile summary {
     padding: .21rem .4rem .26rem;
     min-height: 2.75rem;
-    border: 1px solid;
+    border: var(--bbs-line, 1px) solid;
     border-color: var(--bc-highlight) var(--bc-shadow) var(--bc-shadow) var(--bc-highlight);
     background: #161613;
     color: #ded9b9;
@@ -390,7 +391,7 @@ body.gm-bong-cult {
     overflow: auto;
     overscroll-behavior: contain;
     padding: .35rem;
-    border: 1px solid var(--bc-paper);
+    border: var(--bbs-line, 1px) solid var(--bc-paper);
     background: var(--bc-sidebar);
     box-shadow: 0 .35rem .6rem #000c;
   }

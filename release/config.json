@@ -1,0 +1,127 @@
+{
+  "asset_paths": [
+    "_headers",
+    "bong-cult-logo.svg",
+    "bong-cult-shell.css",
+    "chapter-redirect.js",
+    "dungeon-bbs-tokens.css",
+    "emu/app.js",
+    "emu/app.wasm",
+    "emu/app_worklet.js",
+    "emu/index.html",
+    "emu/parts/midi.js",
+    "emu/parts/midi_worklet.js",
+    "emu/parts/parts.js",
+    "emu/parts/parts_worklet.js",
+    "emu/parts/port.js",
+    "emu/parts/port_client.js",
+    "emu/parts/resample_worklet.js",
+    "emu/worklet.js",
+    "favicon.svg",
+    "guide-toc.js",
+    "guide/beats/index.html",
+    "guide/index.html",
+    "guide/mixer/index.html",
+    "guide/modulation/index.html",
+    "guide/performance/index.html",
+    "guide/recording/index.html",
+    "guide/reference/index.html",
+    "guide/setup/index.html",
+    "guide/sounds/index.html",
+    "index.html",
+    "technical/index.html"
+  ],
+  "claims": [
+    {
+      "literal": "<span class=\"ver\">V0.4</span>",
+      "path": "index.html"
+    },
+    {
+      "literal": "<a class=\"gm-button gm-primary\" href=\"/guide/\">Open the User Guide</a>",
+      "path": "index.html"
+    },
+    {
+      "literal": "Hold REC and press GLO.",
+      "path": "guide/recording/index.html"
+    },
+    {
+      "literal": "<button type=\"button\" id=\"go\">Switch on</button>",
+      "path": "emu/index.html"
+    },
+    {
+      "literal": "Then press PLAY / STOP to hear the demo groove.",
+      "path": "emu/index.html"
+    },
+    {
+      "literal": "Switching on starts audio processing; it is not the transport.",
+      "path": "guide/setup/index.html"
+    },
+    {
+      "literal": "The controls below cover 0.4 and 0.5. Hardware-only USB stems are new in 0.5.",
+      "path": "guide/index.html"
+    },
+    {
+      "literal": "<span class=\"ver\">V0.5</span>",
+      "path": "technical/index.html"
+    },
+    {
+      "literal": "This is an FM-1 hardware feature, not an export button in the browser groovebox.",
+      "path": "guide/recording/index.html"
+    }
+  ],
+  "manifest_path": "release.json",
+  "project": "GhettoMachine",
+  "required_routes": [
+    "/",
+    "/guide/",
+    "/guide/recording/",
+    "/guide/setup/",
+    "/emu/",
+    "/technical/"
+  ],
+  "schema": 1,
+  "site": "https://ghettomachine.bongcult.com",
+  "source": {
+    "emulator_archive_commit": "47e52f19c0e5b5ec0dcbfb9f3a5731492b0ab5be",
+    "emulator_build_commit": "60b577ea722e7e089b8f620ec010af3200d3f0bf",
+    "provenance": "Historical committed artifact, not a fresh reproduction from this release plumbing checkout.",
+    "public_seed_commit": "49bb2e8267862119a30be1c960e372f4d22e4ac6",
+    "repository": "https://github.com/siddholdenried-del/ghettomachine"
+  },
+  "targets": {
+    "device": {
+      "downloads": [],
+      "status": "not-distributed",
+      "tested_for_this_release": false
+    },
+    "web": {
+      "deployment": "existing Worker Builds project; do not publish this branch without review",
+      "emulator_identity": "GHETTOMACHINE DEV",
+      "landing_label": "V0.4",
+      "manual_versions": [
+        "0.4",
+        "0.5"
+      ],
+      "status": "candidate",
+      "technical_tour_version": "0.5"
+    }
+  },
+  "theme": {
+    "commit": "ac8decf93dd011966de00a151d1ff654c7f801bc",
+    "consumer": "bong-cult-shell.css",
+    "logo_path": "bong-cult-logo.svg",
+    "logo_sha256": "1f41ff7770b55d1a465a3ece6d23b970bf0e6b049e41559f5f9ed4a87b9a2224",
+    "repository": "https://github.com/siddholdenried-del/bongcult-dungeon-bbs",
+    "tokens_path": "dungeon-bbs-tokens.css",
+    "tokens_sha256": "45aa96236241aceb26c8a824f558e570a84fed17f73e8bf39a62b8038bb97cf2"
+  },
+  "version": "0.4",
+  "wasm": [
+    {
+      "identity": "GHETTOMACHINE DEV",
+      "path": "emu/app.wasm",
+      "platform": "browser",
+      "sha256": "5f09b3d0cbcd49ed51a9c2c55192e684fae2c467c25f45653fcb9738d7c98907"
+    }
+  ]
+}

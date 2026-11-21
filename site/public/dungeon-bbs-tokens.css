@@ -1,0 +1,29 @@
+/* Dungeon BBS tokens, using the journal palette. Include this file first,
+   then write your own components. No fonts or assets are loaded here. */
+:root {
+  color-scheme: dark;
+  /* Keep most surfaces close to black. Use a field for grouped content. */
+  --bbs-canvas: #100e12;
+  --bbs-field: #161219;
+  --bbs-bone: #f4e6cc;
+  --bbs-muted: #cdbda6;
+  --bbs-rule: #c9b89e;
+  /* Current and selected states: violet fill with dark ink, not bone. */
+  --bbs-violet: #b271d9;
+  --bbs-on-violet: #100e12;
+  --bbs-focus: #e1b7ff;
+  /* Chart data only. Pair with a grid, labels, and an alternate reading. */
+  --bbs-meter: #a3ed58;
+  /* Borders, not drop shadows or rounded shells, create the hierarchy. */
+  --bbs-line: 1px;
+  --bbs-radius: 0;
+  --bbs-space-1: .25rem;
+  --bbs-space-2: .5rem;
+  --bbs-space-3: .75rem;
+  --bbs-space-4: 1rem;
+  --bbs-space-6: 1.5rem;
+  --bbs-target: 2.75rem;
+  --bbs-max: 70rem;
+  --bbs-font-body: "Courier New", Courier, ui-monospace, monospace;
+  --bbs-font-display: "Arial Narrow", ui-sans-serif, system-ui, sans-serif;
+}
