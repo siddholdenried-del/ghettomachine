@@ -16,6 +16,7 @@
  * The engines are behind dsp/drums.h and dsp/synth.h (their own units). */
 #include "dsp/drums.h"
 #include "dsp/synth.h"
+#include "dsp/track_insert.h"
 #include "dsp/fx.h"
 #include "dsp/uimath.h"
 #include "logo.h"                       /* tools/gen_logo.py: the boot screen's logo */
@@ -41,7 +42,7 @@
 #define NKEYS 27
 #define KEY_NOTE0 53                      /* key 0 (F3) at octave 0 */
 #define PROJ_MAGIC 0x31544745u            /* "EGT1": fm1-eight 0.1's project; another magic loads the default project */
-#define PROJ_VERSION 4                    /* compact 128-step parts; formats 1-3 remain readable */
+#define PROJ_VERSION 5                    /* track insert settings; formats 1-4 remain readable */
 #define EIGHT_VERSION "0.4"
 #define NSONG 32                          /* the song chain's entries */
 #define NUSER 16                          /* user sounds (T2..T4) */
@@ -194,6 +195,7 @@ typedef struct {
     /* appended in 0.4 (format 3): a format-2 file (0.3's) loads, these zeroed */
     gen_t gen[NPAT][NINST];               /* each part's 303 generator */
     uint8_t pots606[NPADS + 1][NPOTS];    /* appended in format 4; legacy prefix and tail stay fixed */
+    track_insert_param_t insert[NINST];  /* format 5: track-wide inserts, one per instrument */
 } project_t;
 /* Freeze the persisted 64-step layouts; legacy files end before the 606 pots. */
 typedef struct {
@@ -221,6 +223,7 @@ typedef struct { dpart_old_t d; ipart_old_t t[NINST]; } pattern_old_t;
 #define PROJ_V2_SIZE (PROJ_V3_SIZE - sizeof(((project_t *)0)->gen))
 #define PROJ_CAPACITY (8u * 4096u - PLAT_FILE_HEAD)
 #define PROJ_META (PROJ_PREFIX + PROJ_TAIL_BYTES)
+#define PROJ_V4_TAIL_BYTES (((offsetof(project_t, insert) + 3u) & ~3u) - PROJ_TAIL)
 
 /* project format 1 (0.1, 0.2 and 0.2's performance update), frozen: a file saved by them is read a part at a time
  * into format 2 (project_load_v1). Its sounds had 26 parameters, its steps a spare byte; 0.2 saved it up to psnd */
@@ -287,6 +290,7 @@ static const plat_file_t PROJ_FILE = {0x97000u, 0x9F000u, 8u * 4096u};
 _Static_assert(PROJ_V3_SIZE == 32120u, "format 3 as 0.4 saved it");
 
 static project_t proj PLAT_POOL;
+static track_insert_t insert_rt[NINST] PLAT_POOL;
 static uint8_t (*kit_pots(int k))[NPOTS] { return k == KIT_606 ? proj.pots606 : proj.pots[k]; }
 static void kit606_defaults(void)
 {
@@ -697,9 +701,28 @@ static uint32_t crc32_more(uint32_t c, const uint8_t *d, uint32_t n)
 }
 static uint32_t crc32_of(const uint8_t *d, uint32_t n) { return ~crc32_more(0xFFFFFFFFu, d, n); }
 
+static void insert_process(int t, float *l, float *r, unsigned n)
+{
+    track_insert_process(&insert_rt[t-1], &proj.insert[t-1], l, r, n);
+}
+
+static void insert_route(int t)
+{
+    const track_insert_param_t *p = &proj.insert[t-1];
+    syn_set_insert(t, (p->mode != TI_OFF && p->v[3] && !(proj.tmute >> t & 1u)) ? insert_process : 0);
+}
+
 static void project_check(void)           /* a loaded project's values kept in range */
 {
     int i, t, s, n;
+    for (t = 0; t < NINST; t++) {
+        track_insert_param_t *p = &proj.insert[t];
+        if (p->mode >= TI_MODES)
+            track_insert_default(p, TI_OFF);
+        for (i = 0; i < 4; i++)
+            p->v[i] = (uint8_t)clamp(p->v[i], 0, 127);
+    }
+
     for (i = 0; i < NPAT; i++) {
         dpart_t *d = &proj.p[i].d;
         if (d->len < 1 || d->len > NSTEPS)
@@ -862,6 +885,8 @@ static int proj_file_format(void)
     if (sz < (int)offsetof(project_t, tr) || plat_file_read(&PROJ_FILE, offsetof(project_t, version), &ver, 1) != 0)
         return 0;
     if (sz >= (int)PROJ_META && sz <= (int)PROJ_CAPACITY && ver == PROJ_VERSION)
+        return 5;
+    if (sz >= (int)(PROJ_PREFIX + PROJ_V4_TAIL_BYTES) && sz <= (int)PROJ_CAPACITY && ver == 4)
         return 4;
     if (sz == (int)PROJ_V3_SIZE && ver == 3)
         return 3;
@@ -1037,8 +1062,8 @@ static int project_load(void)
     for (i = 0; i < sizeof proj; i++)
         ((uint8_t *)&proj)[i] = 0;
     kit606_defaults();
-    if (fmt == 4) {
-        r = project_decode(plat_file_data(&PROJ_FILE), (uint32_t)plat_file_size(&PROJ_FILE));
+    if (fmt >= 4) {
+        r = project_decode(plat_file_data(&PROJ_FILE), (uint32_t)plat_file_size(&PROJ_FILE), fmt);
     } else if (fmt >= 2) {
         r = project_load_v23(fmt);
     } else if (fmt == 1) {
@@ -2894,6 +2919,7 @@ void app_panic(void)
 
 void app_init(void)
 {
+    int t;
     drums_init();
     syn_init();
     lfo_init();
@@ -2907,6 +2933,10 @@ void app_init(void)
     syn_pool(pool_max);
     user_load();
     project_load();
+    for (t = 1; t < NTRK; t++) {
+        track_insert_reset(&insert_rt[t-1]);
+        insert_route(t);
+    }
     bank_scan();
     seq_reset_tracks();
     sq.queued = -1;
@@ -2974,9 +3004,9 @@ static void undo_step(int redo)
 
 /* ------------------------------------------------------------------------ UI --- */
 enum { PG_SEQ, PG_EDIT, PG_MUTE, PG_HOME, PG_KIT, PG_KEYS, PG_ENV, PG_LFO, PG_ARP, PG_MIX, PG_FX, PG_SONG, PG_MST, PG_SETUP,
-       PG_GEN, PG_PICK };
+       PG_GEN, PG_PICK, PG_INSERT };
 static const char *const PAGE_NAME[] = {"STEPS", "EDIT", "MUTE", "PATTERNS", "KIT", "KEYS", "ENV", "LFO", "ARP", "MIXER",
-                                        "FX", "SONG", "MASTER", "SETUP", "ACID", "PICK NOTES"};
+                                        "FX", "SONG", "MASTER", "SETUP", "ACID", "PICK NOTES", "INSERT"};
 #define NGENPAGE 3                        /* the 303 generator's (SEQ after STEPS, T2..T4): ACID, NOTES, LINE (SELECT) */
 static const char *const TRK_NAME[NTRK] = {"DRUMS", "T2", "T3", "T4"};
 static const char *const TYPE_NAME[NTYPES] = {"MONO", "POLY", "SAMPLER"};
@@ -5026,6 +5056,7 @@ static void track_pick(int tr)
 {
     tr = clamp(tr, 0, NTRK - 1);
     if (tr != ui.trk) {
+        if (tr == TR_DRUM && ui.page == PG_INSERT) ui.page = PG_SEQ;
         if (ui.page == PG_PICK)
             pick_leave();
         /* between the drums and an instrument track: the track's own page (its keys play), unless on EDIT or
@@ -5182,9 +5213,9 @@ static void reload_sound(void)            /* SAVE + OCT-: the track's sound (the
     if (tr == TR_DRUM) {
         static uint8_t pots[2][NPADS + 1][NPOTS], saved606[NPADS + 1][NPOTS];
         const uint32_t fmt4_606_off = PROJ_PREFIX + (uint32_t)offsetof(project_t, pots606) - PROJ_TAIL;
-        if (fmt == 4 && plat_file_read(&PROJ_FILE, fmt4_606_off, saved606, sizeof saved606) != 0)
+        if (fmt >= 4 && plat_file_read(&PROJ_FILE, fmt4_606_off, saved606, sizeof saved606) != 0)
             return;
-        if (plat_file_read(&PROJ_FILE, fmt == 4 ? PROJ_PREFIX : fmt >= 2 ? OLD_TAIL : V1_OFF(pots), pots,
+        if (plat_file_read(&PROJ_FILE, fmt >= 4 ? PROJ_PREFIX : fmt >= 2 ? OLD_TAIL : V1_OFF(pots), pots,
                            sizeof pots) != 0)
             return;
         f = plat_lock();
@@ -5216,7 +5247,7 @@ static void reload_sound(void)            /* SAVE + OCT-: the track's sound (the
             return;
         q.used = 0;
         if (sounds_pp() && fmt >= 2)
-            plat_file_read(&PROJ_FILE, (fmt == 4 ? PROJ_PREFIX : OLD_TAIL) + (uint32_t)((uint8_t *)&proj.psnd[clip_of(tr)][tr - 1] - (uint8_t *)proj.pots), &q,
+            plat_file_read(&PROJ_FILE, (fmt >= 4 ? PROJ_PREFIX : OLD_TAIL) + (uint32_t)((uint8_t *)&proj.psnd[clip_of(tr)][tr - 1] - (uint8_t *)proj.pots), &q,
                            sizeof q);
         else if (sounds_pp() && sz == (int)sizeof(project_v1_t) && psound_from_v1(clip_of(tr), tr - 1, &q) != 0)
             q.used = 0;
@@ -5302,9 +5333,11 @@ static void set_track_mutes(uint8_t mask)
             arp_clear(t);
             sq.slid[t] = 0;
             syn_cut_track(t);
+            track_insert_reset(&insert_rt[t-1]);
         }
+    for (t = 1; t < NTRK; t++) insert_route(t);
     if ((cut & 0x0Eu) && syn_at < SYN_CTL)
-        syn_mix(syn_l, syn_r, syn_rv, syn_dl);
+        syn_mix_repack(syn_l, syn_r, syn_rv, syn_dl);
     plat_unlock(f);
 }
 
@@ -5820,6 +5853,40 @@ static void rec_knob(int k, int32_t e)    /* REC held: K1 the metronome, K2 the 
     dirty = 1;
 }
 
+static void insert_select(int tr, int e)
+{
+    track_insert_param_t *p = &proj.insert[tr-1];
+    int mode = clamp(p->mode + e, TI_OFF, TI_MODES - 1);
+    if (mode != p->mode) {
+        uint32_t f = plat_lock();
+        track_insert_default(p, mode);
+        track_insert_reset(&insert_rt[tr-1]);
+        insert_route(tr);
+        plat_unlock(f);
+        dirty = 1;
+    }
+    app_say("INSERT", track_insert_name(mode));
+}
+
+static void insert_knob(int tr, int k, int e)
+{
+    track_insert_param_t *p = &proj.insert[tr-1];
+    char value[8];
+    int v = clamp(p->v[k] + e, 0, 127);
+    if (!p->mode || v == p->v[k])
+        return;
+    {
+        uint32_t f = plat_lock();
+        if (k == 3 && (!p->v[3] || !v)) track_insert_reset(&insert_rt[tr-1]);
+        p->v[k] = (uint8_t)v;
+        insert_route(tr);
+        plat_unlock(f);
+    }
+    dirty = 1;
+    int_text(v, value);
+    app_say(track_insert_label(p->mode, k), value);
+}
+
 static void knob(int k, int32_t e)        /* KNOB 1..4 (k 0..3) on the page shown */
 {
     int inst = ui.trk != TR_DRUM;
@@ -5869,6 +5936,8 @@ static void knob(int k, int32_t e)        /* KNOB 1..4 (k 0..3) on the page show
         song_knob(k, e);
     } else if (ui.page == PG_MIX) {
         mix_knob(k, e);
+    } else if (inst && ui.page == PG_INSERT) {
+        insert_knob(ui.trk, k, e);
     } else if (ui.page == PG_FX) {
         fx_knob(k, e);
     } else if (ui.page == PG_MST) {
@@ -6053,7 +6122,7 @@ static void input(void)
             else
                 gen_mutate();
         } else if (inst && (ui.page == PG_KEYS || ui.page == PG_EDIT || ui.page == PG_ENV || ui.page == PG_LFO ||
-                            ui.page == PG_ARP || ui.page == PG_MIX || ui.page == PG_FX || ui.page == PG_MST)) {
+                            ui.page == PG_ARP || ui.page == PG_MIX || ui.page == PG_FX || ui.page == PG_MST || ui.page == PG_INSERT)) {
             octave(up);
         } else if (ui.page == PG_SEQ || ui.page == PG_EDIT) {
             ui.spage = (uint8_t)clamp(ui.spage + (up ? 1 : -1), 0, npages() - 1);
@@ -6207,7 +6276,12 @@ static void input(void)
         }
     }
     if (pressed >> B_FX & 1u) {           /* the FX: REVERB, DELAY, DELAY 2, FILTER, then back */
-        if (ui.page != PG_FX) {
+        if ((btn >> B_SEL & 1u) && inst) {
+            ui.sel_used = 1;
+            ui.page = ui.page == PG_INSERT ? (uint8_t)home_page(ui.trk) : PG_INSERT;
+        } else if (ui.page == PG_INSERT) {
+            ui.page = (uint8_t)home_page(ui.trk);
+        } else if (ui.page != PG_FX) {
             ui.page = PG_FX;
         } else if (ui.fxpage < NFXPAGE - 1) {
             ui.fxpage++;
@@ -6355,6 +6429,8 @@ static void input(void)
                 ui.mixpage = (uint8_t)g;
             else
                 ui.mstpage = (uint8_t)(g - 4);
+        } else if (inst && ui.page == PG_INSERT) {
+            insert_select(ui.trk, e);
         } else if (ui.page == PG_FX) {
             ui.fxpage = (uint8_t)clamp(ui.fxpage + e, 0, NFXPAGE - 1);
         } else if (ui.page == PG_LFO) {
@@ -6484,7 +6560,7 @@ static void lights(void)
     }
     if (ui.page != PG_KEYS)
         b |= 1u << (ui.page == PG_SEQ || ui.page == PG_GEN || ui.page == PG_PICK ? B_SEQ : ui.page == PG_EDIT ? B_EDIT : ui.page == PG_MUTE || ui.page == PG_ENV ? B_ENV
-                    : ui.page == PG_LFO ? B_LFO : ui.page == PG_ARP ? B_ARP : ui.page == PG_FX ? B_FX
+                    : ui.page == PG_LFO ? B_LFO : ui.page == PG_ARP ? B_ARP : ui.page == PG_FX || ui.page == PG_INSERT ? B_FX
                     : ui.page == PG_HOME || ui.page == PG_SONG || ui.page == PG_SETUP ? B_HOME : B_GLO);
     if (sq.playing)
         b |= LED_PLAY_GREEN;
@@ -6876,7 +6952,7 @@ static void strip(void)
 
 /* ---- each kind of page's four knobs */
 enum { KD_SEQ, KD_HELD, KD_DRUM, KD_KIT, KD_INST, KD_ENV, KD_LFO, KD_ARP, KD_MIX, KD_FX, KD_MST, KD_SONG, KD_REC, KD_PF,
-       KD_SETUP, KD_FOLLOW, KD_GEN };
+       KD_SETUP, KD_FOLLOW, KD_GEN, KD_INSERT };
 
 static int fx_mid(int i)                  /* a two-way FX knob's middle, or -1 */
 {
@@ -6890,6 +6966,13 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
     t[0] = 0;
     c->on = 0;
     switch (kind) {
+    case KD_INSERT: {
+        const track_insert_param_t *p = &proj.insert[tr-1];
+        if (!p->mode) return 0;
+        int_text(p->v[k], t);
+        card_put(c, track_insert_label(p->mode, k), t, p->v[k], 0, 127, -1);
+        return 1;
+    }
     case KD_SEQ: {
         static const char *const N[4] = {"LENGTH", "RATE", "SWING", "TEMPO"};
         if (k == 0) {
@@ -8754,6 +8837,18 @@ static void page_rec(void)                /* REC held: the metronome, the count-
     cards_of(KD_REC, 0);
 }
 
+static void page_insert(void)
+{
+    const track_insert_param_t *p = &proj.insert[ui.trk-1];
+    band_set(trk_rgb(ui.trk), TRK_NAME[ui.trk], "INSERT", track_insert_name(p->mode), 0, 0);
+    rrect(4, 4, 232, 124, 6, C_PANEL);
+    cv_text(12, 16, &FONT_M, track_insert_name(p->mode), C_INK);
+    cv_text(12, 56, &FONT_S, "SELECT: EFFECT / OFF", C_INK);
+    cv_text(12, 80, &FONT_XS, "PRE-SEND + USB STEM", TH_FG);
+    cv_text(12, 101, &FONT_XS, "FX: BACK", TH_FG);
+    cards_of(KD_INSERT, 0);
+}
+
 /* the page now: its band's text and its knobs set, its picture drawn (the canvas begun and blitted by the caller) */
 static void page(void)
 {
@@ -8768,6 +8863,7 @@ static void page(void)
     case PG_LFO: page_lfo(); break;
     case PG_MIX: page_mix(); break;
     case PG_FX: page_fx(); break;
+    case PG_INSERT: page_insert(); break;
     case PG_MST: page_mst(); break;
     case PG_ARP: page_arp(); break;
     case PG_MUTE: page_mute(); break;
@@ -9081,7 +9177,12 @@ int app_expect(const char *what, int *got)
 {
     dpart_t *p = dcur();
     const nstep_t *ns;
-    if (!strcmp(what, "projfmt")) {       /* saved format, or 0 if none */
+    if (!strncmp(what, "insert", 6)) {
+        int t = atoi(what + 6) - 2;
+        const char *u = strchr(what, '_');
+        if (t < 0 || t >= NINST) return 0;
+        *got = u ? proj.insert[t].v[atoi(u+1) & 3] : proj.insert[t].mode;
+    } else if (!strcmp(what, "projfmt")) {       /* saved format, or 0 if none */
         *got = proj_file_format();
     } else if (!strcmp(what, "projsize")) {   /* bytes in RAM (not the packed saved size) */
         *got = (int)sizeof proj;

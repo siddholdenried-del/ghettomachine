@@ -119,6 +119,10 @@ void syn_prepare(void);
 void syn_half(uint32_t half);
 /* the mixer's view of a track (phase 5): pan 0..127 (64 the centre), its reverb and delay sends 0..1 */
 void syn_mixer(int trk, int pan, float rev, float dly);
+/* Optional track insert, called once per new synth block before pan/shared sends/stem. */
+typedef void (*syn_insert_fn)(int trk, float *l, float *r, unsigned frames);
+void syn_set_insert(int trk, syn_insert_fn fn);
+void syn_mix_repack(float *l, float *r, float *rev, float *dly); /* merge unmuted cached blocks without running inserts twice */
 void syn_mix(float *l, float *r, float *rev, float *dly);   /* SYN_CTL samples each, overwritten: the mix and its sends */
 /* the last syn_mix's block of one track alone (its part of l and r: its level and pan, no sends), SYN_CTL samples a
  * side (0 left, 1 right): the USB stems. NULL: the track was silent in it */
