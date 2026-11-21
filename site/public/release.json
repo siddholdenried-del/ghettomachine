@@ -1,0 +1,169 @@
+{
+  "artifacts": {
+    "_headers": {
+      "bytes": 83,
+      "sha256": "6afe4d32493a69d2e19d9813fd2975f66f7a6b7dd9332e8d9b421cd737288b13"
+    },
+    "bong-cult-logo.svg": {
+      "bytes": 130438,
+      "sha256": "1f41ff7770b55d1a465a3ece6d23b970bf0e6b049e41559f5f9ed4a87b9a2224"
+    },
+    "bong-cult-shell.css": {
+      "bytes": 13140,
+      "sha256": "27d8a743c5cab2f93650df2282a599d9d7713227a87253b4295ec2cd87f40f27"
+    },
+    "chapter-redirect.js": {
+      "bytes": 460,
+      "sha256": "54224b06a8ffe51621547e0b1a8081811fcf06bff9614e829c5d1f1a86a3a969"
+    },
+    "dungeon-bbs-tokens.css": {
+      "bytes": 1052,
+      "sha256": "45aa96236241aceb26c8a824f558e570a84fed17f73e8bf39a62b8038bb97cf2"
+    },
+    "emu/app.js": {
+      "bytes": 371,
+      "sha256": "c4fc02bbe685f3161e16c6233e7f7f1fb3a36f4de9c8a874103030b6751bcfa9"
+    },
+    "emu/app.wasm": {
+      "bytes": 551913,
+      "sha256": "5f09b3d0cbcd49ed51a9c2c55192e684fae2c467c25f45653fcb9738d7c98907"
+    },
+    "emu/app_worklet.js": {
+      "bytes": 210,
+      "sha256": "9bfc501df0336e45a25ee43e2f1f54b9126c95197a1c253346cf3a8fce55082e"
+    },
+    "emu/index.html": {
+      "bytes": 45374,
+      "sha256": "c7502fead9fdf685a137ab487ee93eae9eb96eb880b806c108699fbbb68bf995"
+    },
+    "emu/parts/midi.js": {
+      "bytes": 4429,
+      "sha256": "f0aed085ceff0d0692d9e9adc928ee76e871c2ba669a4ca17f9374d35c1321d2"
+    },
+    "emu/parts/midi_worklet.js": {
+      "bytes": 3736,
+      "sha256": "90227ec7d0b3e6e43227618ca4bf026d5ae8efd374f05560e7c709ef8342d371"
+    },
+    "emu/parts/parts.js": {
+      "bytes": 2311,
+      "sha256": "2c57316ce1c99690e4b628d015b578a236f0ea9f376e0825eac6e7485bba6b4f"
+    },
+    "emu/parts/parts_worklet.js": {
+      "bytes": 2113,
+      "sha256": "73b4016f4fe86442ccb4449c8dd2ffb40cd5c7b745e812c66b9ef541476a8160"
+    },
+    "emu/parts/port.js": {
+      "bytes": 2214,
+      "sha256": "29a51efd468cb84e270e43f52998e1ce3be2f61aaffb6979c0fb0c6a685344da"
+    },
+    "emu/parts/port_client.js": {
+      "bytes": 3678,
+      "sha256": "fe1c4ec13a6038671e4102affea5b2e3e576aa8c38aaaaabdf5bdb0a341a5d34"
+    },
+    "emu/parts/resample_worklet.js": {
+      "bytes": 2427,
+      "sha256": "09754b1161d3827ceeda447304fb77748fa055bc707191da23fc869ebb5bb1ca"
+    },
+    "emu/worklet.js": {
+      "bytes": 6343,
+      "sha256": "5c7e7fde7f316398a3bffc97b0fabbfc274c17130493b8cb5ea3d63ca96a50a4"
+    },
+    "favicon.svg": {
+      "bytes": 263,
+      "sha256": "cab9e1c7ee055fc7b0498679cf242c2e9450a81a2e4ad3bbfdbb39a3e2a352d8"
+    },
+    "guide-toc.js": {
+      "bytes": 1080,
+      "sha256": "e205d8b375cf94cef107f04849f7d326db70aa8ea9f0882b0ff569e7084dddbd"
+    },
+    "guide/beats/index.html": {
+      "bytes": 28791,
+      "sha256": "582b42cb04f1f5f6815d9f9ee742a3d9f6e237574b97a0fb174bc5248d9a0771"
+    },
+    "guide/index.html": {
+      "bytes": 26319,
+      "sha256": "2197708fbf51ab7f549539eb3c6ed85cb5a9df3c64dbdf9bfeec01cc7e620767"
+    },
+    "guide/mixer/index.html": {
+      "bytes": 21199,
+      "sha256": "8d13197679213d5a49f8efc12fad28c81abf156535d34fa59e05cb3558a1c1e6"
+    },
+    "guide/modulation/index.html": {
+      "bytes": 37562,
+      "sha256": "533ccf95e2429f90ead8f426603bd0f65fb0d0b1de1de7c77da7a9d1507a7988"
+    },
+    "guide/performance/index.html": {
+      "bytes": 21495,
+      "sha256": "f1aed39b150338d8dee8e51e7896c244a84f83d2aa2fc9769f5a51404138c180"
+    },
+    "guide/recording/index.html": {
+      "bytes": 25434,
+      "sha256": "7e4b179d14a59aa3fc428a237ee170403db93fc58ba8cce2dea48b2849df3146"
+    },
+    "guide/reference/index.html": {
+      "bytes": 54199,
+      "sha256": "f2d3ac512b6380613cb112f350f95b915d2c1244f4ea20d1fc3919e57936bfb5"
+    },
+    "guide/setup/index.html": {
+      "bytes": 29199,
+      "sha256": "070185c7b8f10c304dcc5b4c0456bf26b0b8e507be8513f36474deea9bf8af36"
+    },
+    "guide/sounds/index.html": {
+      "bytes": 25129,
+      "sha256": "c28e04127bd7ac21b86e77f110013de2ea92b7c1bd2e9a7f71843b09778f43bd"
+    },
+    "index.html": {
+      "bytes": 13539,
+      "sha256": "7bbec5404fe595ce6d1e926efeb16664af869bb6226d08decd260e71b8d70dfc"
+    },
+    "technical/index.html": {
+      "bytes": 62036,
+      "sha256": "11c20b3d6061cac044df9e81c965024f23fd7640573ccab962c60184ed89a335"
+    }
+  },
+  "project": "GhettoMachine",
+  "schema": 1,
+  "site": "https://ghettomachine.bongcult.com",
+  "source": {
+    "emulator_archive_commit": "47e52f19c0e5b5ec0dcbfb9f3a5731492b0ab5be",
+    "emulator_build_commit": "60b577ea722e7e089b8f620ec010af3200d3f0bf",
+    "provenance": "Historical committed artifact, not a fresh reproduction from this release plumbing checkout.",
+    "public_seed_commit": "49bb2e8267862119a30be1c960e372f4d22e4ac6",
+    "repository": "https://github.com/siddholdenried-del/ghettomachine"
+  },
+  "targets": {
+    "device": {
+      "downloads": [],
+      "status": "not-distributed",
+      "tested_for_this_release": false
+    },
+    "web": {
+      "deployment": "existing Worker Builds project; do not publish this branch without review",
+      "emulator_identity": "GHETTOMACHINE DEV",
+      "landing_label": "V0.4",
+      "manual_versions": [
+        "0.4",
+        "0.5"
+      ],
+      "status": "candidate",
+      "technical_tour_version": "0.5"
+    }
+  },
+  "theme": {
+    "commit": "ac8decf93dd011966de00a151d1ff654c7f801bc",
+    "consumer": "bong-cult-shell.css",
+    "logo_path": "bong-cult-logo.svg",
+    "logo_sha256": "1f41ff7770b55d1a465a3ece6d23b970bf0e6b049e41559f5f9ed4a87b9a2224",
+    "tokens_path": "dungeon-bbs-tokens.css",
+    "tokens_sha256": "45aa96236241aceb26c8a824f558e570a84fed17f73e8bf39a62b8038bb97cf2"
+  },
+  "version": "0.4",
+  "wasm": [
+    {
+      "identity": "GHETTOMACHINE DEV",
+      "path": "emu/app.wasm",
+      "platform": "browser",
+      "sha256": "5f09b3d0cbcd49ed51a9c2c55192e684fae2c467c25f45653fcb9738d7c98907"
+    }
+  ]
+}

@@ -26,7 +26,8 @@ python3 -m venv ../../.venv && ../../.venv/bin/pip install pillow==13.0.0 mido==
 ../../.venv/bin/python tools/build.py ../../app --host   # the simulator: app/build/host/ghettomachine_host
 ../../.venv/bin/python tools/build.py ../../app          # the FM-1 package: app/build/ghettomachine.fwsc (needs Docker)
 ../../.venv/bin/python tools/build.py ../../app --web    # the browser emulator: app/build/emu (needs Emscripten)
-cd ../.. && sh site/publish.sh                          # the site: rebuilt, committed, pushed
+cd ../.. && sh site/publish.sh                           # verify the committed site without publishing
+# After reviews, current main only: sh site/publish.sh --publish
 ```
 
 The site at ghettomachine.bongcult.com is `site/public` as committed: Cloudflare Workers Builds deploys `main` on every
