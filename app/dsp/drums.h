@@ -23,8 +23,12 @@
 #define DRUMS_MAX_BLOCK 256
 #define DRUMS_VEL_NORMAL (88.0f / 127.0f)   /* an unaccented sequencer hit; 1.0 is an accent */
 
-enum { KIT_909 = 0, KIT_808 = 1, KIT_606 = 2, KIT_NUM };
+enum { KIT_909 = 0, KIT_808 = 1, KIT_606 = 2, KIT_707 = 3, KIT_NUM };
 const char *drums_kit_name(int kit);
+int drums_has_pad(int kit, int pad);
+/* Persisted zero = inherit base, 1..KIT_NUM = explicit model ID plus one. */
+int drums_model(int base, const uint8_t *map, int pad);
+void drums_trigger_mapped(int base, const uint8_t *map, int pad, float vel);
 
 void drums_init(void);
 /* vel 0..1: DRUMS_VEL_NORMAL for a plain step, 1.0 for an accented one; a played key's velocity in between */

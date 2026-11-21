@@ -48,7 +48,7 @@ wait 30
 expect pot7_0 57
 tap SAVE
 wait 300
-expect projfmt 6
+expect projfmt 7
 reboot
 wait 600
 expect kit 2

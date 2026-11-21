@@ -1,0 +1,10 @@
+# GhettoMachine's synthesized 707-inspired voices
+
+This bank adapts the DSP only from [TR-707C by JimmyKaps](https://github.com/JimmyKaps/tr707c-fm1/tree/260d07d582dc62113ef4ea1a12ce1513da7aac8c) under GPL-3.0-only. Sources used: `firmware/src/tr707c.c` (voice trigger and render only; fast sine attributed there to Dinghy) and `tools/gen_tr707c_tables.py` (voice coefficients and tune/decay generation). See [upstream licensing and credits](https://github.com/JimmyKaps/tr707c-fm1/blob/260d07d582dc62113ef4ea1a12ce1513da7aac8c/LICENSING.md). Preserve this notice with both the generated coefficients and corresponding source. No Roland ROM or samples; no third-party art, UI, platform, firmware package or other binaries incorporated. It is an inspired synthesized kit, not a faithful TR-707 hardware or PCM emulation.
+
+- Factory assignment in the existing eleven-lane grid: BD, SD, LT, MT, HT, RS, CP, CH, OH, CR, RD. The DSP also exposes cowbell and tambourine IDs; these are not extra lanes.
+- GhettoMachine's adapter adds per-voice level, tuning, decay, pan and FX sends, adjustable hat choke, independent reproducible noise states and compact interpolated decay tables.
+- To regenerate/check the checked-in header: `python3 app/tools/gen_707_tables.py /tmp/drum707_tables.h && cmp /tmp/drum707_tables.h app/dsp/drum707_tables.h`.
+- Host smoke: `cc -O2 -Wall -Wextra -Werror -std=c99 -Iapp/dsp app/tests/drum707_unit.c app/dsp/drum707.c -o /tmp/drum707 && /tmp/drum707`.
+- Demo: compile `app/tests/drum707_demo.c` the same way and pass the target filename. The program creates a generated PCM demo using only this engine: three bars of house/electro drums followed by all thirteen voices, in enum order.
+- Per-instance RAM: 940 bytes on the tested arm64 host, compile-time bounded to 1 KiB. Tables fit in ~1.6 KiB of read-only data. A voice has one bounded inner loop over the requested block, two oscillators maximum, and no heap. Host CPU results do not guarantee FM-1 interrupt times. A full target build must check total code/ROM/RAM/map limits and integration states.

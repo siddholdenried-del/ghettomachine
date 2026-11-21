@@ -2,7 +2,7 @@
 
 GhettoMachine, part of the BongWare firmware line engineered by BongTech, turns the M-VAVE FM-1 into a four-track groovebox:
 
-- **Drums:** a 909, 808 or 606 kit, with editable sounds.
+- **Drums:** a 606, 707, 808 or 909 kit, or a Custom kit assembled per pad.
 - **T2, T3, T4:** instrument tracks. Each is a MONO synth, a POLY synth or a SAMPLER.
 - **One sequencer** of up to 128 steps a track, 16 patterns, and a song chain.
 - **An LFO on every track,** an arpeggiator and one optional insert effect on T2–T4, and per-step locks.
@@ -44,7 +44,7 @@ route still works for getting M-VAVE's firmware back.
 | Control | What it does |
 | --- | --- |
 | **ALGORITHM** | Picks the track: DRUMS, T2, T3, T4. Or hold **SEL** and press pad keys 1–4. |
-| **PRESETS** | The drums' kit (909, 808, 606, your kits), or an instrument track's sound. |
+| **PRESETS** | The drums' kit (909, 808, 606, 707, your kits), or an instrument track's sound. |
 | **SELECT** | Turns the page within a page, moves a cursor, or sets a held step's chance. |
 | **K1–K4** | The four knobs of the page on screen. |
 | **PLAY** | Starts and stops. |
@@ -88,7 +88,13 @@ monospace face. Three parts, top to bottom:
 ## The drum track
 
 - **Pads:** the 11 black keys are BD, SD, LT, MT, HT, RS, CP, CH, OH and CR/RD (909) or CY/CB (808). Pressing one picks it
-  and plays it. On 606, black keys 4, 6 and 11 are silent; key 10 is CY. Steps on a silent lane are retained when switching kits.
+  and plays it. The 707 uses BD, SD, LT, MT, HT, RS, CP, CH, OH, CR and RD in those 11 positions. Its Cowbell and
+  Tambourine voices are implemented in the engine but are not mapped in the fixed 11-lane preset. On 606, black keys
+  4, 6 and 11 are silent and key 10 is CY. Steps on a silent lane are retained when switching kits.
+- **Mix models:** pick a pad, open **EDIT**, and turn **SELECT** fully right to **DRUM MODEL**. Turn **K1** to choose
+  among compatible voices for that pad. For example, leave the 909 kick and change only the closed hat to 808. The
+  kit reads **CUSTOM** as soon as a lane differs; the steps, mutes and other lanes stay unchanged. Model changes cut
+  that lane's old hit. Factory presets restore their own lane maps.
 - **Steps (SEQ):** the 16 white keys are the picked pad's steps. Press an empty step to light it; press and let go of a
   lit one to clear it. OCT− / OCT+ or SELECT move through step pages up to 128. The beats, steps 1, 5, 9 and 13 of the
   page, glow dimly while they're empty, and the screen's grid gives them a darker column, so a bar is easy to count.
@@ -253,8 +259,8 @@ On STEPS an accented note has a white bar over it and a slide a mark at its end.
   **RING METAL**, **DRIFT PAD**, **CRUSH BASS**, **WOBBLE**. MACRO 1 does something on each.
 - **To keep a sound:** hold **SAVE**, turn **PRESETS** to pick a USER slot (the screen says EMPTY or REPLACE), and let go
   of SAVE.
-- **On the drums**, PRESETS goes through **909**, **808** and your **USER KIT 1–8**. Saving a kit works the same way and
-  keeps the kit and every pad's knobs.
+- **On the drums**, PRESETS goes through **909**, **808**, **606**, **707**, and your **USER KIT 1–8**. Saving a kit works the same way and
+  keeps the kit's model assignments and every pad's knobs.
 - Your presets are kept apart from projects, the moment you save them.
 
 ### The sampler (TYPE = SAMPLER)
