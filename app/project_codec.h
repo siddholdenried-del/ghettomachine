@@ -1,4 +1,4 @@
-/* Formats 4/5: header, metadata tail (pots through ACID settings), then 16
+/* Formats 4–6: header, metadata tail (pots through ACID settings), then 16
  * independently compressed pattern records. Each record starts with a
  * little-endian payload byte count, then literal runs (0..127 => 1..128
  * bytes), or back-references (128..255 => 3..130 bytes, then LE16 distance).
@@ -59,13 +59,15 @@ static uint32_t codec_pack(const pattern_t *p)
 
 static int project_decode(const uint8_t *in, uint32_t size, int fmt)
 {
-    uint32_t tail_bytes = fmt == 4 ? PROJ_V4_TAIL_BYTES : PROJ_TAIL_BYTES;
+    uint32_t tail_bytes = fmt == 4 ? PROJ_V4_TAIL_BYTES : fmt == 5 ? PROJ_V5_TAIL_BYTES : PROJ_TAIL_BYTES;
+    uint32_t meta_bytes = fmt == 4 ? offsetof(project_t, insert) - PROJ_TAIL :
+                          fmt == 5 ? offsetof(project_t, color) - PROJ_TAIL : tail_bytes;
     uint32_t at = PROJ_PREFIX + tail_bytes, j, i;
     uint8_t *raw = (uint8_t *)&proj, *tail = raw + PROJ_TAIL;
     if (!in || size < at)
         return -1;
     for (j = 0; j < PROJ_PREFIX; j++) raw[j] = in[j];
-    for (j = 0; j < (fmt == 4 ? offsetof(project_t, insert) - PROJ_TAIL : tail_bytes); j++) tail[j] = in[PROJ_PREFIX + j];
+    for (j = 0; j < meta_bytes; j++) tail[j] = in[PROJ_PREFIX + j];
     for (i = 0; i < NPAT; i++) {
         uint8_t *out = (uint8_t *)&proj.p[i];
         uint32_t end, put = 0;

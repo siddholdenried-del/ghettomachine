@@ -59,7 +59,7 @@ expect insert2 2
 expect insert2_3 110
 tap SAVE
 wait 400
-expect projfmt 5
+expect projfmt 6
 reboot
 wait 600
 expect insert2 2

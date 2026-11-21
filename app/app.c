@@ -17,6 +17,7 @@
 #include "dsp/drums.h"
 #include "dsp/synth.h"
 #include "dsp/track_insert.h"
+#include "dsp/color.h"
 #include "dsp/fx.h"
 #include "dsp/uimath.h"
 #include "logo.h"                       /* tools/gen_logo.py: the boot screen's logo */
@@ -43,7 +44,7 @@
 #define NKEYS 27
 #define KEY_NOTE0 53                      /* key 0 (F3) at octave 0 */
 #define PROJ_MAGIC 0x31544745u            /* "EGT1": fm1-eight 0.1's project; another magic loads the default project */
-#define PROJ_VERSION 5                    /* track insert settings; formats 1-4 remain readable */
+#define PROJ_VERSION 6                    /* four track Color strips; formats 1-5 remain readable */
 #define EIGHT_VERSION "0.4"
 #define NSONG 32                          /* the song chain's entries */
 #define NUSER 16                          /* user sounds (T2..T4) */
@@ -197,6 +198,7 @@ typedef struct {
     gen_t gen[NPAT][NINST];               /* each part's 303 generator */
     uint8_t pots606[NPADS + 1][NPOTS];    /* appended in format 4; legacy prefix and tail stay fixed */
     track_insert_param_t insert[NINST];  /* format 5: track-wide inserts, one per instrument */
+    color_params_t color[NTRK];          /* format 6: independent Color per track */
 } project_t;
 /* Freeze the persisted 64-step layouts; legacy files end before the 606 pots. */
 typedef struct {
@@ -224,6 +226,7 @@ typedef struct { dpart_old_t d; ipart_old_t t[NINST]; } pattern_old_t;
 #define PROJ_V2_SIZE (PROJ_V3_SIZE - sizeof(((project_t *)0)->gen))
 #define PROJ_CAPACITY (8u * 4096u - PLAT_FILE_HEAD)
 #define PROJ_META (PROJ_PREFIX + PROJ_TAIL_BYTES)
+#define PROJ_V5_TAIL_BYTES (((offsetof(project_t, color) + 3u) & ~3u) - PROJ_TAIL)
 #define PROJ_V4_TAIL_BYTES (((offsetof(project_t, insert) + 3u) & ~3u) - PROJ_TAIL)
 
 /* project format 1 (0.1, 0.2 and 0.2's performance update), frozen: a file saved by them is read a part at a time
@@ -294,6 +297,8 @@ static project_t proj PLAT_POOL;
 /* The FM-1 linker has distinct BSS/POOL budgets. Balance six fixed delay
  * channels between them; no flash or sampler memory is borrowed. */
 static track_insert_t insert_rt[NINST];
+static color_state_t color_rt[NTRK];
+static color_sends_t color_drums_send;
 static int16_t insert_ring[(NINST * 2) - 1][TI_DELAY];
 static int16_t insert_pool[TI_DELAY] PLAT_POOL;
 static uint8_t (*kit_pots(int k))[NPOTS] { return k == KIT_606 ? proj.pots606 : proj.pots[k]; }
@@ -364,6 +369,7 @@ static void sync_drum_mutes(void)
         return;
     drum_mutes_applied = mask;
     roll_inhibit_pads |= cut;
+    if (cut) color_reset(&color_rt[TR_DRUM]); /* no history from a newly cut lane */
     for (pad = 0; cut && pad < NPADS; pad++)
         if (cut >> pad & 1u) {
             drums_cut_pad(pad);
@@ -589,6 +595,7 @@ static void project_default(void)
     proj.swing = 50;
     proj.bpm10 = 1200;
     proj.version = PROJ_VERSION;
+    for (i = 0; i < NTRK; i++) color_defaults(&proj.color[i]);
     for (i = 0; i < NPAT; i++)
         pattern_clear(&proj.p[i]);
     for (s = 0; s < 16; s += 4)
@@ -709,17 +716,22 @@ static uint32_t crc32_of(const uint8_t *d, uint32_t n) { return ~crc32_more(0xFF
 static void insert_process(int t, float *l, float *r, unsigned n)
 {
     track_insert_process(&insert_rt[t-1], &proj.insert[t-1], l, r, n);
+    color_run(&color_rt[t], &proj.color[t], l, r, n);
 }
 
 static void insert_route(int t)
 {
     const track_insert_param_t *p = &proj.insert[t-1];
-    syn_set_insert(t, (p->mode != TI_OFF && p->v[3] && !(proj.tmute >> t & 1u)) ? insert_process : 0);
+    syn_set_insert(t, (((p->mode != TI_OFF && p->v[3]) || color_active(&proj.color[t])) && !(proj.tmute >> t & 1u)) ? insert_process : 0);
 }
 
 static void project_check(void)           /* a loaded project's values kept in range */
 {
     int i, t, s, n;
+    for (t = 0; t < NTRK; t++)
+        for (i = 0; i < COL_NUM; i++)
+            proj.color[t].v[i] = (uint8_t)clamp(proj.color[t].v[i], 0, i == COL_ON ? 1 : 127);
+
     for (t = 0; t < NINST; t++) {
         track_insert_param_t *p = &proj.insert[t];
         if (p->mode >= TI_MODES)
@@ -890,6 +902,8 @@ static int proj_file_format(void)
     if (sz < (int)offsetof(project_t, tr) || plat_file_read(&PROJ_FILE, offsetof(project_t, version), &ver, 1) != 0)
         return 0;
     if (sz >= (int)PROJ_META && sz <= (int)PROJ_CAPACITY && ver == PROJ_VERSION)
+        return 6;
+    if (sz >= (int)(PROJ_PREFIX + PROJ_V5_TAIL_BYTES) && sz <= (int)PROJ_CAPACITY && ver == 5)
         return 5;
     if (sz >= (int)(PROJ_PREFIX + PROJ_V4_TAIL_BYTES) && sz <= (int)PROJ_CAPACITY && ver == 4)
         return 4;
@@ -1082,6 +1096,8 @@ static int project_load(void)
         clips_raw(proj.pat);
         return 0;
     }
+    if (fmt < 6)
+        for (i = 0; i < NTRK; i++) color_defaults(&proj.color[i]);
     project_check();
     clips_raw(proj.pat);
     psnd_fetch_all();                     /* SOUNDS PER PATTERN: the focused pattern's, before they reach the engines */
@@ -2826,6 +2842,9 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         }
         sync_drum_mutes();
         drums_render(proj.kit, buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, (int)chunk);
+        if (!track_is_muted(TR_DRUM) && color_active(&proj.color[TR_DRUM]))
+            color_run_drums(&color_rt[TR_DRUM], &color_drums_send, &proj.color[TR_DRUM],
+                            buf_l+done, buf_r+done, bus_rev+done, bus_dly+done, chunk);
         drum_mix(buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, chunk);
         if (STEMS && stems_on)            /* (the mix holds the drums alone until the synth comes in) */
             stem_put(TR_DRUM, buf_l + done, buf_r + done, done, chunk);
@@ -2938,6 +2957,7 @@ void app_init(void)
     syn_pool(pool_max);
     user_load();
     project_load();
+    for (t = 0; t < NTRK; t++) color_reset(&color_rt[t]);
     for (t = 1; t < NTRK; t++) {
         track_insert_bind(&insert_rt[t-1], insert_ring[(t-1)*2],
                           t < NINST ? insert_ring[(t-1)*2+1] : insert_pool);
@@ -3036,9 +3056,9 @@ static void undo_step(int redo)
 
 /* ------------------------------------------------------------------------ UI --- */
 enum { PG_SEQ, PG_EDIT, PG_MUTE, PG_HOME, PG_KIT, PG_KEYS, PG_ENV, PG_LFO, PG_ARP, PG_MIX, PG_FX, PG_SONG, PG_MST, PG_SETUP,
-       PG_GEN, PG_PICK, PG_INSERT };
+       PG_GEN, PG_PICK, PG_INSERT, PG_COLOR };
 static const char *const PAGE_NAME[] = {"STEPS", "EDIT", "MUTE", "PATTERNS", "KIT", "KEYS", "ENV", "LFO", "ARP", "MIXER",
-                                        "FX", "SONG", "MASTER", "SETUP", "ACID", "PICK NOTES", "INSERT"};
+                                        "FX", "SONG", "MASTER", "SETUP", "ACID", "PICK NOTES", "INSERT", "COLOR"};
 #define NGENPAGE 3                        /* the 303 generator's (SEQ after STEPS, T2..T4): ACID, NOTES, LINE (SELECT) */
 static const char *const TRK_NAME[NTRK] = {"DRUMS", "T2", "T3", "T4"};
 static const char *const TYPE_NAME[NTYPES] = {"MONO", "POLY", "SAMPLER"};
@@ -3094,6 +3114,7 @@ static struct {
     uint8_t page;
     uint8_t trk;                          /* the track picked */
     uint8_t pad;                          /* the drum pad being edited */
+    uint8_t color_page;
     uint8_t spage;                        /* the step page, 0..7 */
     uint8_t seq_prev, seq_used;           /* a resize chord leaves the previous SEQ view alone */
     uint8_t epage;                        /* the EDIT page (four knobs each) */
@@ -5094,7 +5115,7 @@ static void track_pick(int tr)
         /* between the drums and an instrument track: the track's own page (its keys play), unless on EDIT or
          * HOME; between instrument tracks the page stays */
         if ((tr == TR_DRUM) != (ui.trk == TR_DRUM) && ui.page != PG_EDIT && ui.page != PG_HOME && ui.page != PG_LFO &&
-            ui.page != PG_MIX && ui.page != PG_FX && ui.page != PG_SONG && ui.page != PG_MST && ui.page != PG_SETUP)
+            ui.page != PG_MIX && ui.page != PG_FX && ui.page != PG_COLOR && ui.page != PG_SONG && ui.page != PG_MST && ui.page != PG_SETUP)
             ui.page = (uint8_t)home_page(tr);
         keys_let_go();
         ui.trk = (uint8_t)tr;
@@ -5358,14 +5379,17 @@ static void set_track_mutes(uint8_t mask)
     proj.tmute = mask;
     roll_inhibit_tracks |= cut;
     sync_drum_mutes();
-    if (cut & 1u)
+    if (cut & 1u) {
         drum_pk = 0.0f;
+        color_reset(&color_rt[TR_DRUM]);
+    }
     for (t = 1; t < NTRK; t++)
         if (cut >> t & 1u) {
             arp_clear(t);
             sq.slid[t] = 0;
             syn_cut_track(t);
             track_insert_reset(&insert_rt[t-1]);
+            color_reset(&color_rt[t]);
         }
     for (t = 1; t < NTRK; t++) insert_route(t);
     if ((cut & 0x0Eu) && syn_at < SYN_CTL)
@@ -5933,6 +5957,44 @@ static void insert_knob(int tr, int k, int e)
     app_say(track_insert_label(p->mode, k), value);
 }
 
+static const char *const COLOR_LABEL[COL_NUM] = {"AMOUNT", "WEAR", "WOW", "DIGITAL", "DROPOUT", "COLOR"};
+static int color_index(int k)
+{
+    return ui.color_page ? COL_WEAR + k : k == 0 ? COL_AMOUNT : k == 3 ? COL_ON : -1;
+}
+static void color_knob(int k, int32_t e)
+{
+    int id = color_index(k), v, was;
+    int tr = ui.trk;
+    color_params_t *p = &proj.color[tr];
+    color_state_t *rt = &color_rt[tr];
+    char t[8];
+    uint32_t f;
+    if (id < 0) return;
+    v = clamp(p->v[id] + e, 0, id == COL_ON ? 1 : 127);
+    if (v == p->v[id]) return;
+    f = plat_lock();
+    was = color_active(p);
+    if (id == COL_ON || ((!v || !p->v[id]) && id == COL_AMOUNT))
+        color_reset(rt);
+    if (id == COL_WOW && (!v || !p->v[id]))
+        rt->valid = rt->pos = 0;
+    if (id == COL_DIGITAL && (!v || !p->v[id]))
+        rt->clock = 0;
+    if (id == COL_DROP && (!v || !p->v[id])) {
+        rt->dropout = 1.f;
+        rt->remain = rt->countdown = 0;
+    }
+    p->v[id] = (uint8_t)v;
+    if (was != color_active(p)) color_reset(rt);
+    if (tr != TR_DRUM) insert_route(tr);
+    plat_unlock(f);
+    dirty = 1;
+    int_text(v*100/127,t);
+    text_cat(t,"%");
+    app_say(COLOR_LABEL[id], id == COL_ON ? (v ? "ON" : "BYPASS") : t);
+}
+
 static void knob(int k, int32_t e)        /* KNOB 1..4 (k 0..3) on the page shown */
 {
     int inst = ui.trk != TR_DRUM;
@@ -5984,6 +6046,8 @@ static void knob(int k, int32_t e)        /* KNOB 1..4 (k 0..3) on the page show
         mix_knob(k, e);
     } else if (inst && ui.page == PG_INSERT) {
         insert_knob(ui.trk, k, e);
+    } else if (ui.page == PG_COLOR) {
+        color_knob(k,e);
     } else if (ui.page == PG_FX) {
         fx_knob(k, e);
     } else if (ui.page == PG_MST) {
@@ -6325,7 +6389,7 @@ static void input(void)
         if ((btn >> B_SEL & 1u) && inst) {
             ui.sel_used = 1;
             ui.page = ui.page == PG_INSERT ? (uint8_t)home_page(ui.trk) : PG_INSERT;
-        } else if (ui.page == PG_INSERT) {
+        } else if (ui.page == PG_INSERT || ui.page == PG_COLOR) {
             ui.page = (uint8_t)home_page(ui.trk);
         } else if (ui.page != PG_FX) {
             ui.page = PG_FX;
@@ -6333,7 +6397,8 @@ static void input(void)
             ui.fxpage++;
         } else {
             ui.fxpage = 0;
-            ui.page = (uint8_t)home_page(ui.trk);
+            ui.color_page = 0;
+            ui.page = PG_COLOR;
         }
     }
 
@@ -6454,7 +6519,9 @@ static void input(void)
         track_pick(ui.trk + e);
     inst = ui.trk != TR_DRUM;
     if ((e = plat_enc(EN_SELECT)) != 0 && ui.page != PG_PICK) { /* SELECT: a held step's chance, the cursor, or the page within the page */
-        if (inst && ui.page == PG_INSERT) {
+        if (ui.page == PG_COLOR) {
+            ui.color_page = (uint8_t)clamp(ui.color_page+e,0,1);
+        } else if (inst && ui.page == PG_INSERT) {
             insert_select(ui.trk, e);
         } else if (ui.held_step >= 0 && !(inst && (ui.page == PG_EDIT || ui.page == PG_ENV || ui.page == PG_LFO))) {
             /* (there: pages to lock on) */
@@ -6606,7 +6673,7 @@ static void lights(void)
     }
     if (ui.page != PG_KEYS)
         b |= 1u << (ui.page == PG_SEQ || ui.page == PG_GEN || ui.page == PG_PICK ? B_SEQ : ui.page == PG_EDIT ? B_EDIT : ui.page == PG_MUTE || ui.page == PG_ENV ? B_ENV
-                    : ui.page == PG_LFO ? B_LFO : ui.page == PG_ARP ? B_ARP : ui.page == PG_FX || ui.page == PG_INSERT ? B_FX
+                    : ui.page == PG_LFO ? B_LFO : ui.page == PG_ARP ? B_ARP : ui.page == PG_FX || ui.page == PG_INSERT || ui.page == PG_COLOR ? B_FX
                     : ui.page == PG_HOME || ui.page == PG_SONG || ui.page == PG_SETUP ? B_HOME : B_GLO);
     if (sq.playing)
         b |= LED_PLAY_GREEN;
@@ -7021,7 +7088,7 @@ static void strip(void)                   /* four cells in one hard-edged grid, 
 
 /* ---- each kind of page's four knobs */
 enum { KD_SEQ, KD_HELD, KD_DRUM, KD_KIT, KD_INST, KD_ENV, KD_LFO, KD_ARP, KD_MIX, KD_FX, KD_MST, KD_SONG, KD_REC, KD_PF,
-       KD_SETUP, KD_FOLLOW, KD_GEN, KD_INSERT };
+       KD_SETUP, KD_FOLLOW, KD_GEN, KD_INSERT, KD_COLOR };
 
 static int fx_mid(int i)                  /* a two-way FX knob's middle, or -1 */
 {
@@ -7035,6 +7102,16 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
     t[0] = 0;
     c->on = 0;
     switch (kind) {
+    case KD_COLOR: {
+        int id = color_index(k);
+        if (id < 0) return 0;
+        v = proj.color[tr].v[id];
+        int_text(v * 100 / 127,t);
+        text_cat(t, "%");
+        card_put(c, COLOR_LABEL[id], id == COL_ON ? (v ? "ON" : "BYPASS") : t,
+                 v, 0, id == COL_ON ? 1 : 127, -1);
+        return 1;
+    }
     case KD_INSERT: {
         const track_insert_param_t *p = &proj.insert[tr-1];
         if (!p->mode) return 0;
@@ -8912,6 +8989,23 @@ static void page_rec(void)                /* REC held: the metronome, the count-
     cards_of(KD_REC, 0);
 }
 
+static void page_color(void)
+{
+    int i;
+    const color_params_t *p = &proj.color[ui.trk];
+    band_set(trk_rgb(ui.trk), TRK_NAME[ui.trk], ui.color_page ? "COLOR: MODULES" : "COLOR: AMOUNT", "PRE-SEND + USB STEM", 2, ui.color_page);
+    rrect(4,4,232,124,6,C_PANEL);
+    cv_text(12,10,&FONT_B,p->v[COL_ON] ? "COLOR ON" : "COLOR BYPASS",TH_INK);
+    for (i=0;i<4;i++) {
+        int v=p->v[COL_WEAR+i], y=35+i*15;
+        cv_text(12,y,&FONT_XS,COLOR_LABEL[COL_WEAR+i],TH_FG);
+        cv_rect(89,y+4,130,3,C_GRID);
+        if (v) cv_rect(89,y+4,v*130/127,3,TH_FG);
+    }
+    cv_text(12,107,&FONT_XS,ui.color_page ? "SELECT LEFT: AMOUNT / BYPASS" : "SELECT RIGHT: MODULES",TH_INK);
+    cards_of(KD_COLOR,0);
+}
+
 static void page_insert(void)
 {
     const track_insert_param_t *p = &proj.insert[ui.trk-1];
@@ -8939,6 +9033,7 @@ static void page(void)
     case PG_MIX: page_mix(); break;
     case PG_FX: page_fx(); break;
     case PG_INSERT: page_insert(); break;
+    case PG_COLOR: page_color(); break;
     case PG_MST: page_mst(); break;
     case PG_ARP: page_arp(); break;
     case PG_MUTE: page_mute(); break;
@@ -9281,7 +9376,14 @@ int app_expect(const char *what, int *got)
 {
     dpart_t *p = dcur();
     const nstep_t *ns;
-    if (!strncmp(what, "insert", 6)) {
+    if (!strncmp(what,"color",5)) {
+        int t = atoi(what+5)-1, j;
+        const char *u = strchr(what,'_');
+        if (t < 0 || t >= NTRK || !u) return 0;
+        j = atoi(u+1);
+        if (j < 0 || j >= COL_NUM) return 0;
+        *got = proj.color[t].v[j];
+    } else if (!strncmp(what, "insert", 6)) {
         int t = atoi(what + 6) - 2;
         const char *u = strchr(what, '_');
         if (t < 0 || t >= NINST) return 0;

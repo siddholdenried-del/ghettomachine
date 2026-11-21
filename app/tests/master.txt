@@ -219,6 +219,10 @@ wait 30
 expect fxpage 3
 tap FX
 wait 30
+expect page 17
+expect color1_5 0
+tap FX
+wait 30
 expect page 0
 # ---- saved with the project
 tap SAVE

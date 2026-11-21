@@ -125,6 +125,12 @@ A very dense collection of long parts can exceed the fixed FM-1 project save slo
   - **While stopped, on KEYS:** step recording. A note or a chord goes into the cursor's step, and the cursor moves on
     when you let go. SELECT moves the cursor, to leave a rest.
 
+### Color on a track
+
+Pick **DRUMS, T2, T3 or T4**, then tap **FX** through Reverb, Delay, Delay 2 and Filter to reach that track's **COLOR**. On the first page, **K1 AMOUNT** blends the processed sound and **K4 COLOR** switches ON/BYPASS. Turn **SELECT** right for Modules: K1 **WEAR** (signal-gated hiss and crackle), K2 **WOW** (stereo wow and flutter), K3 **DIGITAL** (reduced rate and resolution), K4 **DROPOUT** (brief tape dips). Turn SELECT left for Amount and Bypass. While on Color, use **ALGORITHM** to pick a different track.
+
+Each track has its own strip and stored settings. On instruments, Color follows the track's insert, and comes before pan, shared sends and that track's USB stem. On drums, the preweighted reverb and delay feeds get the same Color timing without changing individual pad send levels. The master bus controls and chain are unchanged. Muting a track clears its Color history, not effects already ringing in the shared reverb or delay. A bypassed strip leaves samples unchanged. Projects made before Color load with all four strips bypassed.
+
 ### Instrument insert effects
 
 Pick **T2, T3 or T4**, then hold **SEL** and tap **FX**. Turn **SELECT** to choose the effect. **K1–K3** shape it; **K4 MIX** blends dry and effected signal (zero bypasses without losing the other knob values). Turn SELECT to **OFF** to remove the effect; selecting a new mode starts it at its defaults. Tap **FX** to leave this screen; plain FX from another page still opens the shared reverb, delay and filter.
