@@ -65,7 +65,7 @@
       "path": "guide/recording/index.html"
     },
     {
-      "literal": "909, 808, 606 and 707 kits, three synth or sampler tracks, and a 128-step sequencer.",
+      "literal": "909 and 808 kits, three synth or sampler tracks, and a 128-step sequencer.",
       "path": "index.html"
     },
     {
@@ -97,7 +97,7 @@
       "path": "emu/index.html"
     },
     {
-      "literal": "<strong>707 COWBELL</strong> or <strong>707 TAMBOURINE</strong>",
+      "literal": "the last page, <strong>DRUM MODEL</strong>",
       "path": "guide/beats/index.html"
     },
     {
@@ -132,20 +132,20 @@
   "site": "https://ghettomachine.bongcult.com",
   "source": {
     "emscripten": "7.0.0+777e6e5db7b4990bcaeb1b9998ed642cc84e6629",
-    "emulator_build_commit": "525beca81bb1049843c6dd5c8230b76f7329c1f7",
-    "feature_source": "525beca81bb1049843c6dd5c8230b76f7329c1f7",
+    "emulator_build_commit": "49f84b0622d7fc3b8ee7260db519b11e43ef259f",
+    "feature_source": "49f84b0622d7fc3b8ee7260db519b11e43ef259f",
     "felucca_bsp": "2a5af3dfc8bccb92e37d48a3e7e0bf9a5827e51f",
     "fm1_base": "7337375c15e9db26f23b0c68a1db61429add2f48",
-    "provenance": "Browser development build from the exact clean source of the loosened budgets: each section's share of the FM-1's processor (drums 30%, synth 40%, effects 25%; they act on the FM-1's measured times, not in the browser), the second core taking voices only from four up, and the processor's readout holding its peaks for 10 s.",
-    "remote_main_predecessor": "90105922cafe15834d5e19bcdd710778fcf446a6",
+    "provenance": "Browser development build from the exact clean source with two drum kits: the 909 and the 808 (the 606 and the 707 were cut; projects saved on them load on the 808 and the 909), and FILL returning the drums to their own clip's place.",
+    "remote_main_predecessor": "fb6cc4dfaa895591347665496ae7d6e754ed1196",
     "repository": "https://github.com/siddholdenried-del/ghettomachine",
-    "runtime_tree": "7a42313b83d2968e7a32ccb48e80e8e909d231dc"
+    "runtime_tree": "52fcfcc3ac64495ccf7e02bcbf90fb2bf2c48d82"
   },
   "targets": {
     "device": {
-      "application_bytes": 571252,
-      "build_from": "525beca81bb1049843c6dd5c8230b76f7329c1f7",
-      "build_id": "66817B22",
+      "application_bytes": 526344,
+      "build_from": "49f84b0622d7fc3b8ee7260db519b11e43ef259f",
+      "build_id": "294E907D",
       "build_status": "linked-and-packaged",
       "downloads": [],
       "flashed": false,
@@ -158,12 +158,12 @@
       "hardware_tested": false,
       "package_bytes": 616099,
       "package_identity": "FM-1_800",
-      "package_sha256": "c8dfad6479f63e4747f875604dbc1b6010e85fa0390ba2cfa69b1742cb257f04",
+      "package_sha256": "707c89e0dd1f45b400aa7b7a6ab04544b2da878090de122a97e2c0d3d341e32f",
       "pool_guard_bytes": 8192,
       "pool_limit_bytes": 344064,
       "pool_used_bytes": 335064,
       "ram_limit_bytes": 98304,
-      "ram_used_bytes": 96004,
+      "ram_used_bytes": 84276,
       "status": "not-distributed",
       "tested_for_this_release": false
     },
@@ -193,7 +193,7 @@
       "identity": "GHETTOMACHINE DEV",
       "path": "emu/app.wasm",
       "platform": "browser",
-      "sha256": "2c14ef85eb7b57039eed46add28efed1a4a9a8cecd1f8b18c735028cc1d7345f"
+      "sha256": "570bf90785c6d3c174f486aa669a9091e674f82c2adb91b13cc03c537863da93"
     }
   ]
 }
