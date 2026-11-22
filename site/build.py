@@ -206,11 +206,16 @@ TOC_SCRIPT = """'use strict';
 })();
 """
 
+FRAME_STYLESHEET = '<link rel="stylesheet" href="/bongcult-frame/frame.css">\n'
+FRAME_TOP = '<div class="bc-frame bc-frame-top" aria-hidden="true"><span></span></div>\n'
+FRAME_BOTTOM = '<div class="bc-frame bc-frame-bottom" aria-hidden="true"><i></i><span></span><i></i></div>\n'
+
+
 MASTHEAD = """<a class="bc-skip" href="#gm-main">Skip to content</a>
 <header class="bc-masthead">
   <a class="bc-name" href="https://bongcult.com/"><img src="/bong-cult-logo.svg" alt="Bong Cult home" width="866" height="320"></a>
   <div class="bc-rule" aria-hidden="true"></div>
-  <p class="bc-badge">BongWare · BongTech</p>
+  <p class="bc-badge">BongSoft · BongTech</p>
 </header>
 """
 LANDING = """<div class="hero gm-home">
@@ -219,7 +224,7 @@ LANDING = """<div class="hero gm-home">
     <h1><span class="logo">GhettoMachine</span></h1>
     <p class="sub">Four-track groovebox firmware. 909 and 808 kits, three synth or sampler tracks, and a 128-step sequencer.</p>
   </div>
-  <p class="lede">GhettoMachine is BongWare custom firmware engineered by BongTech, part of <a href="https://bongcult.com/">BongCult</a>. Make a beat in the browser or look up the controls for the FM-1.</p>
+  <p class="lede">GhettoMachine is BongSoft custom firmware engineered by BongTech, part of <a href="https://bongcult.com/">BongCult</a>. Make a beat in the browser or look up the controls for the FM-1.</p>
   <div class="gm-actions" id="play">
     <a class="gm-button gm-primary" href="/guide/">Open the User Guide</a>
     <a class="gm-button" href="/emu/">Play in browser</a>
@@ -267,15 +272,15 @@ def render_document(head, title, path, content, guide_slug=None, topics=()):
         '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n'
         '<meta name="theme-color" content="#10100f">\n'
-        '<meta name="description" content="GhettoMachine is BongWare custom firmware by BongTech: a four-track groovebox for the M-VAVE FM-1, playable in the browser.">\n'
+        '<meta name="description" content="GhettoMachine is BongSoft custom firmware by BongTech: a four-track groovebox for the M-VAVE FM-1, playable in the browser.">\n'
         f'<link rel="canonical" href="https://ghettomachine.bongcult.com{path}">\n'
         + re.sub(r'<title>[^<]*</title>', f'<title>{html.escape(title)}</title>', head, count=1) + '\n'
         + ICON.replace("HREF", "/favicon.svg")
-        + '<link rel="stylesheet" href="/bong-cult-shell.css">\n' + js + '</head>\n'
-        + f'<body class="gm-bong-cult{css_class}">\n' + MASTHEAD
-        + '<div class="bc-frame">\n<aside class="bc-sidebar"><div class="gm-nav-stack">'
+        + FRAME_STYLESHEET + '<link rel="stylesheet" href="/bong-cult-shell.css">\n' + js + '</head>\n'
+        + f'<body class="gm-bong-cult{css_class}">\n' + MASTHEAD + FRAME_TOP
+        + '<div class="gm-page-shell">\n<aside class="bc-sidebar"><div class="gm-nav-stack">'
         + f'<nav aria-label="GhettoMachine">{site_nav}</nav>{chapters}</div></aside>\n'
-        + f'<main class="wrap" id="gm-main" tabindex="-1">\n{content}\n</main>\n</div>\n</body>\n</html>\n'
+        + f'<main class="wrap" id="gm-main" tabindex="-1">\n{content}\n</main>\n</div>\n' + FRAME_BOTTOM + '</body>\n</html>\n'
     )
 
 
@@ -326,7 +331,7 @@ def build_landing(out):
         "})();\n"
     )
     landing = LANDING.replace("RELEASE_VERSION_LABEL", html.escape(RELEASE["targets"]["web"]["landing_label"])).replace("REPO", REPO).replace("TECHNICAL_TOPIC_LINKS", fallback)
-    (out / "index.html").write_text(render_document(head, "GhettoMachine · BongWare", "/", landing))
+    (out / "index.html").write_text(render_document(head, "GhettoMachine · BongSoft", "/", landing))
     tech_dir = out / "technical"
     tech_dir.mkdir(exist_ok=True)
     (tech_dir / "index.html").write_text(render_document(head, "Inside GhettoMachine · Technical tour", "/technical/", contents))
@@ -373,12 +378,24 @@ def build_landing(out):
         (dest / "index.html").write_text(render_document(head, f"{title} · GhettoMachine User Guide", path, body, slug, topics))
     for file in ("bong-cult-logo.svg", "bong-cult-shell.css", "dungeon-bbs-tokens.css"):
         shutil.copyfile(BRANDING / file, out / file)
+    shutil.copytree(BRANDING / "bongcult-frame", out / "bongcult-frame", dirs_exist_ok=True)
 
 
-def emulator_title(page):
-    page, count = re.subn(r"<title>[^<]*</title>", "<title>GhettoMachine in the browser · BongWare</title>", page, count=1)
+def emulator_document(page):
+    page, count = re.subn(r"<title>[^<]*</title>", "<title>GhettoMachine in the browser · BongSoft</title>", page, count=1)
     if count != 1:
         raise SystemExit("site: the emulator's page has no title")
+    # --landing-only can read a previously generated emulator. Leave its
+    # single frame in place on repeated builds.
+    if FRAME_STYLESHEET not in page:
+        if any(page.count(tag) != 1 for tag in ("</head>", "<body>", "</body>")):
+            raise SystemExit("site: unexpected emulator shell")
+        frame_layout = ("<style>body > .bc-frame { max-width: 1040px; margin: .8rem auto; "
+                        "padding: .35rem .65rem; background: #10100f; } "
+                        ".framed body > .bc-frame { display: none; }</style>\n")
+        page = page.replace("</head>", FRAME_STYLESHEET + frame_layout + "</head>")
+        page = page.replace("<body>", "<body>\n" + FRAME_TOP)
+        page = page.replace("</body>", FRAME_BOTTOM + "</body>")
     return page
 
 
@@ -389,7 +406,7 @@ def main():
         build_landing(out)
         page = out / "emu" / "index.html"
         if page.is_file():
-            page.write_text(emulator_title(page.read_text()))
+            page.write_text(emulator_document(page.read_text()))
         return
     if len(args) != 1 or args[0].startswith("-"):
         raise SystemExit(__doc__)
@@ -406,7 +423,7 @@ def main():
         shutil.copy(emu_src / f, out / "emu" / f)
     shutil.copytree(emu_src / "parts", out / "emu" / "parts")
     emu_page = (out / "emu" / "index.html").read_text()
-    emu_page = emulator_title(emu_page)
+    emu_page = emulator_document(emu_page)
     emu_page, n2 = re.subn(r"<h1>[^<]*</h1>", '<h1>GhettoMachine</h1>\n  <p><a href="../">How it works</a></p>', emu_page, count=1)
     if n2 != 1 or emu_page.count(START) != 1:
         raise SystemExit("site: the emulator's page has no <title>, <h1> or switch-on block to change")

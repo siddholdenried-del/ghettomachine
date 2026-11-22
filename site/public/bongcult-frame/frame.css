@@ -1,0 +1,43 @@
+/* The vine and rosette are cuts from the approved BongCult collage. */
+.bc-frame {
+  box-sizing: border-box;
+  display: grid;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  pointer-events: none;
+  user-select: none;
+}
+.bc-frame::before, .bc-frame::after { content: ""; display: block; }
+.bc-frame-top {
+  --bc-end: min(21%, var(--bc-vine-limit, 16rem));
+  grid-template-columns: var(--bc-end) minmax(0, 1fr) var(--bc-end);
+  gap: clamp(.35rem, 1.2vw, .9rem);
+}
+.bc-frame-bottom {
+  --bc-end: min(13%, var(--bc-tail-limit, 10rem));
+  --bc-mark: clamp(1rem, 1.4vw, 1.25rem);
+  grid-template-columns: minmax(0, 1fr) var(--bc-end) var(--bc-mark) var(--bc-end) minmax(0, 1fr);
+  gap: clamp(.3rem, .75vw, .65rem);
+}
+.bc-frame-top::before, .bc-frame-top::after, .bc-frame-bottom > i {
+  display: block;
+  width: 100%;
+  aspect-ratio: 956 / 107;
+  background: url("trim-interlace.webp") center / contain no-repeat;
+}
+.bc-frame-top::after, .bc-frame-bottom > i:last-child { transform: scaleX(-1); }
+.bc-frame-top > span, .bc-frame-bottom::before, .bc-frame-bottom::after {
+  display: block;
+  height: 1px;
+  background: #716a61;
+}
+.bc-frame-bottom > span {
+  display: block;
+  aspect-ratio: 66 / 68;
+  background: url("trim-rosette.webp") center / contain no-repeat;
+}
+@media (max-width: 39rem) {
+  .bc-frame-top { --bc-end: min(26%, 7rem, var(--bc-vine-limit, 16rem)); }
+  .bc-frame-bottom { --bc-end: min(17%, 5.5rem, var(--bc-tail-limit, 10rem)); }
+}

@@ -5,7 +5,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>GhettoMachine in the browser · BongWare</title>
+<title>GhettoMachine in the browser · BongSoft</title>
 <meta name="description" content="GHETTOMACHINE for the M-VAVE FM-1, in the browser: the same code the FM-1 runs.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -97,8 +97,12 @@ kbd { font: 600 .85em ui-monospace, Menlo, monospace; background: var(--card); b
 body > header h1 { font: 400 2.4rem/1.05 "Sedgwick Ave Display", "Marker Felt", cursive; }
 .startbox { display: grid; justify-items: center; gap: .7rem; padding: 0 1rem; } .start .hint { margin: 0; text-align: center; color: #fff; font: 600 1.05rem/1.3 "Barlow Semi Condensed", "Barlow", sans-serif; text-shadow: 0 1px 3px rgba(0, 0, 0, .8); }</style>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sedgwick+Ave+Display&display=swap">
+<link rel="stylesheet" href="/bongcult-frame/frame.css">
+<style>body > .bc-frame { max-width: 1040px; margin: .8rem auto; padding: .35rem .65rem; background: #10100f; } .framed body > .bc-frame { display: none; }</style>
 </head>
 <body>
+<div class="bc-frame bc-frame-top" aria-hidden="true"><span></span></div>
+
 <header>
   <h1>GhettoMachine</h1>
   <p><a href="../">How it works</a></p>
@@ -816,5 +820,6 @@ $("reset").addEventListener("click", () => {
   }
 });
 </script>
+<div class="bc-frame bc-frame-bottom" aria-hidden="true"><i></i><span></span><i></i></div>
 </body>
 </html>

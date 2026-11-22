@@ -3,6 +3,9 @@
     "_headers",
     "bong-cult-logo.svg",
     "bong-cult-shell.css",
+    "bongcult-frame/frame.css",
+    "bongcult-frame/trim-interlace.webp",
+    "bongcult-frame/trim-rosette.webp",
     "chapter-redirect.js",
     "dungeon-bbs-tokens.css",
     "emu/app.js",
@@ -85,15 +88,15 @@
       "path": "technical/index.html"
     },
     {
-      "literal": "BongWare \u00b7 BongTech",
+      "literal": "BongSoft \u00b7 BongTech",
       "path": "index.html"
     },
     {
-      "literal": "GhettoMachine is BongWare custom firmware engineered by BongTech, part of",
+      "literal": "GhettoMachine is BongSoft custom firmware engineered by BongTech, part of",
       "path": "index.html"
     },
     {
-      "literal": "<title>GhettoMachine in the browser \u00b7 BongWare</title>",
+      "literal": "<title>GhettoMachine in the browser \u00b7 BongSoft</title>",
       "path": "emu/index.html"
     },
     {

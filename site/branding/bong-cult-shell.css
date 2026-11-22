@@ -71,7 +71,11 @@ body.gm-bong-cult {
   height: 1px;
   background: var(--bc-paper);
 }
-.bc-frame {
+.gm-bong-cult > .bc-frame {
+  width: min(94%, 73rem);
+  margin: .8rem auto;
+}
+.gm-page-shell {
   display: grid;
   grid-template-columns: clamp(10rem, 16vw, 13rem) minmax(0,1fr);
   width: min(94%, 73rem);
@@ -128,7 +132,7 @@ body.gm-bong-cult {
 }
 .gm-bong-cult .emu-frame iframe { height: clamp(610px, 72vw, 740px); }
 @media (max-width: 47rem) {
-  .bc-frame { display: block; margin-top: 1.1rem; border-width: 1px; }
+  .gm-page-shell { display: block; margin-top: 1.1rem; border-width: 1px; }
   .bc-sidebar { border-right: 0; border-bottom: 1px solid var(--bc-paper); }
   .bc-sidebar nav { grid-template-columns: repeat(2,minmax(0,1fr)); gap: .4rem; }
   .bc-sidebar a { border-width: 1px; }
@@ -214,7 +218,7 @@ body.gm-bong-cult {
 /* The guide resembles a small manual, not a second copy of the landing menu. */
 .gm-guide-page .bc-masthead { gap: .65rem; padding-top: .8rem; }
 .gm-guide-page .bc-name { width: clamp(8rem, 16vw, 12rem); }
-.gm-guide-page .bc-frame {
+.gm-guide-page .gm-page-shell {
   grid-template-columns: clamp(15rem, 24vw, 19rem) minmax(0,1fr);
   margin-top: 1.2rem;
 }
@@ -336,7 +340,7 @@ body.gm-bong-cult {
 .gm-book-index ol { padding: 0; list-style: none; }
 .gm-book-index p { margin: .14rem 0 .55rem; color: var(--muted); font-size: .9em; }
 @media (max-width: 57rem) {
-  .gm-guide-page .bc-frame { display: block; }
+  .gm-guide-page .gm-page-shell { display: block; }
   .gm-guide-page .bc-sidebar {
     position: sticky;
     top: 0;
