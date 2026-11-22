@@ -225,8 +225,8 @@
       "sha256": "0300e8193b6967afd4bb2a0c6e3107210d8080c35d33bf6bd1e16925b9513743"
     },
     "bongdrums/index.html": {
-      "bytes": 8288,
-      "sha256": "c68100543699ab6d7a463b9cd57ba811d93f05819922b6bd4f5f16b26440c100"
+      "bytes": 8323,
+      "sha256": "890c9ced68ef877b1765e75292a44dac3d59e9cb43d7ee23d58aca55c68454d2"
     },
     "bongdrums/instrument.webp": {
       "bytes": 65254,
@@ -239,6 +239,14 @@
     "bongdrums/trim.webp": {
       "bytes": 842,
       "sha256": "2cab525420316deedd5737517e949574cb3c4d2fa1e4d317e7d5bee60d27d628"
+    },
+    "bongsynth/index.html": {
+      "bytes": 8528,
+      "sha256": "452800aef8f1b0ca6b3eef35b376559e339e1944340ee78c249f7011907c5b56"
+    },
+    "bongsynth/instrument.webp": {
+      "bytes": 22968,
+      "sha256": "b6daaecae34b056c1d8c489fcbf2630e03a5fb1bf2a747c936ba07b1e314a73d"
     },
     "chapter-redirect.js": {
       "bytes": 460,
@@ -309,48 +317,48 @@
       "sha256": "e205d8b375cf94cef107f04849f7d326db70aa8ea9f0882b0ff569e7084dddbd"
     },
     "guide/beats/index.html": {
-      "bytes": 31727,
-      "sha256": "ffea3aed6a7b72be71018de16fb842045fd80b14b49666f2ecd41afd0d0c35ed"
+      "bytes": 31762,
+      "sha256": "34017908da8148dcb81eb7cd639596014085e43577b49541651db902d4b823ba"
     },
     "guide/index.html": {
-      "bytes": 28111,
-      "sha256": "cf7d25126ae2bdc4e81a41dcec55ffa53e752ee095a2b3e897992fd41370c3a4"
+      "bytes": 28146,
+      "sha256": "dbf29e9e206d9713d1abd4a509b33815d797f386cf89379a191dd07e1a4e85ec"
     },
     "guide/mixer/index.html": {
-      "bytes": 23327,
-      "sha256": "9b496827634cc80c4a9a8b95ae61316bcfced23452a50e98db8bf90734b23076"
+      "bytes": 23362,
+      "sha256": "54d11ee09d8012ec3d188148b79c909540afe3f77c37743563fef785f9bf0556"
     },
     "guide/modulation/index.html": {
-      "bytes": 39309,
-      "sha256": "28ee6e010832643ab6af6aabf63405badf3d770e9874b24ab038d4d860a96471"
+      "bytes": 39344,
+      "sha256": "e34407b572bdfdec76bc822b156650600f27ed55eb633bf9bba614f12ff6b59a"
     },
     "guide/performance/index.html": {
-      "bytes": 22894,
-      "sha256": "fa9910c0b29fd0474180110457d36c9a741144d27a30af4b4d70c0f0b787ace0"
+      "bytes": 22929,
+      "sha256": "5a325ca810655f22d9e8184a7be21d9117d53e57993ccfffba300b67957373e0"
     },
     "guide/recording/index.html": {
-      "bytes": 26530,
-      "sha256": "6388e1012af8a718a44287ae1142ef67aeeed9c9763b36dd2695a9e28a501e8b"
+      "bytes": 26565,
+      "sha256": "4c373598ac930ea341a958d7898f334a3aa3c4263e1d169118a058ad86b58e1d"
     },
     "guide/reference/index.html": {
-      "bytes": 56683,
-      "sha256": "d72860e24393ff3ed993dd7c13b05c146adb8e5c1a71d0f63142f54ae92b5e64"
+      "bytes": 56718,
+      "sha256": "19f711007559c298dde70b578047abf6e90ef1f97e44393677b8cfed5aef70eb"
     },
     "guide/setup/index.html": {
-      "bytes": 32899,
-      "sha256": "805054664ed72344ed8f62fec8bc052ab360716033281b934cbe14aa79db2922"
+      "bytes": 32934,
+      "sha256": "c8fb223a2eb7d1eda173803252f6957a8562e679a15c5fcae4414130cfb08b96"
     },
     "guide/sounds/index.html": {
-      "bytes": 28107,
-      "sha256": "7a65144a10f72fd45e854df5b629d6bccb9e6365da5d9f4738ad77d5ed4542de"
+      "bytes": 28142,
+      "sha256": "811a12ff7cd381f89902dc39178b90a62bf3e6b5e0542ada10d12f4cba97494f"
     },
     "index.html": {
-      "bytes": 14930,
-      "sha256": "853e10aaa60b18f4fc1ec0b060534a688c4931948c60564f1cdd51aa61eb6e18"
+      "bytes": 15017,
+      "sha256": "856a01e2677d4186a31439f25cc62e3f370fe7fa57cfc2c1274559e7ebf2dd84"
     },
     "technical/index.html": {
-      "bytes": 75102,
-      "sha256": "6ff1906563c4b8dded322730252d83cf037aadcd04cde85ab84c0014c304d09c"
+      "bytes": 75137,
+      "sha256": "8b1e1138b82b7669d6830fcdad0c8b21040f4e0975198fddb86729541cdc25ba"
     }
   },
   "project": "GhettoMachine",

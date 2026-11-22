@@ -61,6 +61,8 @@
     "bongdrums/instrument.webp",
     "bongdrums/print-sources.json",
     "bongdrums/trim.webp",
+    "bongsynth/index.html",
+    "bongsynth/instrument.webp",
     "drumengine/index.html",
     "dungeon-bbs-tokens.css",
     "emu/app.js",
@@ -186,7 +188,8 @@
     "/technical/",
     "/guide/sounds/",
     "/drumengine/",
-    "/bongdrums/"
+    "/bongdrums/",
+    "/bongsynth/"
   ],
   "schema": 1,
   "site": "https://ghettomachine.bongcult.com",

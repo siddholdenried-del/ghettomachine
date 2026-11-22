@@ -256,7 +256,7 @@ LANDING = """<div class="hero gm-home">
     <a class="gm-button gm-primary" href="/guide/">Open the User Guide</a>
     <a class="gm-button" href="/emu/">Play in browser</a>
   </div>
-  <p class="gm-home-links"><a href="/technical/">How it works</a> · <a href="/bongdrums/">BongDrums architecture</a> · <a href="REPO">Source on GitHub</a></p>
+  <p class="gm-home-links"><a href="/technical/">How it works</a> · <a href="/bongdrums/">BongDrums architecture</a> · <a href="/bongsynth/">BongSynth architecture</a> · <a href="REPO">Source on GitHub</a></p>
   <details class="gm-technical-topics">
     <summary>Technical topics</summary>
     TECHNICAL_TOPIC_LINKS
@@ -277,7 +277,7 @@ def nav_link(href, label, current):
 def render_document(head, title, path, content, guide_slug=None, topics=()):
     is_guide = guide_slug is not None
     play_label = "Play in browser" if is_guide else "Play"
-    nav = [("/", "Home"), ("/guide/", "User Guide"), ("/emu/", play_label), ("/technical/", "How it works"), ("/bongdrums/", "BongDrums")]
+    nav = [("/", "Home"), ("/guide/", "User Guide"), ("/emu/", play_label), ("/technical/", "How it works"), ("/bongdrums/", "BongDrums"), ("/bongsynth/", "BongSynth")]
     site_nav = "".join(nav_link(href, label, path) for href, label in nav)
     chapters = ""
     if is_guide:
@@ -369,6 +369,7 @@ def build_landing(out):
     contents = contents.replace('  <p class="lede">', frontispiece("technical") + '</div>\n  <p class="lede">', 1)
     (tech_dir / "index.html").write_text(render_document(head, "Inside GhettoMachine · Technical tour", "/technical/", contents))
     shutil.copytree(ROOT / "site" / "bongdrums", out / "bongdrums", dirs_exist_ok=True)
+    shutil.copytree(ROOT / "site" / "bongsynth", out / "bongsynth", dirs_exist_ok=True)
     old_name = out / "drumengine"
     old_name.mkdir(exist_ok=True)
     (old_name / "drumengine.css").unlink(missing_ok=True)

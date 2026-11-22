@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#10100f">
+<meta name="description" content="BongSynth inside GhettoMachine: the instrument tracks' synth voice, its sixteen-voice host, the synth update's second oscillator, shaper and mod matrix, and 129 factory sounds.">
+<title>BongSynth · GhettoMachine</title>
+<link rel="canonical" href="https://ghettomachine.bongcult.com/bongsynth/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/dungeon-bbs-tokens.css">
+<link rel="stylesheet" href="/bongcult-frame/editorial/mast.css">
+<link rel="stylesheet" href="/bongdrums/bongdrums.css?v=play-links">
+</head>
+<body class="gm-bong-cult">
+<a class="skip" href="#main">Skip to architecture</a>
+<header class="gm-family">
+  <a class="gm-family-brand" href="https://bongcult.com/"><img src="/bong-cult-logo.svg" width="866" height="320" alt="Bong Cult home"></a>
+  <nav class="gm-family-links" aria-label="Bong Cult"><a href="https://bongcult.com/">Journal</a><a href="https://tools.bongcult.com/">Audio Tools</a><a href="https://bongcult.com/guestbook/">Guestbook</a><a href="https://bongcult.com/about/">About</a></nav>
+</header>
+<div class="project">
+  <span>BongSynth by BongSoft, provided by BongTech, part of BongCult</span>
+  <nav aria-label="GhettoMachine"><a href="/">Home</a><a href="/guide/">User Guide</a><a href="/emu/">Play</a><a href="/technical/">How it works</a><a href="/bongdrums/">BongDrums</a><a aria-current="page" href="/bongsynth/">BongSynth</a></nav>
+</div>
+<main id="main" class="wrap" tabindex="-1">
+  <header class="hero">
+    <div class="plaque">
+      <p class="tag">GhettoMachine / BongWare firmware</p>
+      <h1>BongSynth</h1>
+      <p>The voice behind GhettoMachine’s three instrument tracks. Two oscillators, a sub, noise, a drive and a filter per voice, sixteen voices shared between the tracks, and the same C running in your browser.</p>
+      <div class="hero-links">
+        <a class="primary" href="https://tools.bongcult.com/bongsynth/">Play BongSynth</a>
+        <a href="https://github.com/siddholdenried-del/bongsynth">Source (GPLv3)</a>
+        <a href="/guide/">User Guide</a>
+      </div>
+    </div>
+    <figure class="plate">
+      <img src="instrument.webp" alt="The BongSynth browser instrument: a sound picker, page tabs, four knobs for the OSC page and a keyboard along the bottom." width="1020" height="638" fetchpriority="high">
+      <figcaption>The browser instrument, OSC page</figcaption>
+    </figure>
+  </header>
+  <div class="article">
+    <nav class="toc desktop" aria-label="On this page"><p class="tag">Contents</p><ol><li><a href="#signal">Signal path</a></li><li><a href="#voice">The voice</a></li><li><a href="#host">The host</a></li><li><a href="#update">The synth update</a></li><li><a href="#sounds">Factory sounds</a></li><li><a href="#browser">In the browser</a></li></ol></nav>
+    <details class="toc mobile"><summary>On this page</summary><nav aria-label="On this page"><ol><li><a href="#signal">Signal path</a></li><li><a href="#voice">The voice</a></li><li><a href="#host">The host</a></li><li><a href="#update">The synth update</a></li><li><a href="#sounds">Factory sounds</a></li><li><a href="#browser">In the browser</a></li></ol></nav></details>
+    <div class="sections">
+      <section id="signal"><p class="tag">01 / Architecture</p><h2>From key to speaker</h2>
+      <p>A pad, the sequencer, the arpeggiator and the 303 generator all reach the synth through the same call: a note, a velocity, a gate length and two marks, <strong>slide</strong> and <strong>accent</strong>. Work happens in blocks of 32 samples at 44.1 kHz. A control tick runs the envelopes, glide and modulation for every voice, then the voices render, then the tracks mix.</p>
+      <figure class="flow"><ol><li><span>01</span>Note from pad, step or arp</li><li><span>02</span>Control tick: envelopes, glide, matrix</li><li><span>03</span>Voices render in two halves</li><li><span>04</span>Track insert, mix, reverb + delay sends</li></ol><figcaption>On the FM‑1 the two halves run on separate cores. In the browser they run one after the other on the audio thread.</figcaption></figure></section>
+      <section id="voice"><p class="tag">02 / Sound generation</p><h2>One analog-style voice</h2>
+      <p>Each voice is the ANALOG engine from <a href="https://github.com/kurogedelic">Felucca-Engines</a> by Leo Kuroshita, Hügelton Instruments (MIT): two band-limited oscillators, a sub, noise, drive, and a trapezoidal state-variable filter. GhettoMachine plays it through a host of its own.</p>
+      <dl class="voices">
+      <div><dt><span>OSC</span>Oscillators</dt><dd>Saw, square, triangle, sine, PWM, hard sync or sub as the wave, with detune, a mix between the two and an interval of ±24 semitones for the second.</dd></div>
+      <div><dt><span>TONE</span>Body</dt><dd>A sub oscillator, noise, pulse width and drive ahead of the filter.</dd></div>
+      <div><dt><span>FILTER</span>Filter</dt><dd>Low-, band- or high-pass, with cutoff, resonance, an envelope amount of ±64 and key tracking.</dd></div>
+      <div><dt><span>ENV</span>Envelopes</dt><dd>An ADSR for the amp and one for the filter, each stage from 1 ms to 5 seconds.</dd></div>
+      </dl></section>
+      <section id="host"><p class="tag">03 / Shared work</p><h2>Sixteen voices, three tracks</h2>
+      <p>The three instrument tracks share one pool of sixteen voices. A <strong>poly</strong> track takes up to its <em>voices</em> setting from the pool. A <strong>mono</strong> track keeps one note, uses <em>voices</em> as a unison stack, spread across the stereo field, and keeps the held keys as a stack to fall back down. <em>Legato</em> chooses when it glides: always while a voice still sounds, or only into a tied note, as a 303 does.</p>
+      <p>When the pool is full, a new note takes the quietest voice that is already letting go, or else the oldest. When the CPU runs short, the firmware lowers the pool size (shedding) rather than missing an audio deadline.</p></section>
+      <section id="update"><p class="tag">04 / Modulation</p><h2>The synth update</h2>
+      <p>Project format 2 added 38 parameters to the original 26. Older sounds load with them at their defaults, so they play as they always did.</p>
+      <ol class="bus"><li><b>Osc 2</b><span>Its own wave, FM and ring modulation from it, and drift.</span></li><li><b>Shaper</b><span>Fold, clip, rectify or crush, before or after the filter.</span></li><li><b>Mod env + LFO 2</b><span>A third envelope and an LFO for each note, with fade-in.</span></li><li><b>Matrix</b><span>Six slots: 12 sources, 17 destinations, four macros.</span></li></ol>
+      <p>The matrix sources include LFO 1 (the track’s), LFO 2 (each note’s), the three envelopes, velocity, the note, a random value per note and the four macro knobs. Destinations run from pitch and cutoff to pan and LFO 2’s own rate.</p></section>
+      <section id="sounds"><p class="tag">05 / Library</p><h2>129 factory sounds</h2>
+      <dl class="bench"><div><dt>GhettoMachine 0.2</dt><dd><strong>24 sounds</strong><span>Basses, leads, pads, keys and FM tones from the first release.</span></dd></div><div><dt>Motor City</dt><dd><strong>21 sounds</strong><span>Mono basses and leads, keys, bells and pitched percussion.</span></dd></div><div><dt>House · Electro · Warehouse · Dub</dt><dd><strong>21 sounds each</strong><span>Each also sets the track’s COLOR texture: clean, tape, drift, edge or dust.</span></dd></div></dl></section>
+      <section id="browser"><p class="tag">06 / Browser instrument</p><h2>The same C, one track</h2>
+      <p>The browser instrument compiles the firmware’s synth unchanged to WebAssembly (about 93 KB) and plays one instrument track in an AudioWorklet at a fixed 44.1 kHz. Around it are COLOR as the track insert, the ROOM reverb and tempo delay from X0X (Charles Vestal, GPL-3.0, after 9W9), a simple LFO 1, and a 16-step sequencer with accent and slide.</p>
+      <p class="fine">The browser build is one track, not the whole firmware. To play all four tracks, the scenes and the sampler, use the <a href="/emu/">GhettoMachine emulator</a>.</p></section>
+    </div>
+  </div>
+  <footer>
+    <p><a href="/">GhettoMachine home</a> · <a href="/technical/">Technical tour</a> · <a href="/bongdrums/">BongDrums</a></p>
+  </footer>
+</main>
+</body>
+</html>
