@@ -132,20 +132,20 @@
   "site": "https://ghettomachine.bongcult.com",
   "source": {
     "emscripten": "7.0.0+777e6e5db7b4990bcaeb1b9998ed642cc84e6629",
-    "emulator_build_commit": "4f2090bb070f07a7f9a603685d10ec961ed7a22c",
-    "feature_source": "4f2090bb070f07a7f9a603685d10ec961ed7a22c",
+    "emulator_build_commit": "dc0df93d89c1333f9a73da47027045ea63ffb979",
+    "feature_source": "dc0df93d89c1333f9a73da47027045ea63ffb979",
     "felucca_bsp": "2a5af3dfc8bccb92e37d48a3e7e0bf9a5827e51f",
     "fm1_base": "7337375c15e9db26f23b0c68a1db61429add2f48",
-    "provenance": "Browser development build from the exact clean source with the synth made cheaper and its samples unchanged: the second oscillator left out at MIX 0, the matrix skipped when no slot is in use, a lighter track mix, and (on the FM-1) the synth's tables and mix in RAM.",
-    "remote_main_predecessor": "85fed9c54d07cb2f3b3f274bcf08f7644787ba51",
+    "provenance": "Browser development build from the exact clean source with the LFO kept per clip (project format 8; older saves load with every clip given its track's LFO) and the processor's budgets at 20%, 30% and 25% with a guard (they act on the FM-1's measured times, not in the browser).",
+    "remote_main_predecessor": "f58a7266f717bdd77c145c55f69ad72b6eb381b3",
     "repository": "https://github.com/siddholdenried-del/ghettomachine",
-    "runtime_tree": "6b89d87adb165a185fa2f40e184ca163f3f8b45c"
+    "runtime_tree": "63bfef2cb16cd8b836d7a3d3cb8c6fc8af5559ad"
   },
   "targets": {
     "device": {
-      "application_bytes": 530080,
-      "build_from": "4f2090bb070f07a7f9a603685d10ec961ed7a22c",
-      "build_id": "01ED9946",
+      "application_bytes": 530448,
+      "build_from": "dc0df93d89c1333f9a73da47027045ea63ffb979",
+      "build_id": "3D577AD6",
       "build_status": "linked-and-packaged",
       "downloads": [],
       "flashed": false,
@@ -158,12 +158,12 @@
       "hardware_tested": false,
       "package_bytes": 616099,
       "package_identity": "FM-1_800",
-      "package_sha256": "15e5abbd60d10cfe1b4e18ae07d7c334cbd1ea44544d937c62ea605ab772c093",
+      "package_sha256": "b246d89312cec2c4018add39fce221cdb704f8c8c0c34640fcf4cf38c69d8f92",
       "pool_guard_bytes": 8192,
       "pool_limit_bytes": 344064,
-      "pool_used_bytes": 335064,
+      "pool_used_bytes": 331736,
       "ram_limit_bytes": 98304,
-      "ram_used_bytes": 87876,
+      "ram_used_bytes": 91972,
       "status": "not-distributed",
       "tested_for_this_release": false
     },
@@ -193,7 +193,7 @@
       "identity": "GHETTOMACHINE DEV",
       "path": "emu/app.wasm",
       "platform": "browser",
-      "sha256": "6b98601553f97ead569937d04e5deb1b496f8bb366b14cf1359c89fe61ab09f2"
+      "sha256": "563f4d3e7753457737a30bf41b9edc6566a95c9ae109076b34f149d941de7dbb"
     }
   ]
 }
