@@ -2,7 +2,7 @@
 
 GhettoMachine, part of the BongWare firmware line engineered by BongTech, turns the M-VAVE FM-1 into a four-track groovebox:
 
-- **Drums:** a 606, 707, 808 or 909 kit, or a Custom kit assembled per pad.
+- **Drums:** an 808 or a 909 kit, or a Custom kit mixing the two pad by pad.
 - **T2, T3, T4:** instrument tracks. Each is a MONO synth, a POLY synth or a SAMPLER.
 - **One sequencer** of up to 128 steps a track, 16 patterns, and a song chain.
 - **An LFO on every track,** an arpeggiator and one optional insert effect on T2–T4, and per-step locks.
@@ -25,8 +25,10 @@ GhettoMachine, part of the BongWare firmware line engineered by BongTech, turns 
 > behind the first; the CPU view's peaks) went on it that evening. The sections' budgets went on it that night at 20 %
 > for the drums, 30 % for the synth and 25 % for the effects: played, it had no late blocks, but the budgets cut 138 drum
 > sounds in a minute and held the synth to 4 or 5 voices with a third of the first core unused. Loosened to 30 %, 40 %
-> and 25 % in the source, not on the FM-1 yet. 0.5 is 0.4 plus the USB stems. 0.4 is 0.3 plus the 303 generator, the new name and the boot screen's logo; 0.3 is 0.2 plus the performance
-> update (the scene grid onwards) and the synth update. 0.5 passes its simulator tests (2,184 checks, 39 more on the
+> and 25 %, that went on it the same night (7 to 9 voices, few drum cuts; the first core at about 70 %). The 606 and
+> the 707 were then cut (their code and memory given to the processor's budget) and FILL made to leave the drum clip
+> where it would have been: in the source, not on the FM-1 yet. 0.5 is 0.4 plus the USB stems. 0.4 is 0.3 plus the 303 generator, the new name and the boot screen's logo; 0.3 is 0.2 plus the performance
+> update (the scene grid onwards) and the synth update. 0.5 passes its simulator tests (2,120 checks, 39 more on the
 > synth itself and 48 on the master bus's sound). It reads a project saved by 0.2, 0.3 or 0.4.
 
 ## Installing it, and getting back
@@ -50,7 +52,7 @@ route still works for getting M-VAVE's firmware back.
 | Control | What it does |
 | --- | --- |
 | **ALGORITHM** | Picks the track: DRUMS, T2, T3, T4. Or hold **SEL** and press pad keys 1–4. |
-| **PRESETS** | The drums' kit (909, 808, 606, 707, your kits), or an instrument track's sound. |
+| **PRESETS** | The drums' kit (909, 808, your kits), or an instrument track's sound. |
 | **SELECT** | Turns the page within a page, moves a cursor, or sets a held step's chance. |
 | **K1–K4** | The four knobs of the page on screen. |
 | **PLAY** | Starts and stops. |
@@ -68,7 +70,7 @@ route still works for getting M-VAVE's firmware back.
 The screen follows Bong Cult's Dungeon BBS look: a near-black canvas, bone text and thin rules, square corners.
 **Violet marks what is selected** (the knob you're turning, the page you're on, the pad, slot or song entry picked),
 **acid green is only for live readings** (the meters), and each section keeps its own colour for its name and for
-what it draws: the drums orange (909), blue (808) or violet (606); T2 green, T3 purple, T4 yellow; HOME, SONG and the mixer bone;
+what it draws: the drums orange (909) or blue (808); T2 green, T3 purple, T4 yellow; HOME, SONG and the mixer bone;
 FX cyan; the master bus rose. Labels are in condensed capitals; the counters and the line under the title are in a
 monospace face. Three parts, top to bottom:
 
@@ -94,13 +96,11 @@ monospace face. Three parts, top to bottom:
 ## The drum track
 
 - **Pads:** the 11 black keys are BD, SD, LT, MT, HT, RS, CP, CH, OH and CR/RD (909) or CY/CB (808). Pressing one picks it
-  and plays it. The 707 uses BD, SD, LT, MT, HT, RS, CP, CH, OH, CR and RD in those 11 positions. Its Cowbell and
-  Tambourine are optional lane models rather than extra factory lanes. On 606, black keys
-  4, 6 and 11 are silent and key 10 is CY. Steps on a silent lane are retained when switching kits.
+  and plays it. Steps are kept when switching kits. (The 606 and the 707 kits, and the 707's Cowbell and Tambourine,
+  were cut on 21 Nov: a project saved on the 606 loads on the 808, one saved on the 707 on the 909, and a pad that
+  used one of their voices plays its kit's own.)
 - **Mix models:** pick a pad, open **EDIT**, and turn **SELECT** fully right to **DRUM MODEL**. Turn **K1** to choose
-  among compatible voices for that pad, including **707 Cowbell** and **707 Tambourine** on any lane. Each can be
-  assigned once at a time; if it is already in use, the screen shows its pad number and leaves both assignments alone.
-  Turn the other way to reach the remaining voices. The kit reads **CUSTOM** as soon as a lane differs. It keeps
+  the 909's or the 808's voice for that pad. The kit reads **CUSTOM** as soon as a lane differs. It keeps
   the lane’s steps, MIDI note and mute, but cuts its previous sound. Factory presets restore their own lane maps.
 - **Steps (SEQ):** the 16 white keys are the picked pad's steps. Press an empty step to light it; press and let go of a
   lit one to clear it. OCT− / OCT+ or SELECT move through step pages up to 128. The beats, steps 1, 5, 9 and 13 of the
@@ -267,7 +267,7 @@ On STEPS an accented note has a white bar over it and a slide a mark at its end.
   **RING METAL**, **DRIFT PAD**, **CRUSH BASS**, **WOBBLE**. MACRO 1 does something on each.
 - **To keep a sound:** hold **SAVE**, turn **PRESETS** to pick a USER slot (the screen says EMPTY or REPLACE), and let go
   of SAVE.
-- **On the drums**, PRESETS goes through **909**, **808**, **606**, **707**, and your **USER KIT 1–8**. Saving a kit works the same way and
+- **On the drums**, PRESETS goes through **909**, **808** and your **USER KIT 1–8**. Saving a kit works the same way and
   keeps the kit's model assignments and every pad's knobs.
 - Your presets are kept apart from projects, the moment you save them.
 
@@ -472,7 +472,7 @@ Hold one and it works; let go and the sound is as it was. **K1 while you hold it
 | Key | Held | K1 |
 | --- | --- | --- |
 | **5 ROLL** | Repeats each track's step as it was when you pressed, while the pattern goes on silently underneath; let go and it's where it would have been. | 1/8, 1/16, 1/32, 1/16T, 1/32T |
-| **6 FILL** | The drums play the next pattern's part. | |
+| **6 FILL** | The drums play the next pattern's part, by its own LENGTH and RATE. Let go, they are back on their own clip where it would have been, in step with the other tracks. | |
 | **7 STUTTER** | Loops a slice of the output. | 1/32, 1/16, 1/8 |
 | **8 FILTER** | The DJ filter at K1's place (left low-pass, right high-pass). | the sweep |
 | **9 THROW** | Everything into the delay, with long feedback: an echo throw. | feedback |
@@ -555,9 +555,10 @@ the sound saved with the pattern it's on.
   times the same; it gives up what it held above 11 kHz) for a third less reverb and delay; the master bus does the same
   sums with fewer memory trips (its sound bit for bit as it was), a sixth less; and the synth's voices, the reverb, the
   delay and the master bus run from the FM-1's RAM instead of through its flash's cache, which both cores share. The
-  synth's sound is bit for bit as it was. What costs most on the FM-1, roughly: the 606 (about 2.5 times the 909, 8 times
-  the 707), then each synth voice sounding (a unison stack such as SUPERSAW is 4 a note, and a pad's long release keeps
-  the last chord's voices going under the next), then the reverb and delay, then the master bus. The third pass (21 Nov,
+  synth's sound is bit for bit as it was. What costs most on the FM-1, roughly: each synth voice sounding, about 5 % of a
+  block (a unison stack such as SUPERSAW is 4 a note, and a pad's long release keeps the last chord's voices going
+  under the next), then the drums, the inserts and Color, the master bus and the reverb and delay. (The 606 cost about
+  2.5 times the 909; it and the 707 were cut on 21 Nov.) The third pass (21 Nov,
   after the FM-1 still went late as patterns started and switched): the FM-1's two cores split each block's work. The
   first renders block N (the sequencer, the drums, the synth's voices, the inserts and Color) while the second finishes
   block N - 1 (the reverb and the delay, a sample being recorded, the master bus, STUTTER, TAPE STOP and CRUSH, the

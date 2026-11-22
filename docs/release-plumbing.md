@@ -4,7 +4,7 @@ The established GhettoMachine GitHub repository is authoritative. Edit firmware 
 
 ## What this preview actually is
 
-- Website badge: **DEV PREVIEW**. The current manual covers the 128-step sequencer, chord grid, 606, immediate mute behavior and instrument inserts. [Technical tour 0.5](/technical/) remains historical and is labeled separately.
+- Website badge: **DEV PREVIEW**. The current manual covers the 128-step sequencer, chord grid, immediate mute behavior and instrument inserts. [Technical tour 0.5](/technical/) remains historical and is labeled separately.
 - Browser instrument: fresh `GHETTOMACHINE DEV` WebAssembly built with Emscripten 4.0.11 from `d05369606353b86c55006708332de8959c38eff6`. Its runtime tree is verified against the current app, and its payload is verified against the release profile. It is not hardware firmware.
 - Device: no device download in this profile and no hardware test claim for the development preview. Separate build evidence, when present in the manifest, records the linked target's runtime source commit and package digest only. Preserve historical 0.5 device evidence without treating it as validation for a new package.
 - Theme: vendor exact Dungeon BBS tokens and wordmark from private theme source at `ac8decf93dd011966de00a151d1ff654c7f801bc`. Local style uses the shared border token without repainting the existing website. The integrated device source preserves the current dark screen and bone text, and the approved original boot art. Browser imports only the served copy, not GitHub.

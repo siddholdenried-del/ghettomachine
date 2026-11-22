@@ -1,3 +1,5 @@
+> **Superseded in part (21 Nov 2026):** the 606 and the 707 kits and the 707's Cowbell and Tambourine were cut. Mixed kits remain, between the 909 and the 808.
+
 # Private prototype
 Keep existing numeric model IDs and pattern lane ordering. Append 707 as engine/factory IDs, plus per-pad model overrides, scene snapshots, and user-slot map suffix. Preserve project 1–5 migrations, 32 KiB A/B project sectors and sample bank; let codec reject oversized projects before writing. Provide MODEL section inside drum EDIT and use existing SAVE+PRESETS gesture. Resolve each lane's engine before trigger, parameters, locks, LFO, and display; cut only a replaced lane. Mixed hats respect source engine choke setting. Match untouched factory outputs byte-for-byte, test actual host panel/project and binary size. No release, push, or flash.
 
