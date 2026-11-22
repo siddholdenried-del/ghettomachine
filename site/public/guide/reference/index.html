@@ -249,7 +249,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 0.85rem; border-top: 
 <thead><tr><th scope="col">Encoder</th><th scope="col">What it does</th></tr></thead>
 <tbody>
 <tr><th scope="row">ALGORITHM</th><td>Pick the track: DRUMS, T2, T3, T4 (it stops at each end).</td></tr>
-<tr><th scope="row">PRESETS</th><td>DRUMS: 909, 808, 606, 707, then occupied user kits. T2–T4: Original, occupied USER slots, Motor City, After Hours, Machine Funk, Warehouse and Dub / Broken. Hold SEL while turning to jump synth banks. A factory or user sound sets TYPE to MONO or POLY, so turning PRESETS on a SAMPLER track leaves SAMPLER. With SAVE held: choose the user slot to save to.</td></tr>
+<tr><th scope="row">PRESETS</th><td>DRUMS: 909, 808, then occupied user kits. T2–T4: Original, occupied USER slots, Motor City, After Hours, Machine Funk, Warehouse and Dub / Broken. Hold SEL while turning to jump synth banks. A factory or user sound sets TYPE to MONO or POLY, so turning PRESETS on a SAMPLER track leaves SAMPLER. With SAVE held: choose the user slot to save to.</td></tr>
 <tr><th scope="row">SELECT</th><td>A step held: its CHANCE (on T2–T4 EDIT, ENV and LFO it turns pages instead). EDIT, ENV, LFO, ARP, ACID, FX, mixer and master: the page. SONG: the cursor. HOME: the previous or next scene; with SEL held while playing, nudge. T2–T4 KEYS: the step-record cursor. STEPS: the step bank.</td></tr>
 <tr><th scope="row">K1–K4</th><td>In order of priority: REC held: the REC page. HOME with a scene key held: FOLLOW and BARS. SETUP: MIDI CLOCK and SOUNDS. HOME with a perform key held: K1 sets the effect. Otherwise the four cards on the page. On STEPS, KEYS, HOME and the DRUMS MUTE page the cards are LENGTH, RATE, SWING and TEMPO. On T2–T4 STEPS with a step held: NOTE, VELOCITY, GATE.</td></tr>
 <tr><th scope="row">MASTER</th><td>Speaker and headphone volume, after the master bus. It doesn't change the USB audio.</td></tr>
@@ -302,7 +302,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 0.85rem; border-top: 
 <ul>
 <li><strong>Dist</strong> picks the distortion that Drive feeds: Diode, Clip, SAT, BFZ, PDIST, Fold, Crush.</li>
 <li><strong>P.Dpth</strong> and <strong>Pitch</strong> on the 909 BD set the depth and amount of the kick's pitch drop. <strong>Tail</strong> on the 909 CP is the clap's reverb-like tail. <strong>Snappy</strong> is the snare wires' level.</li>
-<li>The 909, 808, 606 and 707 keep their own knob settings. Switching kits and back restores the previous settings.</li>
+<li>The 909 and 808 keep their own knob settings. Switching kits and back restores the previous settings.</li>
 <li>The 909 and 808 are level-matched for equivalent pads. The 808's accent is stronger, about 6 dB against the 909's 3, as on a real 808; its KIT page's Accent sets how much.</li>
 <li>Pads triggered by the sequencer play at a normal level; accented steps play at full level, shaped by the KIT page's Accent.</li>
 </ul>
@@ -420,7 +420,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 0.85rem; border-top: 
 <thead><tr><th scope="col">Key</th><th scope="col">Effect while held</th><th scope="col">K1 while held</th></tr></thead>
 <tbody>
 <tr><th scope="row">Black 5 ROLL</th><td>Repeats each track's current step</td><td>RATE: 1/8, 1/16, 1/32, 1/16T, 1/32T</td></tr>
-<tr><th scope="row">Black 6 FILL</th><td>The drums play the next pattern's drum part</td><td>—</td></tr>
+<tr><th scope="row">Black 6 FILL</th><td>The drums play the next pattern's drum part, by its own length and rate; let go, they return to where their own clip would have been</td><td>—</td></tr>
 <tr><th scope="row">Black 7 STUTTER</th><td>Loops a slice of the output</td><td>LENGTH: 1/32, 1/16, 1/8</td></tr>
 <tr><th scope="row">Black 8 FILTER</th><td>The DJ filter at the perform setting</td><td>FILTER 0–127: LP below 60, OFF 60–68, HP above 68</td></tr>
 <tr><th scope="row">Black 9 THROW</th><td>Everything into the delay</td><td>FEEDBACK 0–127</td></tr>
