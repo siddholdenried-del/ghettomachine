@@ -25,8 +25,8 @@
       "sha256": "c4fc02bbe685f3161e16c6233e7f7f1fb3a36f4de9c8a874103030b6751bcfa9"
     },
     "emu/app.wasm": {
-      "bytes": 667899,
-      "sha256": "563f4d3e7753457737a30bf41b9edc6566a95c9ae109076b34f149d941de7dbb"
+      "bytes": 668063,
+      "sha256": "03baa22bcdaf5494b0ec72eef8d0caa398be81ea745d416d8a9bef859838c0ef"
     },
     "emu/app_worklet.js": {
       "bytes": 210,
@@ -77,8 +77,8 @@
       "sha256": "e205d8b375cf94cef107f04849f7d326db70aa8ea9f0882b0ff569e7084dddbd"
     },
     "guide/beats/index.html": {
-      "bytes": 30516,
-      "sha256": "4f4818ae8eafa719c44e056e80347f25128f3c9b69dedee4fc391eeda15e828b"
+      "bytes": 30679,
+      "sha256": "b3cd41aa74a55966bd6cf370f94f71600d4c780f3cb32d2dfcfc2b12323543a9"
     },
     "guide/index.html": {
       "bytes": 26998,
@@ -117,8 +117,8 @@
       "sha256": "884de6127db2635d7504a0ad17e30d1e75e0f9f69f8b206398c53ada7e16ea67"
     },
     "technical/index.html": {
-      "bytes": 72764,
-      "sha256": "51c50ba8a94253bf0315b1da6951224070281fac59087c171fc1f6c3ca3c26c2"
+      "bytes": 73584,
+      "sha256": "031450afca6019511da958fdcf5dbdf15769510cd45c9d075239d1bad0de7624"
     }
   },
   "project": "GhettoMachine",
@@ -126,20 +126,20 @@
   "site": "https://ghettomachine.bongcult.com",
   "source": {
     "emscripten": "7.0.0+777e6e5db7b4990bcaeb1b9998ed642cc84e6629",
-    "emulator_build_commit": "dc0df93d89c1333f9a73da47027045ea63ffb979",
-    "feature_source": "dc0df93d89c1333f9a73da47027045ea63ffb979",
+    "emulator_build_commit": "425049ee252ddb3b385a453f5977eec3bfb73efb",
+    "feature_source": "425049ee252ddb3b385a453f5977eec3bfb73efb",
     "felucca_bsp": "2a5af3dfc8bccb92e37d48a3e7e0bf9a5827e51f",
     "fm1_base": "7337375c15e9db26f23b0c68a1db61429add2f48",
-    "provenance": "Browser development build from the exact clean source with the LFO kept per clip (project format 8; older saves load with every clip given its track's LFO) and the processor's budgets at 20%, 30% and 25% with a guard (they act on the FM-1's measured times, not in the browser).",
-    "remote_main_predecessor": "f58a7266f717bdd77c145c55f69ad72b6eb381b3",
+    "provenance": "Browser development build from the exact clean source with no spike as clips change (a kit that leaves stops sounding; a scene's kit sets only the knobs that differ), the LFO kept per clip (project format 8) and the processor's budgets with their guard (those act on the FM-1's measured times, not in the browser).",
+    "remote_main_predecessor": "c479d32fd5cea76afc7b6a0bc6ebc26955ef63d2",
     "repository": "https://github.com/siddholdenried-del/ghettomachine",
-    "runtime_tree": "63bfef2cb16cd8b836d7a3d3cb8c6fc8af5559ad"
+    "runtime_tree": "d6438677a05bc2b1e8d60105d7ddc52812f95e4c"
   },
   "targets": {
     "device": {
-      "application_bytes": 530448,
-      "build_from": "dc0df93d89c1333f9a73da47027045ea63ffb979",
-      "build_id": "3D577AD6",
+      "application_bytes": 530544,
+      "build_from": "425049ee252ddb3b385a453f5977eec3bfb73efb",
+      "build_id": "E5F3899E",
       "build_status": "linked-and-packaged",
       "downloads": [],
       "flashed": false,
@@ -152,7 +152,7 @@
       "hardware_tested": false,
       "package_bytes": 616099,
       "package_identity": "FM-1_800",
-      "package_sha256": "b246d89312cec2c4018add39fce221cdb704f8c8c0c34640fcf4cf38c69d8f92",
+      "package_sha256": "ad603d7dcf9508be9c653dd5b1b7dadd6680cb5b2647768468bd1d7bd3f2d43f",
       "pool_guard_bytes": 8192,
       "pool_limit_bytes": 344064,
       "pool_used_bytes": 331736,
@@ -186,7 +186,7 @@
       "identity": "GHETTOMACHINE DEV",
       "path": "emu/app.wasm",
       "platform": "browser",
-      "sha256": "563f4d3e7753457737a30bf41b9edc6566a95c9ae109076b34f149d941de7dbb"
+      "sha256": "03baa22bcdaf5494b0ec72eef8d0caa398be81ea745d416d8a9bef859838c0ef"
     }
   ]
 }
