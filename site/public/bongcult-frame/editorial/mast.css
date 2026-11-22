@@ -1,0 +1,43 @@
+/* Family navigation for editorial pages and the standalone instrument. */
+body > .gm-family {
+  display:flex; align-items:center; justify-content:space-between; gap:1rem;
+  box-sizing:border-box; width:min(89%, 86rem); max-width:none; margin:0 auto;
+  padding:.62rem 0 .45rem; border-bottom:1px solid #918d7370;
+  font:normal 16px/1.45 "Courier New",Courier,monospace;
+}
+.gm-family-brand, .gm-family-links a {display:inline-flex;align-items:center;min-height:44px}
+.gm-family-brand img {display:block;width:clamp(128px,13vw,183px);height:auto;filter:sepia(.48) brightness(.93)}
+.gm-family-links {display:flex;align-items:center;justify-content:space-between;gap:clamp(15px,2.6vw,44px);margin:0}
+.gm-family-links a {gap:.45rem;text-decoration:none;white-space:nowrap;color:#d1cbb7;font:inherit;font-size:.93rem}
+.gm-family a:hover {color:#bbcd79;text-decoration:underline}
+.gm-family a:focus-visible {outline:2px solid #bbcd79;outline-offset:2px}
+.gm-family-links a::before {content:"";width:22px;height:22px;background:var(--mark) center/contain no-repeat}
+.gm-family-links a:nth-child(1) {--mark:url("journal-small.png")}
+.gm-family-links a:nth-child(2) {--mark:url("directory-small.png")}
+.gm-family-links a:nth-child(3) {--mark:url("guestbook-small.png")}
+.gm-family-links a:last-child::before {display:none}
+body:not(.gm-bong-cult) > .gm-family {width:100%;max-width:1040px;background:#10110e;padding-inline:clamp(.65rem,2vw,1.4rem)}
+.framed body > .gm-family, :fullscreen .gm-family {display:none}
+@media(max-width:800px) {
+  .gm-family-links {gap:1rem}
+  .gm-family-links a {font-size:.84rem}
+}
+@media(max-width:620px) {
+  body > .gm-family {flex-direction:column;align-items:flex-start;gap:0;width:90%;padding:.47rem 0 0}
+  .gm-family-brand img {width:121px}
+  .gm-family-links {width:100%;gap:.12rem}
+  .gm-family-links a {font-size:clamp(.71rem,2.92vw,.88rem);gap:.28rem}
+  .gm-family-links a::before {width:18px;height:18px}
+}
+@media(max-width:355px) {
+  body > .gm-family {display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:.5rem;padding-block:.2rem .3rem}
+  .gm-family-brand img {width:min(100%,90px)}
+  .gm-family-links {display:grid;grid-template-columns:max-content max-content;gap:0 .8rem}
+  .gm-family-links a {gap:.2rem;font-size:.73rem}
+  .gm-family-links a::before {width:15px;height:15px}
+  .framed body > .gm-family, :fullscreen .gm-family {display:none}
+}
+@media(forced-colors:active) {
+  body > .gm-family {border-color:CanvasText}
+  .gm-family-links a {color:LinkText}
+}

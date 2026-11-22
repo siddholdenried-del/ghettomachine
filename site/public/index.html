@@ -181,18 +181,23 @@ footer { margin-top: 48px; color: var(--muted); font-size: 0.85rem; border-top: 
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/bongcult-frame/frame.css">
 <link rel="stylesheet" href="/bong-cult-shell.css">
+<link rel="stylesheet" href="/bongcult-frame/editorial/mast.css">
+<link rel="stylesheet" href="/bongcult-frame/editorial/reader.css">
 <script src="/chapter-redirect.js"></script>
 </head>
-<body class="gm-bong-cult">
+<body class="gm-bong-cult" data-edition="home">
 <a class="bc-skip" href="#gm-main">Skip to content</a>
-<header class="bc-masthead">
-  <a class="bc-name" href="https://bongcult.com/"><img src="/bong-cult-logo.svg" alt="Bong Cult home" width="866" height="320"></a>
-  <div class="bc-rule" aria-hidden="true"></div>
-  <p class="bc-badge">BongSoft · BongTech</p>
+<header class="gm-family">
+  <a class="gm-family-brand" href="https://bongcult.com/"><img src="/bong-cult-logo.svg" alt="Bong Cult home" width="866" height="320"></a>
+  <nav class="gm-family-links" aria-label="Bong Cult">
+    <a href="https://bongcult.com/">Journal</a>
+    <a href="https://tools.bongcult.com/">Audio Tools</a>
+    <a href="https://bongcult.com/guestbook/">Guestbook</a>
+    <a href="https://bongcult.com/about/">About</a>
+  </nav>
 </header>
-<div class="bc-frame bc-frame-top" aria-hidden="true"><span></span></div>
+<div class="gm-project"><p>BongSoft · BongTech</p><nav aria-label="GhettoMachine"><a href="/" aria-current="page">Home</a><a href="/guide/">User Guide</a><a href="/emu/">Play</a><a href="/technical/">How it works</a></nav></div>
 <div class="gm-page-shell">
-<aside class="bc-sidebar"><div class="gm-nav-stack"><nav aria-label="GhettoMachine"><a href="/" aria-current="page">Home</a><a href="/guide/">User Guide</a><a href="/emu/">Play</a><a href="/technical/">How it works</a></nav></div></aside>
 <main class="wrap" id="gm-main" tabindex="-1">
 <div class="hero gm-home">
   <div class="screen">
@@ -203,10 +208,10 @@ footer { margin-top: 48px; color: var(--muted); font-size: 0.85rem; border-top: 
     </div>
     <img class="gm-four-registers" src="/bongcult-frame/windchest/four-registers.webp"
       srcset="/bongcult-frame/windchest/four-registers-540.webp 540w, /bongcult-frame/windchest/four-registers.webp 1080w"
-      sizes="(min-width: 66rem) 24rem, (min-width: 47rem) 54vw, calc(94vw - 4rem)" width="1080" height="800"
+      sizes="(max-width: 620px) calc(84vw - 3rem), (min-width: 1547px) 39rem, 39vw" width="1080" height="800"
       alt="A hand reaches across four organ registers, one printed in hot pink, above a row of keys." fetchpriority="high">
   </div>
-  <p class="lede">GhettoMachine is BongSoft custom firmware engineered by BongTech, part of <a href="https://bongcult.com/">BongCult</a>. Make a beat in the browser or look up the controls for the FM-1.</p>
+  <div class="gm-home-entry"><p class="lede">GhettoMachine is BongSoft custom firmware engineered by BongTech, part of <a href="https://bongcult.com/">BongCult</a>. Make a beat in the browser or look up the controls for the FM-1.</p>
   <div class="gm-actions" id="play">
     <a class="gm-button gm-primary" href="/guide/">Open the User Guide</a>
     <a class="gm-button" href="/emu/">Play in browser</a>
@@ -215,7 +220,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 0.85rem; border-top: 
   <details class="gm-technical-topics">
     <summary>Technical topics</summary>
     <ul><li><a href="/technical/#platform">The box and the platform</a></li><li><a href="/technical/#loops">Two loops: sound and everything else</a></li><li><a href="/technical/#sequencer">The sequencer</a></li><li><a href="/technical/#drums">The drums</a></li><li><a href="/technical/#synth">The synth and the sampler</a></li><li><a href="/technical/#deeper">A deeper synth</a></li><li><a href="/technical/#acid">The 303 generator</a></li><li><a href="/technical/#modulation">LFOs, arpeggiator, chords, locks</a></li><li><a href="/technical/#recording">Recording</a></li><li><a href="/technical/#live">Playing live</a></li><li><a href="/technical/#fx">Mixer and effects</a></li><li><a href="/technical/#master">The master bus</a></li><li><a href="/technical/#screen">The screen</a></li><li><a href="/technical/#storage">Where things are saved</a></li><li><a href="/technical/#building">Building, testing, installing</a></li><li><a href="/technical/#story">How we got here</a></li><li><a href="/technical/#words">Words used here</a></li></ul>
-  </details>
+  </details></div>
 </div>
 
 </main>

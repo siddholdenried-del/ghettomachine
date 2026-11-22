@@ -211,13 +211,30 @@ FRAME_TOP = '<div class="bc-frame bc-frame-top" aria-hidden="true"><span></span>
 FRAME_BOTTOM = '<div class="bc-frame bc-frame-bottom" aria-hidden="true"><i></i><span></span><i></i></div>\n'
 
 
-MASTHEAD = """<a class="bc-skip" href="#gm-main">Skip to content</a>
-<header class="bc-masthead">
-  <a class="bc-name" href="https://bongcult.com/"><img src="/bong-cult-logo.svg" alt="Bong Cult home" width="866" height="320"></a>
-  <div class="bc-rule" aria-hidden="true"></div>
-  <p class="bc-badge">BongSoft · BongTech</p>
+EDITORIAL_BASE = "/bongcult-frame/editorial"
+PRINT_SOURCES = json.loads((BRANDING / "editorial-print-sources.json").read_text(encoding="utf-8"))["routes"]
+FAMILY_STYLESHEET = f'<link rel="stylesheet" href="{EDITORIAL_BASE}/mast.css">\n'
+FAMILY_MAST = """<header class="gm-family">
+  <a class="gm-family-brand" href="https://bongcult.com/"><img src="/bong-cult-logo.svg" alt="Bong Cult home" width="866" height="320"></a>
+  <nav class="gm-family-links" aria-label="Bong Cult">
+    <a href="https://bongcult.com/">Journal</a>
+    <a href="https://tools.bongcult.com/">Audio Tools</a>
+    <a href="https://bongcult.com/guestbook/">Guestbook</a>
+    <a href="https://bongcult.com/about/">About</a>
+  </nav>
 </header>
 """
+MASTHEAD = '<a class="bc-skip" href="#gm-main">Skip to content</a>\n' + FAMILY_MAST
+
+
+def frontispiece(slug):
+    description = html.escape(PRINT_SOURCES[slug]["instrument"]["title"], quote=True)
+    return (
+        f'<figure class="gm-plate"><img alt="{description}" '
+        f'src="{EDITORIAL_BASE}/{slug}-instrument.webp" decoding="async"></figure>'
+    )
+
+
 LANDING = """<div class="hero gm-home">
   <div class="screen">
     <div class="gm-hero-copy">
@@ -227,10 +244,10 @@ LANDING = """<div class="hero gm-home">
     </div>
     <img class="gm-four-registers" src="/bongcult-frame/windchest/four-registers.webp"
       srcset="/bongcult-frame/windchest/four-registers-540.webp 540w, /bongcult-frame/windchest/four-registers.webp 1080w"
-      sizes="(min-width: 66rem) 24rem, (min-width: 47rem) 54vw, calc(94vw - 4rem)" width="1080" height="800"
+      sizes="(max-width: 620px) calc(84vw - 3rem), (min-width: 1547px) 39rem, 39vw" width="1080" height="800"
       alt="A hand reaches across four organ registers, one printed in hot pink, above a row of keys." fetchpriority="high">
   </div>
-  <p class="lede">GhettoMachine is BongSoft custom firmware engineered by BongTech, part of <a href="https://bongcult.com/">BongCult</a>. Make a beat in the browser or look up the controls for the FM-1.</p>
+  <div class="gm-home-entry"><p class="lede">GhettoMachine is BongSoft custom firmware engineered by BongTech, part of <a href="https://bongcult.com/">BongCult</a>. Make a beat in the browser or look up the controls for the FM-1.</p>
   <div class="gm-actions" id="play">
     <a class="gm-button gm-primary" href="/guide/">Open the User Guide</a>
     <a class="gm-button" href="/emu/">Play in browser</a>
@@ -239,7 +256,7 @@ LANDING = """<div class="hero gm-home">
   <details class="gm-technical-topics">
     <summary>Technical topics</summary>
     TECHNICAL_TOPIC_LINKS
-  </details>
+  </details></div>
 </div>
 """
 
@@ -254,10 +271,9 @@ def nav_link(href, label, current):
 
 
 def render_document(head, title, path, content, guide_slug=None, topics=()):
-    nav = [("/", "Home"), ("/guide/", "User Guide"), ("/emu/", "Play"), ("/technical/", "How it works")]
     is_guide = guide_slug is not None
-    if is_guide:
-        nav = [("/", "Home"), ("/emu/", "Play in browser")]
+    play_label = "Play in browser" if is_guide else "Play"
+    nav = [("/", "Home"), ("/guide/", "User Guide"), ("/emu/", play_label), ("/technical/", "How it works")]
     site_nav = "".join(nav_link(href, label, path) for href, label in nav)
     chapters = ""
     if is_guide:
@@ -271,7 +287,10 @@ def render_document(head, title, path, content, guide_slug=None, topics=()):
             '<div class="gm-toc-mobile-panel">'
             + guide_navigation(guide_slug, topics, mobile=True) + '</div></details>'
         )
+    section = (guide_slug or "quick") if is_guide else ("technical" if path == "/technical/" else "home")
     css_class = ' gm-guide-page' if is_guide else ''
+    aside = (f'<aside class="bc-sidebar"><div class="gm-nav-stack">{chapters}</div></aside>\n'
+             if is_guide else '')
     js = ('<script src="/chapter-redirect.js"></script>\n' if path == '/' else
           '<script src="/guide-toc.js" defer></script>\n' if is_guide else '')
     return (
@@ -282,10 +301,12 @@ def render_document(head, title, path, content, guide_slug=None, topics=()):
         f'<link rel="canonical" href="https://ghettomachine.bongcult.com{path}">\n'
         + re.sub(r'<title>[^<]*</title>', f'<title>{html.escape(title)}</title>', head, count=1) + '\n'
         + ICON.replace("HREF", "/favicon.svg")
-        + FRAME_STYLESHEET + '<link rel="stylesheet" href="/bong-cult-shell.css">\n' + js + '</head>\n'
-        + f'<body class="gm-bong-cult{css_class}">\n' + MASTHEAD + FRAME_TOP
-        + '<div class="gm-page-shell">\n<aside class="bc-sidebar"><div class="gm-nav-stack">'
-        + f'<nav aria-label="GhettoMachine">{site_nav}</nav>{chapters}</div></aside>\n'
+        + FRAME_STYLESHEET + '<link rel="stylesheet" href="/bong-cult-shell.css">\n'
+        + FAMILY_STYLESHEET + f'<link rel="stylesheet" href="{EDITORIAL_BASE}/reader.css">\n' + js + '</head>\n'
+        + f'<body class="gm-bong-cult{css_class}" data-edition="{section}">\n' + MASTHEAD
+        + '<div class="gm-project"><p>BongSoft · BongTech</p>'
+        + f'<nav aria-label="GhettoMachine">{site_nav}</nav></div>\n'
+        + '<div class="gm-page-shell">\n' + aside
         + f'<main class="wrap" id="gm-main" tabindex="-1">\n{content}\n</main>\n</div>\n' + FRAME_BOTTOM + '</body>\n</html>\n'
     )
 
@@ -340,6 +361,8 @@ def build_landing(out):
     (out / "index.html").write_text(render_document(head, "GhettoMachine · BongSoft", "/", landing))
     tech_dir = out / "technical"
     tech_dir.mkdir(exist_ok=True)
+    contents = contents.replace('<div class="screen">', '<div class="screen gm-chapter-head"><div class="gm-title-copy">', 1)
+    contents = contents.replace('  <p class="lede">', frontispiece("technical") + '</div>\n  <p class="lede">', 1)
     (tech_dir / "index.html").write_text(render_document(head, "Inside GhettoMachine · Technical tour", "/technical/", contents))
     (out / "guide-toc.js").write_text(TOC_SCRIPT)
     slugs = [slug for slug, _, _ in GUIDE]
@@ -376,8 +399,9 @@ def build_landing(out):
             next_slug, next_label, _ = GUIDE[i + 1]
             nav.append(f'<a rel="next" href="{guide_path(next_slug)}">{html.escape(next_label)} →</a>')
         body = (
-            '<article class="gm-guide">'
-            f'<p class="gm-crumb">User Guide · {i + 1} of {len(GUIDE)}</p><h1>{html.escape(title)}</h1>\n'
+            '<article class="gm-guide"><header class="gm-chapter-head"><div class="gm-title-copy">'
+            f'<p class="gm-crumb">User Guide · {i + 1} of {len(GUIDE)}</p><h1>{html.escape(title)}</h1></div>'
+            + frontispiece(slug or "quick") + '</header>\n'
             + chapter + '<nav class="gm-guide-pager" aria-label="Adjacent chapters">'
             + "".join(nav) + '</nav></article>'
         )
@@ -402,6 +426,9 @@ def emulator_document(page):
         page = page.replace("</head>", FRAME_STYLESHEET + frame_layout + "</head>")
         page = page.replace("<body>", "<body>\n" + FRAME_TOP)
         page = page.replace("</body>", FRAME_BOTTOM + "</body>")
+    if FAMILY_STYLESHEET not in page:
+        page = page.replace("</head>", FAMILY_STYLESHEET + "</head>")
+        page = page.replace("<body>", "<body>\n" + FAMILY_MAST)
     return page
 
 
