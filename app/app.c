@@ -757,7 +757,10 @@ static void pots_apply_pad(int model, int pad)
         return;
     for (pass = 0; pass < 2; pass++)
         for (i = 0; i < drums_nparams(model, pad) && i < NPOTS; i++)
-            if (param_is_switch_sound(drums_param(model, pad, i)) == (pass == 0))
+            if (param_is_switch_sound(drums_param(model, pad, i)) == (pass == 0) &&
+                drums_get(model, pad, i) != kit_pots(model)[pad][i])   /* (0.5: only a knob that differs: a scene's
+                                                                        * kit loaded in the interrupt sets a few knobs,
+                                                                        * not every one, each a filter worked out) */
                 drums_set(model, pad, i, kit_pots(model)[pad][i]);
 }
 
@@ -1632,6 +1635,15 @@ static int sounds_pp(void) { return (int)(proj.recq >> 6 & 1u); }
 static void drum_map_apply(int base, const uint8_t *map)
 {
     const int mixed = kit_is_custom(proj.model) || kit_is_custom(map);
+    if (base != proj.kit) {               /* another kit: the one leaving stops sounding (0.5). Its tails used to ring on
+                                           * under the new kit's hits: two kits to render at a scene's change, the drums
+                                           * at 44-48 % of a block on the FM-1, and the late blocks there */
+        for (int r = 0; r < NPADS; r++) {
+            drums_cut_pad(r);
+            pad_hit[r] = 0.0f;
+        }
+        gov.pad_live = 0;
+    }
     for (int r = 0; r < NPADS; r++) {
         const int model = drums_model(base, map, r);
         if (mixed && drum_model(r) != model) {

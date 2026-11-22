@@ -30,9 +30,9 @@ GhettoMachine, part of the BongWare firmware line engineered by BongTech, turns 
 > where it would have been: on the FM-1 since that night. The synth made cheaper without changing its sound (below)
 > went on it later that night (the synth's mix from 450 to about 250 us a block; steady playing at about 60 % of the
 > first core, the only late blocks at kit changes). Then, asked for: the budgets back at 20 %, 30 % and 25 % with a
-> guard for the block that takes too long, and the LFO made each clip's own (project format 8): in the source, not on
-> the FM-1 yet. 0.5 is 0.4 plus the USB stems. 0.4 is 0.3 plus the 303 generator, the new name and the boot screen's logo; 0.3 is 0.2 plus the performance
-> update (the scene grid onwards) and the synth update. 0.5 passes its simulator tests (2,175 checks, 39 more on the
+> guard for the block that takes too long, the LFO made each clip's own (project format 8), and no spike as clips
+> change (a kit that leaves stops sounding): in the source, not on the FM-1 yet. 0.5 is 0.4 plus the USB stems. 0.4 is 0.3 plus the 303 generator, the new name and the boot screen's logo; 0.3 is 0.2 plus the performance
+> update (the scene grid onwards) and the synth update. 0.5 passes its simulator tests (2,194 checks, 39 more on the
 > synth itself and 48 on the master bus's sound). It reads a project saved by 0.2, 0.3 or 0.4, and by 0.5 before each clip had its own LFO.
 
 ## Installing it, and getting back
@@ -271,7 +271,9 @@ On STEPS an accented note has a white bar over it and a slide a mark at its end.
   **RING METAL**, **DRIFT PAD**, **CRUSH BASS**, **WOBBLE**. MACRO 1 does something on each.
 - **To keep a sound:** hold **SAVE**, turn **PRESETS** to pick a USER slot (the screen says EMPTY or REPLACE), and let go
   of SAVE.
-- **On the drums**, PRESETS goes through **909**, **808** and your **USER KIT 1–8**. Saving a kit works the same way and
+- **On the drums**, PRESETS goes through **909**, **808** and your **USER KIT 1–8**. Changing to a kit built on the
+  other machine (the 909 to the 808 or back, by PRESETS or by a scene with its own kit) stops the old kit's sounds:
+  its tails no longer ring on under the new kit. Saving a kit works the same way and
   keeps the kit's model assignments and every pad's knobs.
 - Your presets are kept apart from projects, the moment you save them.
 
@@ -588,7 +590,12 @@ the sound saved with the pattern it's on.
   second when it gave something up (and while an effect is out). And a **guard**: a block that takes over 90 % of its
   time on the first core (a kit changed while the old one's tails ring, every section at its peak together) cuts
   every drum sound not just hit and sheds two voices at once, before the next block can run late. (The budgets were
-  30 % and 40 % for a day: fuller, but blocks ran late again.) Releasing STUTTER or TAPE STOP no longer holds the
+  30 % and 40 % for a day: fuller, but blocks ran late again.)
+- **No spike as clips change** (21 Nov, in the source). On the FM-1 the late blocks at a scene's change came from two
+  kits sounding at once: the old kit's tails under the new kit's hits took the drums to 44–48 % of a block. A kit that
+  leaves now stops sounding as the new one comes. A scene's own kit (SOUNDS PER PATTERN) is loaded in the audio's own
+  time at the bar: it now sets only the knobs that differ from the ones in place, not every knob of every pad. With
+  SOUNDS shared (SETUP, K2) a scene's change costs no more than any bar's first step. Releasing STUTTER or TAPE STOP no longer holds the
   sound off for 1.5 ms while the delay's memory is cleared, and the 606's clap costs a third as much to hit (its filter
   bank is kept between hits at the same TUNE).
 - **The synth, cheaper, the same sound** (21 Nov, in the source; every sound and every test recording bit for bit as
