@@ -15,6 +15,9 @@
  * Part of the unity build (device/unity.c, host/plat_host.c), after the platform: gfx.c and announce.c are in scope.
  * The engines are behind dsp/drums.h and dsp/synth.h (their own units). */
 #include "dsp/drums.h"
+#ifdef PLAT_HOST
+#include <stdlib.h>
+#endif
 #include "dsp/synth.h"
 #include "dsp/track_insert.h"
 #include "dsp/color.h"
@@ -417,7 +420,8 @@ static void sync_drum_mutes(void)
  * (its voices capped at what that buys, at the cost a voice is measured to have; a voice over the cap fades out in
  * about 10 ms), and the effects BUD_FX % (drum Color and the shared returns together). Drum Color can be bypassed
  * until there is room again. The reverb, delay and master bus continue to run. */
-#define BUD_DRUMS 25
+#define BUD_DRUMS 35                      /* (25 while the drums always took the first core's time; 35 since they
+                                           * go to the second core when both they and the synth are heavy: drum_job) */
 #define BUD_SYNTH 30
 #define BUD_FX 25
 #define BUD_GUARD 90                      /* one eligible drum tail and up to two synth voices when core 0 runs hot */
@@ -2727,6 +2731,15 @@ static uint8_t cpu2;                      /* the second core takes half the voic
 static uint8_t pool_max, pool_now;        /* the voices allowed: 16 on two cores, 8 on one; fewer while the CPU is short */
 
 static void syn_job(uint32_t half) { PLAT_FAR(syn_half)(half); }   /* (RAM code, 0.5: dsp/gm_ram.h) */
+static volatile uint32_t syn_t2;          /* the second core's half: the ticks it took (syn_job2) */
+static void syn_job2(uint32_t half)
+{
+    CS_MARK(a);
+    PLAT_FAR(syn_half)(half);
+    syn_t2 = plat_ticks24() - a;
+}
+static uint32_t syn_work;                 /* this block: the voices' rendering on both cores, ticks */
+static void drum_offer(void);             /* (the drums to the second core: below, by app_render) */
 
 /* the second core takes its half of the voices only from SYN_SPLIT_MIN voices up: handing a job over and waiting for
  * it costs the first core about what a voice or two does (the synth with no voices took 8 % of a block on the FM-1,
@@ -2779,6 +2792,7 @@ static uint32_t mix_split(void)           /* the tracks for the second core (bit
 static void syn_block(void)
 {
     int t;
+    drum_offer();
     CS_MARK(t0);
     for (t = 0; t < NTRK; t++)
         lfo_tick(t, SYN_CTL);
@@ -2789,17 +2803,28 @@ static void syn_block(void)
     syn_prepare();
     {
         CS_MARK(t1);
+        uint32_t work;                    /* the voices' rendering, both cores' */
         sy_t[SY_PREP] += t1 - t0;
-        if (cpu2 && syn_voices(-1) >= SYN_SPLIT_MIN && plat_cpu2_on() && plat_cpu2_run(syn_job, 1u)) {
+        if (cpu2 && syn_voices(-1) >= SYN_SPLIT_MIN && plat_cpu2_on() && plat_cpu2_run(syn_job2, 1u)) {
             syn_job(0);
-            if (plat_cpu2_wait() != 0)    /* it was given up (cpu2_fallback): its half here */
+            work = plat_ticks24() - t1;
+            if (plat_cpu2_wait() != 0) {  /* it was given up (cpu2_fallback): its half here */
+                CS_MARK(t2);
                 syn_job(1);
+                work += plat_ticks24() - t2;
+            } else {
+                work += syn_t2;
+            }
         } else {
             syn_job(0);
             syn_job(1);
+            work = plat_ticks24() - t1;
         }
         t0 = plat_ticks24();
-        sy_t[SY_VOICES] += t0 - t1;
+        syn_work += work;
+        /* the voices' share of the synth's time: as halved between the two cores, whichever rendered them (while the
+         * second core has the drums the first renders them all: the budget's cap must not fall for that) */
+        sy_t[SY_VOICES] += cpu2 && plat_cpu2_on() ? work / 2u : work;
     }
     {
         const uint32_t there = cpu2 ? mix_split() : 0u;
@@ -2888,8 +2913,9 @@ static void stem_put(int s, const float *l, const float *r, uint32_t off, uint32
     }
 }
 
-/* the synth into the mix (and each of its tracks into its stem), from the frame off into the block being rendered */
-static void synth_add(float *l, float *r, float *rv, float *dl, uint32_t n, uint32_t off)
+/* the synth into the mix (and each of its tracks into its stem), from the frame off into the block being rendered;
+ * set: written, not added (the hold, while the second core has the drums) */
+static void synth_add(float *l, float *r, float *rv, float *dl, uint32_t n, uint32_t off, int set)
 {
     uint32_t i = 0;
     while (i < n) {
@@ -2899,11 +2925,20 @@ static void synth_add(float *l, float *r, float *rv, float *dl, uint32_t n, uint
         m = SYN_CTL - syn_at;
         if (m > n - i)
             m = n - i;
-        for (k = 0; k < m; k++) {
-            l[i + k] += syn_l[syn_at + k];
-            r[i + k] += syn_r[syn_at + k];
-            rv[i + k] += syn_rv[syn_at + k];
-            dl[i + k] += syn_dl[syn_at + k];
+        if (set) {
+            for (k = 0; k < m; k++) {
+                l[i + k] = syn_l[syn_at + k];
+                r[i + k] = syn_r[syn_at + k];
+                rv[i + k] = syn_rv[syn_at + k];
+                dl[i + k] = syn_dl[syn_at + k];
+            }
+        } else {
+            for (k = 0; k < m; k++) {
+                l[i + k] += syn_l[syn_at + k];
+                r[i + k] += syn_r[syn_at + k];
+                rv[i + k] += syn_rv[syn_at + k];
+                dl[i + k] += syn_dl[syn_at + k];
+            }
         }
         if (STEMS && stems_on) {
             int t;
@@ -3268,6 +3303,109 @@ static void govern(uint32_t t_drums, uint32_t t_synth, uint32_t t_fxin, uint32_t
     }
 }
 
+/* GhettoMachine 0.5 (CPU): the drums on the second core. A chunk's drums (the kits, their Color, their level and sends,
+ * their stem and meter) are one piece of work that nothing else touches until the synth is added to them, and the
+ * synth's own work never touches the drums: the two can run at once. Usually the first core renders the drums while
+ * the second finishes the block before (its tail: the reverb, the delay, the master), then the two share the synth's
+ * voices. With both the drums and the synth heavy that leaves the first core the long side (the drums, then half the
+ * voices, the control ticks, the mix and the hand-offs: over half a block on the FM-1) while the second has done by a
+ * third. Then (drums2_mode, a block at a time, from what each part took lately) the first core starts on the synth at
+ * once, all its voices, into a hold, and the drums go to the second core as soon as its tail is done (drum_offer: one
+ * job at a time there); the first core waits for them after the synth and adds the hold. The same samples either way:
+ * the drums and the synth are worked out as before, and their sum is the same one addition a sample.
+ * Only between the hits: the sequencer (the first core) has joined the job before it fires anything, and the drums'
+ * LFO is read at a hit (lfo_rt, by then ticked as many times either way) */
+static float hold_l[APP_BLOCK], hold_r[APP_BLOCK], hold_rv[APP_BLOCK], hold_dl[APP_BLOCK];
+static uint32_t dr_t[2];                  /* the drums' ticks this block, on each core */
+static uint32_t syn_here;                 /* the first core's time in the synth this block (the CPU view's REST) */
+static struct {
+    uint32_t done, chunk;                 /* the chunk the job renders */
+    volatile uint8_t fin;                 /* the job has rendered it */
+    uint8_t due;                          /* a chunk's drums wait for the second core */
+    uint8_t mode;                         /* this block: the drums are the second core's */
+    uint8_t ran2;                         /* this block: it rendered them */
+    uint8_t force;                        /* 0: chosen (the simulator: never); 1 always; 2 never (the tests) */
+    float est_d, est_v, est_c;            /* running means, us a block: the drums and their Color; the voices'
+                                           * rendering on both cores; the synth's control ticks and mix */
+    float share;                          /* blocks the second core rendered the drums, % (a running mean) */
+    uint32_t blocks;                      /* ... and how many so far */
+} d2;
+
+static void drum_chunk(uint32_t done, uint32_t chunk)   /* either core: a chunk's drums into the mix's buses */
+{
+    uint32_t i;
+    CS_MARK(cs_d0);
+    drums_render(proj.kit, buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, (int)chunk);
+    dr_t[plat_core() & 1u] += plat_ticks24() - cs_d0;
+    if (!track_is_muted(TR_DRUM) && color_active(&proj.color[TR_DRUM]) && !(gov.fx_shed & 1u)) {
+        int q = fxs_peak(buf_l + done, buf_r + done, chunk) < FXS_LEVEL &&
+                fxs_peak(bus_rev + done, bus_dly + done, chunk) < FXS_LEVEL;
+        CS_MARK(cs_c0);
+        if (!fxs_asleep(q)) {
+            color_run_drums(&drum_color_rt, &color_drums_send, &proj.color[TR_DRUM],
+                            buf_l+done, buf_r+done, bus_rev+done, bus_dly+done, chunk);
+            fxs_after(q, fxs_peak(buf_l + done, buf_r + done, chunk) < FXS_LEVEL &&
+                                  fxs_peak(bus_rev + done, bus_dly + done, chunk) < FXS_LEVEL, chunk);
+        }
+        fxin_t[plat_core() & 1u] += plat_ticks24() - cs_c0;
+    }
+    drum_mix(buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, chunk);
+    if (STEMS && stems_on)                /* (the mix holds the drums alone until the synth comes in) */
+        stem_put(TR_DRUM, buf_l + done, buf_r + done, done, chunk);
+    {   /* the drums' level, for the screen */
+        float pk = drum_pk;
+        for (i = done; i < done + chunk; i++) {
+            float a = buf_l[i] < 0.0f ? -buf_l[i] : buf_l[i], b = buf_r[i] < 0.0f ? -buf_r[i] : buf_r[i];
+            if (a > pk)
+                pk = a;
+            if (b > pk)
+                pk = b;
+        }
+        drum_pk = pk;
+    }
+}
+
+static void drum_job(uint32_t arg)        /* the second core's */
+{
+    (void)arg;
+    drum_chunk(d2.done, d2.chunk);
+    d2.fin = 1;
+    plat_cpu2_sync();
+}
+
+static void drum_offer(void)              /* a chunk's drums to the second core, if it is free now */
+{
+    if (d2.due && plat_cpu2_on() && !plat_cpu2_busy() && plat_cpu2_run(drum_job, 0u))
+        d2.due = 0;
+}
+
+/* Which way is shorter for the first core, in us a block: d the drums and their Color, p the block's tail (the second
+ * core's), v the voices' rendering on both cores, c the synth's control ticks and mix; now: the drums are the second
+ * core's already (it takes 300 us to change to that and 100 to stay: no flapping).
+ *   the usual way: the drums, then the synth with the voices halved, and its hand-offs (8 synth blocks' voices and mix,
+ *                  about 18 us each)
+ *   the drums there: the longer of the whole synth here and the tail and the drums there */
+static int drums2_pick(float d, float p, float v, float c, int now)
+{
+    const float hand = v > 1.0f ? 16.0f * 18.0f : 0.0f;
+    const float usual = d + c + 0.5f * v + hand;
+    const float there = c + v > p + d ? c + v : p + d;
+    return there + (now ? 100.0f : 300.0f) < usual;
+}
+
+static int drums2_mode(void)              /* this block: the drums to the second core */
+{
+    if (d2.force)
+        return d2.force == 1;
+#ifdef PLAT_HOST
+    return 0;                             /* (the simulator's times are the Mac's: the tests force it) */
+#else
+    if (!cpu2 || !plat_cpu2_on())
+        return 0;
+    return drums2_pick(d2.est_d, cs_us[CS_FX] + cs_us[CS_MASTER], d2.est_v, d2.est_c, d2.mode);
+#endif
+}
+
 void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
 {
     uint32_t done = 0, i;
@@ -3277,6 +3415,12 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     CS_MARK(cs_start);
     for (i = 0; i < CS_NUM; i++)
         cs_t[i] = 0;
+    dr_t[0] = dr_t[1] = 0;
+    syn_here = 0;
+    syn_work = 0;
+    d2.due = 0;
+    d2.ran2 = 0;
+    d2.mode = (uint8_t)drums2_mode();
     if (n > APP_BLOCK)
         n = APP_BLOCK;
     cur_set ^= 1u;                        /* this block into the other set */
@@ -3422,39 +3566,42 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
                 chunk = m < 1.0f ? 1u : (uint32_t)m;
         }
         sync_drum_mutes();
-        CS_MARK(cs_d0);
-        drums_render(proj.kit, buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, (int)chunk);
-        cs_t[CS_DRUMS] += plat_ticks24() - cs_d0;
-        if (!track_is_muted(TR_DRUM) && color_active(&proj.color[TR_DRUM]) && !(gov.fx_shed & 1u)) {
-            int q = fxs_peak(buf_l + done, buf_r + done, chunk) < FXS_LEVEL &&
-                    fxs_peak(bus_rev + done, bus_dly + done, chunk) < FXS_LEVEL;
-            CS_MARK(cs_c0);
-            if (!fxs_asleep(q)) {
-                color_run_drums(&drum_color_rt, &color_drums_send, &proj.color[TR_DRUM],
-                                buf_l+done, buf_r+done, bus_rev+done, bus_dly+done, chunk);
-                fxs_after(q, fxs_peak(buf_l + done, buf_r + done, chunk) < FXS_LEVEL &&
-                                      fxs_peak(bus_rev + done, bus_dly + done, chunk) < FXS_LEVEL, chunk);
-            }
-            fxin_t[0] += plat_ticks24() - cs_c0;
-        }
-        drum_mix(buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, chunk);
-        if (STEMS && stems_on)            /* (the mix holds the drums alone until the synth comes in) */
-            stem_put(TR_DRUM, buf_l + done, buf_r + done, done, chunk);
-        {   /* the drums' level, for the screen */
-            float pk = drum_pk;
-            for (i = done; i < done + chunk; i++) {
-                float a = buf_l[i] < 0.0f ? -buf_l[i] : buf_l[i], b = buf_r[i] < 0.0f ? -buf_r[i] : buf_r[i];
-                if (a > pk)
-                    pk = a;
-                if (b > pk)
-                    pk = b;
-            }
-            drum_pk = pk;
-        }
-        {
+        if (d2.mode) {
+            /* the drums for the second core this block (drums2_mode): the synth first, here, into the hold; the
+             * drums handed over as soon as the second core has done the block before's tail (drum_offer: now, and
+             * at each synth block), joined after the synth, and the synth added to them: the sums of the usual way */
             CS_MARK(cs_s0);
-            synth_add(buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, chunk, done);
-            cs_t[CS_SYNTH] += plat_ticks24() - cs_s0;
+            d2.done = done;
+            d2.chunk = chunk;
+            d2.fin = 0;
+            d2.due = 1;
+            drum_offer();
+            synth_add(hold_l + done, hold_r + done, hold_rv + done, hold_dl + done, chunk, done, 1);
+            syn_here += plat_ticks24() - cs_s0;
+            if (d2.due) {                 /* the second core never came free: here, after all */
+                d2.due = 0;
+                drum_chunk(done, chunk);
+            } else {
+                int gone = plat_cpu2_wait() != 0;
+                plat_cpu2_sync();
+                if (gone || !d2.fin)      /* it was given up with the job (cpu2_fallback): here */
+                    drum_chunk(done, chunk);
+                else
+                    d2.ran2 = 1;
+            }
+            for (i = done; i < done + chunk; i++) {
+                buf_l[i] += hold_l[i];
+                buf_r[i] += hold_r[i];
+                bus_rev[i] += hold_rv[i];
+                bus_dly[i] += hold_dl[i];
+            }
+        } else {
+            drum_chunk(done, chunk);
+            {
+                CS_MARK(cs_s0);
+                synth_add(buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, chunk, done, 0);
+                syn_here += plat_ticks24() - cs_s0;
+            }
         }
         if (sq.playing) {
             sq.bar_left -= (float)chunk;
@@ -3522,8 +3669,20 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     {   /* the stages' running means (about the last 50 blocks: 0.3 s). REVERB+DELAY and MASTER: the block before's
          * tail, on the second core (or this one's, then counted out of REST); REST: the rest of this core's time,
          * waiting for the second included */
-        uint32_t tot = plat_ticks24() - cs_start, sum = cs_t[CS_DRUMS] + cs_t[CS_SYNTH] + fxin_t[0];
+        uint32_t tot = plat_ticks24() - cs_start, sum = dr_t[0] + syn_here + fxin_t[0];   /* (this core's own work) */
+        cs_t[CS_DRUMS] = dr_t[0] + dr_t[1];      /* (the drums' work, whichever core's: the row, their budget) */
+        /* the synth's row and budget: its control ticks, its mix and its voices as halved between the cores
+         * (syn_block), the same whichever core rendered them */
+        cs_t[CS_SYNTH] = sy_t[SY_PREP] + sy_t[SY_VOICES] + sy_t[SY_MIX];
         cs_t[CS_FXIN] = fxin_t[0] + fxin_t[1];   /* (both cores' work: the row, the effects' budget) */
+        {   /* what each part took, for the drums' place next block (drums2_mode) */
+            const float us = 1.0f / (float)PLAT_TICKS_PER_US;
+            d2.est_d += ((float)(cs_t[CS_DRUMS] + cs_t[CS_FXIN]) * us - d2.est_d) * 0.1f;
+            d2.est_v += ((float)syn_work * us - d2.est_v) * 0.1f;
+            d2.est_c += ((float)(sy_t[SY_PREP] + sy_t[SY_MIX]) * us - d2.est_c) * 0.1f;
+            d2.share += ((d2.ran2 ? 100.0f : 0.0f) - d2.share) * 0.02f;
+            d2.blocks += d2.ran2;
+        }
         fxin_t[0] = fxin_t[1] = 0;
         cs_t[CS_FX] = post[prev].t_fx;
         cs_t[CS_MASTER] = post[prev].t_master;
@@ -3561,6 +3720,13 @@ void app_panic(void)
 
 void app_init(void)
 {
+#ifdef PLAT_HOST
+    {   /* GM_DRUMS2=1 or 2 in the environment: the drums' place for the whole run (every suite again that way) */
+        const char *e = getenv("GM_DRUMS2");
+        if (e && (e[0] == '1' || e[0] == '2'))
+            d2.force = (uint8_t)(e[0] - '0');
+    }
+#endif
     drums_init();
     syn_init();
     lfo_init();
@@ -9884,6 +10050,12 @@ static void speak(void)                   /* a screen reader that has just start
             text_cat(t, ". CORE2 ");
             int_text(cpu2 && plat_cpu2_on(), u);
             text_cat(t, u);
+            text_cat(t, " DRUMS THERE ");     /* the blocks it rendered the drums, %; its stack's depth, bytes */
+            int_text((int32_t)(d2.share + 0.5f), u);
+            text_cat(t, u);
+            text_cat(t, " STACK ");
+            int_text((int32_t)plat_cpu2_stack(), u);
+            text_cat(t, u);
             text_cat(t, " KIT ");
             text_cat(t, drums_kit_name(proj.kit));
             ann_say(t, 0, 0);
@@ -10398,6 +10570,23 @@ int app_expect(const char *what, int *got)
             v = v * 10 + (*q++ - '0');
         gov_fake[what[7] - '0'] = (float)v;
         *got = 1;
+    } else if (!strncmp(what, "drums2set_", 10) && what[10] >= '0' && what[10] <= '2' && !what[11]) {
+        /* drums2set_N: the drums' place: 0 chosen (the simulator: the first core), 1 the second core, 2 the first */
+        d2.force = (uint8_t)(what[10] - '0');
+        *got = 1;
+    } else if (!strcmp(what, "drums2")) { /* the blocks the second core rendered the drums, so far */
+        *got = (int)d2.blocks;
+    } else if (!strncmp(what, "drums2pick_", 11)) {
+        /* drums2pick_D_P_V_C_N: drums2_pick's choice for those times (us) and the present place N */
+        int v[5] = {0, 0, 0, 0, 0}, k = 0;
+        const char *q = what + 11;
+        for (; *q && k < 5; q++) {
+            if (*q == '_')
+                k++;
+            else if (*q >= '0' && *q <= '9')
+                v[k] = v[k] * 10 + (*q - '0');
+        }
+        *got = drums2_pick((float)v[0], (float)v[1], (float)v[2], (float)v[3], v[4]);
     } else if (!strcmp(what, "govcap")) { /* the budgets: the synth's voices allowed */
         *got = gov.cap;
     } else if (!strcmp(what, "govcuts")) {   /* drum sounds cut so far */

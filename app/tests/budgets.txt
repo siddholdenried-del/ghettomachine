@@ -1,4 +1,4 @@
-# A 256-frame half at 44.1 kHz has 5804.99 us. The soft drum target is 25%,
+# A 256-frame half at 44.1 kHz has 5804.99 us. The soft drum target is 35%,
 # the synth target is 30%, and drum Color plus shared returns have 25%.
 # cpufakeN_US supplies deterministic stage times solely to the load governor.
 # Stages 0, 1, 2, 3 and 6 are drums, synth, drum Color, returns and core 0 total.
@@ -57,17 +57,17 @@ key 5 up
 key 7 up
 key 9 up
 wait 30
-# ---- The default beat stays intact at 1451 us. At 1452 us eligible ringing tails release.
+# ---- The default beat stays intact at 2031 us (35 %). At 2032 us eligible ringing tails release.
 turn ALGO -2
 wait 30
 expect trk 1
 tap PLAY
 wait 1000
 expect govcuts 0
-expect cpufake0_1451 1
+expect cpufake0_2031 1
 wait 500
 expect govcuts 0
-expect cpufake0_1452 1
+expect cpufake0_2032 1
 wait 700
 expect govcuts >0
 expect cpufake0_0 1

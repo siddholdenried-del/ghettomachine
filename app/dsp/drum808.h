@@ -139,6 +139,9 @@ typedef struct {
     float e1, e2, e3, e1t, d1, d2, d3, atk_c, e1_base;
     int32_t e1_n, quiet;
     uint8_t e1_ramp, active;
+    uint8_t lite;                   /* GhettoMachine 0.5 (CPU): the body has shut: the ring and the hiss only (cy_tick) */
+    float lite_g1, lite_g2, lite_b2; /* ... the first band filter's gain at each resonator and the second's over the
+                                      * floor's band, turned over (cy_ratio) */
 } d8_cy_t;
 
 typedef struct {

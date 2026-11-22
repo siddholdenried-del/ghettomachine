@@ -101,6 +101,9 @@ struct drum909 {
     float accent, vel_depth;      /* kit */
     /* 0 eligible, positive samples left in governor fade, -1 natural hat choke. */
     int8_t tail_fade[DR_NUM];
+    /* GhettoMachine 0.5 (CPU): a voice at rest (drum909.c d9_rest): the samples each has given under -90 dBFS since
+     * it was last over it, and the voices heard since their hit */
+    uint16_t quiet[DR_NUM], heard;
     uint32_t noise;
     float nz_buf[DR_NZ_BUF];      /* noise, linear; the block plus >= DR_NZ_HIST before it */
     int32_t nz_pos;               /* where the next block's noise starts */

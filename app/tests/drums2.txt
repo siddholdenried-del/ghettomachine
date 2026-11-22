@@ -1,0 +1,54 @@
+# The drums on the second core (0.5, CPU): with both the drums and the synth heavy, the first core starts on the synth
+# at once and the second core takes the drums after the block before's tail (app.c drum_job, drums2_mode). The same
+# samples either way. The whole proof is every suite run again with GM_DRUMS2=1 in the environment (the drums always
+# there) and the same .wav files, byte for byte; here: the choice, and that the forced way renders and sounds.
+#   tools/build.py ../../app --host, then  app/build/host/ghettomachine_host app/tests/drums2.txt OUTDIR
+# drums2pick_D_P_V_C_N: the choice for the drums' time D, the tail's P, the voices' V, the synth's ticks and mix C
+# (us a block), from place N; drums2: the blocks the second core has rendered the drums; drums2set_N: 0 chosen, 1 there
+wait 600
+master 4096
+# ---- the choice: there with both heavy (22 % drums, 30 % voices); not with the synth lighter, the drums lighter or no
+# voices; it stays (100 us to the good) more easily than it comes (300)
+expect drums2pick_1277_1045_1741_406_0 1
+expect drums2pick_1277_1045_870_406_0 0
+expect drums2pick_580_1045_1741_406_0 0
+expect drums2pick_1277_1045_0_150_0 0
+expect drums2pick_1277_1045_1300_406_0 0
+expect drums2pick_1277_1045_1300_406_1 1
+# ---- the simulator never chooses it: the 909's crash and a chord on T2, the usual way
+expect drums2 0
+midi 99 31 7F
+midi 91 3C 64
+midi 91 40 64
+midi 91 43 64
+wait 200
+expect stemreset 1
+wait 200
+expect stem1 >-700
+expect stem2 >-700
+expect drums2 0
+midi 81 3C 00
+midi 81 40 00
+midi 81 43 00
+wait 3000
+# ---- forced there: the second core's blocks count up, the drums and the synth sound as before
+expect drums2set_1 1
+midi 99 31 7F
+midi 91 3C 64
+midi 91 40 64
+midi 91 43 64
+wait 200
+expect drums2 >0
+expect stemreset 1
+wait 200
+expect stem1 >-700
+expect stem2 >-700
+midi 81 3C 00
+midi 81 40 00
+midi 81 43 00
+# ---- and back
+expect drums2set_0 1
+wait 3000
+expect stemreset 1
+wait 200
+expect stem1 -1200

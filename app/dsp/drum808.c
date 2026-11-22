@@ -237,7 +237,17 @@ D8_TICK float shaper(float *st, float gate)
     return v;
 }
 
-static inline float opamp_clip(float v, float rail, float irail) { return rail * fm_tanhf(v * irail); }
+/* GhettoMachine 0.5 (CPU): measured, the cymbal's two clippers never see over a sixteenth of their rail (96 % of their
+ * samples under 0.03 of it), the kick's, the snare's and the toms' almost never. There tanh x is
+ * x (1 - x^2/3 + 2 x^4/15) to under a float's resolution (the next term, 17 x^7 / 315, is 2e-10 at 1/16): the same
+ * curve for a third of the work of fm_tanhf's 13th-order path. Past a sixteenth, fm_tanhf as before */
+static inline float opamp_clip(float v, float rail, float irail)
+{
+    const float x = v * irail, z = x * x;
+    if (z < 0.00390625f)
+        return rail * (x * (1.0f + z * (-0.333333333f + z * 0.133333333f)));
+    return rail * fm_tanhf(x);
+}
 
 /* BridgedT::set: constant-peak bandpass, clamps as 8W8 */
 static void bp_set(d8_bp_t *f, float hz, float q)
@@ -1032,6 +1042,21 @@ static inline float knee_gate(float e)            /* the swing VCA's diode, knee
     return over - 0.6f;
 }
 
+/* GhettoMachine 0.5 (CPU), the lite cymbal (cy_tick): bp2 over the floor's band: -4.4 dB. Tuned up, the squares put more of the floor where bp2 falls away (over 16 kHz):
+ * measured against the whole circuit, 0.048 less a unit of the ratio over 1 keeps the tail's level within 0.1 dB over
+ * Tune's range (cy_ratio) */
+#define D8_CY_LITE_B2 0.603f
+/* GhettoMachine 0.5 (CPU): a Werner band-pass's gain at a frequency (the lite cymbal's stand-in for it: cy_tick) */
+static float bq3_gain(const float *c, float hz)
+{
+    const float w = TWO_PI_SR * (hz > SR * 0.45f ? SR * 0.45f : hz);
+    const float c1 = fm_cosf(w), s1 = fm_sinf(w), c2 = fm_cosf(2.0f * w), s2 = fm_sinf(2.0f * w);
+    const float c3 = fm_cosf(3.0f * w), s3 = fm_sinf(3.0f * w);
+    const float nr = c[0] + c[1] * c1 + c[2] * c2 + c[3] * c3, ni = c[1] * s1 + c[2] * s2 + c[3] * s3;
+    const float dr = 1.0f + c[4] * c1 + c[5] * c2 + c[6] * c3, di = c[4] * s1 + c[5] * s2 + c[6] * s3;
+    return fm_sqrtf((nr * nr + ni * ni) / (dr * dr + di * di));
+}
+
 /* ---- cymbal: sc808_mt_circuit.h CymbalCircuit ---- */
 static void cy_init(d8_cy_t *v)
 {
@@ -1045,6 +1070,10 @@ static void cy_init(d8_cy_t *v)
     hp1_set_a(&v->crash_hp, D8_HP1_A_2000);
     hp1_set_a(&v->dc, D8_HP1_A_200);
     v->d1 = v->d2 = v->d3 = 1.0f;
+    v->lite = 0;
+    v->lite_g1 = -bq3_gain(k_cy_bp1, 2944.0f);
+    v->lite_g2 = -bq3_gain(k_cy_bp1, 3265.0f);
+    v->lite_b2 = -D8_CY_LITE_B2;
 }
 
 static void cy_ratio(d8_cy_t *v, float r)
@@ -1052,6 +1081,9 @@ static void cy_ratio(d8_cy_t *v, float r)
     r = r < 0.25f ? 0.25f : (r > 4.0f ? 4.0f : r);
     bp_set(&v->sus1, 2944.0f * r / 1.0055f, 75.0f);
     bp_set(&v->sus2, 3265.0f * r / 1.0055f, 32.0f);
+    v->lite_g1 = -bq3_gain(k_cy_bp1, 2944.0f * r / 1.0055f);   /* (the lite cymbal: cy_tick) */
+    v->lite_g2 = -bq3_gain(k_cy_bp1, 3265.0f * r / 1.0055f);
+    v->lite_b2 = -(D8_CY_LITE_B2 - 0.048f * ((r > 1.0f ? r : 1.0f) - 1.0f));
 }
 
 static void cy_trigger(d8_cy_t *v, float decay_s, float accent_v)
@@ -1066,9 +1098,26 @@ static void cy_trigger(d8_cy_t *v, float decay_s, float accent_v)
     v->e3 = 8.0f * a; v->d3 = D8_CY_D3;
     v->active = 1;
     v->quiet = 0;
+    v->lite = 0;
 }
 
-D8_TICK float cy_tick(d8_cy_t *v, float bus)
+/* GhettoMachine 0.5 (CPU): the cymbal was three times any other voice, for its whole 1.7 s, and from about 0.5 s on
+ * most of that made nothing: the body's and the crash's gates (g2, g3: the swing VCA's diode) are exactly 0 once their
+ * envelopes are under the diode's drop, and what sounds is the ring (the two resonators near 3 kHz) and the hiss under
+ * it (the floor), both on the slow envelope g1. From there the cymbal is lite: only those two paths run. The two band
+ * filters ahead of them (Werner's third-order band-passes, with their op-amps' clipping) are close to flat where
+ * these paths listen: bp1 is -0.30 dB and turned over (178 degrees) around 3 kHz, and each resonator passes only
+ * its own frequency, so bp1 is its gain there (lite_g1, lite_g2: worked out at the resonators' pitch as Tune sets
+ * it, -0.3 to -0.9 dB over Tune's range; its phase, up to 45 degrees off turned over at Tune's lowest, is not heard
+ * in a ring); bp2 is -4.4 dB and turned over from 4 to 16 kHz, and the floor's own high-passes (5 and 7.3 kHz) pass
+ * nothing under it; neither clipper sees a sixteenth of its rail. So each is a gain, and the resonators and the
+ * floor's filters carry on from the states they had: no step where it changes over. Left out with them: the body's
+ * resonance, the top and the crash (gated to 0; the top's 0.005 g1 was 30 dB under the ring). A new hit is the whole
+ * circuit again (cy_trigger). Tune and Decay as before: the resonators' pitch and g1's discharge are the same code */
+#ifndef D8_CY_LITE
+#define D8_CY_LITE 1                             /* (0: the whole circuit throughout, the tests' reference) */
+#endif
+D8_TICK float cy_tick(d8_cy_t *v, float bus)     /* the whole circuit, a sample (8W8's) */
 {
     float b1, b2, g1, g2, g3, sus, body_pre, body_dk, body, top_in, top, c1, y;
     b1 = opamp_clip(bq3_run(&v->bp1, k_cy_bp1, bus), 14.0f, 1.0f / 14.0f);
@@ -1110,11 +1159,74 @@ D8_TICK float cy_tick(d8_cy_t *v, float bus)
     v->crash_lp[1] += (c1 - v->crash_lp[1]) * D8_CY_CRASH_LPC; c1 = v->crash_lp[1];
     y = sus * 0.042f + body * 1.00f + top * 0.58f + c1 * (0.016f * g2);
     y = hp1_run(&v->dc, bq_run(&v->out_hp, y * 0.74f));
+    if (D8_CY_LITE && g2 == 0.0f && g3 == 0.0f && v->e1t <= 0.0f)
+        v->lite = 1;                              /* the body has shut: lite from the next sample (cy_lite_run) */
     if (y > 3.2e-5f || y < -3.2e-5f)
         v->quiet = 0;
     else if (++v->quiet > 400 && v->e1 < DIODE_VON * 0.5f && v->e2 < DIODE_VON && v->e3 < DIODE_VON)
         v->active = 0;
     return y;
+}
+
+/* the lite cymbal over a run of samples, its state in locals for the run (buf and bus may alias the voice for all the
+ * compiler knows: it would load and store every field each sample). Returns the samples written: it stops, as
+ * cy_tick's loop does, after the sample the voice went quiet on */
+static int cy_lite_run(d8_cy_t *v, const float *bus, float *buf, int m)
+{
+    d8_bp_t sus1 = v->sus1, sus2 = v->sus2;
+    d8_bq_t sk = v->body_sk, oh = v->out_hp;
+    d8_hp1_t ha = v->body_hpa, dc = v->dc;
+    const float d1 = v->d1, ga = v->lite_g1, gb = v->lite_g2, gf = v->lite_b2;
+    float f0 = v->floor_lp[0], f1 = v->floor_lp[1], e1 = v->e1, e1_base = v->e1_base;
+    int32_t e1_n = v->e1_n, quiet = v->quiet;
+    int ramp = v->e1_ramp, active = 1, i;
+    for (i = 0; i < m && active; i++) {
+        const float x = bus[i], b2 = gf * x;
+        float g1, sus, body_pre, y;
+        if (!ramp) {                              /* (the attack is over before the cymbal is lite) */
+            ramp = 1;
+            e1_base = e1;
+            e1_n = 0;
+        }
+        if (e1 > 0.0f) {
+            e1 = e1_base - (float)(++e1_n) * d1;
+            if (e1 < 0.0f)
+                e1 = 0.0f;
+        }
+        g1 = knee_gate(e1);
+        sus = (1.4f * bp_run(&sus1, ga * x) + bp_run(&sus2, gb * x)) * g1;
+        body_pre = bq_run(&sk, hp1_run(&ha, b2));
+        f0 += (body_pre - f0) * D8_CY_FLOOR_LPC;
+        f1 += (f0 - f1) * D8_CY_FLOOR_LPC;
+        y = sus * 0.042f + f1 * (0.065f * g1);
+        y = hp1_run(&dc, bq_run(&oh, y * 0.74f));
+        if (y > 3.2e-5f || y < -3.2e-5f)
+            quiet = 0;
+        else if (++quiet > 400 && e1 < DIODE_VON * 0.5f)
+            active = 0;
+        buf[i] = y;
+    }
+    v->sus1 = sus1; v->sus2 = sus2;
+    v->body_sk = sk; v->out_hp = oh;
+    v->body_hpa = ha; v->dc = dc;
+    v->floor_lp[0] = f0; v->floor_lp[1] = f1;
+    v->e1 = e1; v->e1_base = e1_base;
+    v->e1_n = e1_n; v->quiet = quiet;
+    v->e1_ramp = (uint8_t)ramp;
+    v->active = (uint8_t)active;
+    return i;
+}
+
+static int cy_run(d8_cy_t *v, const float *bus, float *buf, int m)   /* (voice_run's loop for the cymbal) */
+{
+    int i = 0;
+    while (i < m && v->active && !v->lite) {
+        buf[i] = cy_tick(v, bus[i]);
+        i++;
+    }
+    if (i < m && v->active)
+        i += cy_lite_run(v, bus + i, buf + i, m - i);
+    return i;
 }
 
 /* ---- hi-hats: sc808_mt_circuit.h HatCircuit ---- */
@@ -1799,7 +1911,7 @@ static int voice_run(drum808_t *d, int l, float *buf, int m, const float *bus, c
     case L_CB: for (i = 0; i < m && d->cb.active; i++) buf[i] = cb_tick(&d->cb, pair[i]); break;
     case L_CH: for (i = 0; i < m && d->ch.active; i++) buf[i] = hat_tick(&d->ch, bus[i]); break;
     case L_OH: for (i = 0; i < m && d->oh.active; i++) buf[i] = hat_tick(&d->oh, bus[i]); break;
-    default: for (i = 0; i < m && d->cy.active; i++) buf[i] = cy_tick(&d->cy, bus[i]); break;
+    default: i = cy_run(&d->cy, bus, buf, m); break;
     }
     return i;
 }

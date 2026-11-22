@@ -427,6 +427,8 @@ void drum909_trigger(drum909_t *d, int voice, float vel)
     if (voice < 0 || voice >= DR_NUM)
         return;
     d->tail_fade[voice] = 0;   /* a new hit owns this lane immediately */
+    d->heard &= (uint16_t)~(1u << voice);   /* (d9_rest: not at rest before it has been heard) */
+    d->quiet[voice] = 0;
     if (!(vel >= 0.0f)) vel = 0.0f;
     if (vel > 1.0f) vel = 1.0f;
     const float vgain = d->accent * (1.0f - d->vel_depth * (1.0f - vel));
@@ -530,8 +532,24 @@ typedef struct {
     float dpl, dpr;           /* the pans' glide per sample this block (0 settled) */
 } d9_bus_t;
 
+/* GhettoMachine 0.5 (CPU): a hit renders for a time worked out from its decays (mute), long after it can be heard: at
+ * the kit's own settings the snare gave half its samples under -80 dB of its peak, the crash and the ride 45 %, the
+ * toms a quarter. d9_emit keeps the voice's peak this block (as it leaves the voice: after its level and its drive,
+ * before its pan and its sends); d9_rest, after the voice's render, counts the samples it has stayed under
+ * D9_REST_LEVEL since it was heard, and after D9_REST_N of them leaves the voice one sample more: its note ends there,
+ * by its own end (the states a later hit starts from are frozen as at any note's end). Nothing over -90 dBFS is lost */
+#ifndef D9_REST
+#define D9_REST 1                                 /* (0: every hit to its timer's end, the tests' reference) */
+#endif
+#define D9_REST_LEVEL 3.2e-5f                     /* -90 dBFS: the 808's own (D8_QUIET) */
+#define D9_REST_N 441                             /* 10 ms */
+static float d9_pk;
+
 static inline void d9_emit(const d9_bus_t *b, int i, float y)
 {
+    const float a = y < 0.0f ? -y : y;
+    if (a > d9_pk)
+        d9_pk = a;
     if (b->dry_r) {
         b->dry[i] += y * (b->pl + b->dpl * (float)i);
         b->dry_r[i] += y * (b->pr + b->dpr * (float)i);
@@ -874,6 +892,24 @@ static inline void route_tail(drum909_t *d, int voice, const float *nz, const d9
         render_tail(d, voice, nz, bus, n);
 }
 
+static inline void d9_rest(drum909_t *d, int voice, int32_t *mute, int n)
+{
+    if (!D9_REST) {
+        d9_pk = 0.0f;
+        return;
+    }
+    if (d9_pk >= D9_REST_LEVEL) {
+        d->heard |= (uint16_t)(1u << voice);
+        d->quiet[voice] = 0;
+    } else if (d->heard >> voice & 1u) {
+        const int q = d->quiet[voice] + n;
+        d->quiet[voice] = (uint16_t)(q > 60000 ? 60000 : q);
+        if (q >= D9_REST_N && *mute > 1)
+            *mute = 1;
+    }
+    d9_pk = 0.0f;
+}
+
 static void d9_render(drum909_t *d, float *dry, float *rev, float *dly, int n)
 {
     d9_bus_t bus;
@@ -891,28 +927,34 @@ static void d9_render(drum909_t *d, float *dry, float *rev, float *dly, int n)
     d->nz_pos += n;
     for (int i = 0; i < n; ++i)
         nz[i] = d9_noise(&d->noise);
+    d9_pk = 0.0f;
 
     /* 9W9's summing order: BD SD LT MT HT RS CP OH RD CR CH */
     if (d->bt[DR_BD].mute > 0) {
         d9_bus(&bus, d, DR_BD, dry, rev, dly);
         d9_render_bd(&d->bt[DR_BD], nz, &bus, n);
+        d9_rest(d, DR_BD, &d->bt[DR_BD].mute, n);
     }
     if (d->bt[DR_SD].mute > 0) {
         d9_bus(&bus, d, DR_SD, dry, rev, dly);
         d9_render_sd(&d->bt[DR_SD], nz, &bus, n);
+        d9_rest(d, DR_SD, &d->bt[DR_SD].mute, n);
     }
     for (int t = 0; t < 3; ++t)
         if (d->tom[t].mute > 0) {
             d9_bus(&bus, d, DR_LT + t, dry, rev, dly);
             route_tail(d, DR_LT + t, nz, &bus, n);
+            d9_rest(d, DR_LT + t, &d->tom[t].mute, n);
         }
     if (d->rim.mute > 0) {
         d9_bus(&bus, d, DR_RS, dry, rev, dly);
         route_tail(d, DR_RS, nz, &bus, n);
+        d9_rest(d, DR_RS, &d->rim.mute, n);
     }
     if (d->clap.mute > 0) {
         d9_bus(&bus, d, DR_CP, dry, rev, dly);
         route_tail(d, DR_CP, nz, &bus, n);
+        d9_rest(d, DR_CP, &d->clap.mute, n);
     }
     static const uint8_t order[4] = { DR_OH, DR_RD, DR_CR, DR_CH };
     for (int k = 0; k < 4; ++k) {
@@ -920,6 +962,7 @@ static void d9_render(drum909_t *d, float *dry, float *rev, float *dly, int n)
         if (s->mute > 0) {
             d9_bus(&bus, d, order[k], dry, rev, dly);
             route_tail(d, order[k], nz, &bus, n);
+            d9_rest(d, order[k], &s->mute, n);
         }
     }
 }
