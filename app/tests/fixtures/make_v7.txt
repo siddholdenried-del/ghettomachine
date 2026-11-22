@@ -1,0 +1,37 @@
+# Made once with the last format-7 build (21 Nov 2026, before each clip had its own LFO: format 8), to keep a project
+# as that build saved it for app/tests/cliplfo.txt: proj_v7.img. Run from the repository's top:
+# app/build/host/ghettomachine_host app/tests/fixtures/make_v7.txt OUTDIR (with the format-7 build only; kept for the
+# record)
+wait 600
+# ---- T2's LFO: its destination one on (PITCH), DEPTH 20, the rate up two
+turn ALGO 1
+wait 30
+expect trk 2
+tap LFO
+wait 30
+expect page 7
+spin K4 1
+wait 30
+spin K3 20
+wait 30
+spin K2 2
+wait 30
+expect lset2_7 1
+expect lset2_8 20
+expect lset2_1 66
+# ---- the drums' LFO (the LFO page stays): the bass drum's second knob, DEPTH 12
+turn ALGO -1
+wait 30
+expect trk 1
+expect page 7
+spin K4 2
+wait 30
+spin K3 12
+wait 30
+expect lset1_7 1
+expect lset1_8 12
+tap SAVE
+wait 400
+expect projfmt 7
+expect dirty 0
+flash_dump app/tests/fixtures/proj_v7.img

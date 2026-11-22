@@ -48,7 +48,8 @@
 #define NKEYS 27
 #define KEY_NOTE0 53                      /* key 0 (F3) at octave 0 */
 #define PROJ_MAGIC 0x31544745u            /* "EGT1": fm1-eight 0.1's project; another magic loads the default project */
-#define PROJ_VERSION 7                    /* combined Color and mixed kits; 1–5 readable, private divergent v6 rejected */
+#define PROJ_VERSION 8                    /* 8: each clip its own LFO (plfo); 7: combined Color and mixed kits; 1–5 and 7
+                                           * readable, private divergent v6 rejected */
 #define EIGHT_VERSION "0.4"
 #define NSONG 32                          /* the song chain's entries */
 #define NUSER 16                          /* user sounds (T2..T4) */
@@ -221,6 +222,10 @@ typedef struct {
     uint8_t model[NPADS];                /* 0 inherits, otherwise a pad model ID plus one */
     uint8_t pattern_model[NPAT][NPADS];  /* saved with the pattern when Sounds per Pattern is active */
     color_params_t color[NTRK];          /* format 7: independent Color per track */
+    /* format 8: the LFO is a clip's, not a track's: each pattern's part keeps its own (lfo above is the LFO of the
+     * clip each track plays now: set_clip swaps them as SOUNDS PER PATTERN swaps sounds; a format-7 file loads with
+     * every clip given its track's) */
+    lfo_t plfo[NPAT][NTRK];
 } project_t;
 /* Freeze the persisted 64-step layouts; legacy files end before the 606 pots. */
 typedef struct {
@@ -251,6 +256,8 @@ typedef struct { dpart_old_t d; ipart_old_t t[NINST]; } pattern_old_t;
 #define PROJ_V5_META_BYTES (offsetof(project_t, insert) + sizeof(((project_t *)0)->insert) - PROJ_TAIL)
 #define PROJ_V5_TAIL_BYTES ((PROJ_V5_META_BYTES + 3u) & ~3u)
 #define PROJ_V4_TAIL_BYTES (((offsetof(project_t, insert) + 3u) & ~3u) - PROJ_TAIL)
+#define PROJ_V7_META_BYTES (offsetof(project_t, plfo) - PROJ_TAIL)   /* format 7 ended before the clips' LFOs */
+#define PROJ_V7_TAIL_BYTES ((PROJ_V7_META_BYTES + 3u) & ~3u)
 
 /* project format 1 (0.1, 0.2 and 0.2's performance update), frozen: a file saved by them is read a part at a time
  * into format 2 (project_load_v1). Its sounds had 26 parameters, its steps a spare byte; 0.2 saved it up to psnd */
@@ -416,11 +423,14 @@ static void sync_drum_mutes(void)
  * about 10 ms), the effects BUD_FX % (the inserts, Color, the reverb and the delay together: over it, a Color strip,
  * then an insert, leaves the chain, and comes back when there is room; the reverb, the delay and the master bus
  * always stay). So no section can take the others' time */
-#define BUD_DRUMS 30                      /* (20 and 30 at first, as asked: on the FM-1 they cut 138 drum sounds in a
-                                           * minute and held the synth to 4 or 5 voices with a third of the first core
-                                           * unused; loosened the same day) */
-#define BUD_SYNTH 40
+#define BUD_DRUMS 20                      /* (20 and 30 as asked; 30 and 40 for a day: fuller, but late blocks came
+                                           * back with them; back at 20 and 30 once the synth was cheaper, asked for) */
+#define BUD_SYNTH 30
 #define BUD_FX 25
+#define BUD_GUARD 90                      /* the guard: a block that took this much of its time on the first core (a
+                                           * kit changed with the old one's tails ringing, every section at its peak
+                                           * together): at once, every drum sound not just hit is cut and two synth
+                                           * voices are shed */
 static struct {
     uint32_t clock;                       /* blocks rendered */
     uint32_t pad_at[NPADS];               /* each pad's last hit (clock) */
@@ -431,7 +441,7 @@ static struct {
     float per_voice, syn_base;            /* the synth: a voice's time a block and its time with none, us (measured) */
     float d_prev, fx_mean;                /* the drums' last block; the effects' running mean, us */
     uint32_t act[3];                      /* when each last gave something up (clock: the CPU view's red) */
-    uint32_t cuts, caps, sheds;           /* drum sounds cut, voices shed, effects taken out, so far */
+    uint32_t cuts, caps, sheds, guards;   /* drum sounds cut, voices shed, effects taken out, the guard's blocks, so far */
 } gov;
 
 static void pad_fire(int pad, float vel)
@@ -651,6 +661,17 @@ static int lk_model(uint8_t code)
 }
 
 /* the default project: a beat in pattern 1, the rest empty; T2 a mono bass an octave down, T3 a pluck, T4 a pad */
+/* The LFO is a clip's (0.5, format 8): proj.lfo[t] is the one track t plays now; each pattern's part keeps its own in
+ * proj.plfo. A track onto another clip leaves its LFO with the one it was on and takes the new one's (set_clip);
+ * saving puts the ones playing back with their clips; a pattern copied takes its LFOs along. */
+static void plfo_fill(void)               /* every clip its track's LFO (a new project; a file from before format 8) */
+{
+    int p, t;
+    for (p = 0; p < NPAT; p++)
+        for (t = 0; t < NTRK; t++)
+            proj.plfo[p][t] = proj.lfo[t];
+}
+
 static void project_default(void)
 {
     uint32_t i;
@@ -704,6 +725,7 @@ static void project_default(void)
         l->div = 5;                       /* 1/4 */
         l->dest = i == TR_DRUM ? LFO_OFF : 0;   /* the drums: no knob yet; the others: CUTOFF (at depth 0) */
     }
+    plfo_fill();                          /* every clip: its track's */
 }
 
 /* the engines' knobs <-> the project (main loop) */
@@ -938,8 +960,9 @@ static void project_check(void)           /* a loaded project's values kept in r
         proj.tr[t].chord = (uint8_t)(proj.tr[t].chord < NCHORDS ? proj.tr[t].chord : 0u);
         proj.tr[t].chord_inv &= 3u;
     }
+    for (n = 0; n <= NPAT; n++)           /* the LFOs playing, then each clip's */
     for (t = 0; t < NTRK; t++) {
-        lfo_t *l = &proj.lfo[t];
+        lfo_t *l = n ? &proj.plfo[n - 1][t] : &proj.lfo[t];
         l->shape = (uint8_t)(l->shape < 7u ? l->shape : 0u);
         l->rate &= 127u;
         l->div = (uint8_t)(l->div < 13u ? l->div : 5u);
@@ -1057,6 +1080,8 @@ static int proj_file_format(void)
         return 0;
     if (sz >= (int)PROJ_META && sz <= (int)PROJ_CAPACITY && ver == PROJ_VERSION)
         return PROJ_VERSION;
+    if (sz >= (int)(PROJ_PREFIX + PROJ_V7_TAIL_BYTES) && sz <= (int)PROJ_CAPACITY && ver == 7)
+        return 7;
     if (sz >= (int)(PROJ_PREFIX + PROJ_V5_TAIL_BYTES) && sz <= (int)PROJ_CAPACITY && ver == 5)
         return 5;
     if (sz >= (int)(PROJ_PREFIX + PROJ_V4_TAIL_BYTES) && sz <= (int)PROJ_CAPACITY && ver == 4)
@@ -1249,12 +1274,16 @@ static int project_load(void)
         clips_raw(proj.pat);
         return 0;
     }
-    if (fmt < PROJ_VERSION) {
+    if (fmt < 7) {
         proj.lfo[TR_DRUM].rsv[0] = 0;
         for (i = 0; i < NTRK; i++) color_defaults(&proj.color[i]);
     }
+    if (fmt < 8)                          /* before each clip had its own LFO: every clip its track's */
+        plfo_fill();
     project_check();
     clips_raw(proj.pat);
+    for (i = 0; i < NTRK; i++)            /* every track on the focused pattern: its clip's LFO */
+        proj.lfo[i] = proj.plfo[proj.pat][i];
     psnd_fetch_all();                     /* SOUNDS PER PATTERN: the focused pattern's, before they reach the engines */
     pots_to_engines();
     tracks_to_voices();
@@ -1271,6 +1300,11 @@ static int project_save(void)             /* main loop, stopped (each erase stop
     plat_unlock(f);
     pots_from_engines();
     psnd_store_all();                     /* SOUNDS PER PATTERN: each track's sound with the pattern it's on */
+    {   /* each track's LFO with the clip it's on */
+        int t;
+        for (t = 0; t < NTRK; t++)
+            proj.plfo[clip_of(t)][t] = proj.lfo[t];
+    }
     result = project_encode();
     if (result != 0)
         return result;
@@ -1710,11 +1744,16 @@ static void psnd_load(int t, int p)       /* pattern p's sound into track t and 
     }
 }
 
-static void set_clip(int t, int n)        /* track t onto pattern n's part (-1: stopped); its sound with it */
+static void set_clip(int t, int n)        /* track t onto pattern n's part (-1: stopped); its sound with it, and its
+                                           * LFO (the clip's own: the one it leaves keeps the LFO it had) */
 {
-    if (sounds_pp() && n >= 0 && n != clip_of(t)) {
-        psnd_store(t, clip_of(t));
-        psnd_load(t, n);
+    if (n >= 0 && n != clip_of(t)) {
+        proj.plfo[clip_of(t)][t] = proj.lfo[t];
+        proj.lfo[t] = proj.plfo[n][t];
+        if (sounds_pp()) {
+            psnd_store(t, clip_of(t));
+            psnd_load(t, n);
+        }
     }
     clip[t] = (int8_t)n;
 }
@@ -2775,7 +2814,7 @@ static int16_t stem_q(float x)
 
 /* the stems of the block rendered, sent with the next block (the master pair comes a block late now: post_job), a
  * frame's tracks together */
-static int16_t stem_hold[APP_BLOCK * 2u * NTRK] PLAT_POOL;
+static int16_t stem_hold[APP_BLOCK * 2u * NTRK];   /* (not in the pool: the project there grew by the clips' LFOs) */
 static void stems_send(uint32_t n)        /* the block before's stems, into this block's channels; the hold cleared */
 {
     uint32_t off = 0, k;
@@ -3122,7 +3161,7 @@ static int fx_unit_on(int u)              /* effect u (bit t: Color; 4 + t: inse
     return proj.insert[u - 5].mode != TI_OFF && proj.insert[u - 5].v[3] && !track_is_muted(u - 4);
 }
 
-static void govern(uint32_t t_drums, uint32_t t_synth, uint32_t t_fxin, uint32_t t_fx)
+static void govern(uint32_t t_drums, uint32_t t_synth, uint32_t t_fxin, uint32_t t_fx, uint32_t t_total)
 {
     /* the effects in the order they go: Color on the drums, T4, T3, T2, then the inserts on T4, T3, T2 */
     static const uint8_t ORDER[7] = {0, 3, 2, 1, 7, 6, 5};
@@ -3200,6 +3239,23 @@ static void govern(uint32_t t_drums, uint32_t t_synth, uint32_t t_fxin, uint32_t
                     break;
                 }
         }
+    }
+    if (gov_us(CS_TOTAL, t_total) > BUD_US(BUD_GUARD)) {   /* the guard (BUD_GUARD) */
+        int v = syn_voices(-1);
+        for (k = 0; k < NPADS; k++)
+            if ((gov.pad_live >> k & 1u) && gov.clock - gov.pad_at[k] >= 4u) {
+                drums_cut_mapped(proj.kit, proj.model, k);
+                gov.pad_live &= (uint16_t)~(1u << k);
+                gov.cuts++;
+            }
+        if (v > GOV_MIN_VOICES) {
+            int to = v - 2 < GOV_MIN_VOICES ? GOV_MIN_VOICES : v - 2;
+            syn_pool(to);                 /* (the two go; the pool as it was for the notes to come) */
+            pool_apply();
+            gov.caps += (uint32_t)(v - to);
+        }
+        gov.guards++;
+        gov.act[0] = gov.act[1] = gov.clock;
     }
 }
 
@@ -3483,7 +3539,8 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             sy_us[i] += ((float)sy_t[i] * (1.0f / (float)PLAT_TICKS_PER_US) - sy_us[i]) * 0.02f;
             sy_t[i] = 0;
         }
-        govern(cs_t[CS_DRUMS], cs_t[CS_SYNTH], cs_t[CS_FXIN], cs_t[CS_FX]);   /* the budgets, for the next block */
+        govern(cs_t[CS_DRUMS], cs_t[CS_SYNTH], cs_t[CS_FXIN], cs_t[CS_FX], cs_t[CS_TOTAL]);   /* the budgets, for the
+                                                                                             * next block */
     }
 }
 
@@ -5906,7 +5963,7 @@ static void reload_sound(void)            /* SAVE + OCT-: the track's sound (the
             plat_file_read(&PROJ_FILE, offsetof(project_t, dpreset), &saved_preset, 1) || saved_kit >= KIT_NUM)
             return;
         saved_kit = (uint8_t)kit_now(saved_kit);   /* (saved on a cut kit: its heir) */
-        if (fmt >= PROJ_VERSION && plat_file_read(&PROJ_FILE, offmap, saved_map, sizeof saved_map))
+        if (fmt >= 7 && plat_file_read(&PROJ_FILE, offmap, saved_map, sizeof saved_map))
             return;
         if (plat_file_read(&PROJ_FILE, fmt >= 4 ? PROJ_PREFIX : fmt >= 2 ? OLD_TAIL : V1_OFF(pots), pots,
                            sizeof pots) != 0)
@@ -5920,7 +5977,7 @@ static void reload_sound(void)            /* SAVE + OCT-: the track's sound (the
                     for (c = 0; c < NPOTS; c++)
                         kit_pots(k)[r][c] = pots[k][r][c];
         }
-        if (fmt >= PROJ_VERSION) {
+        if (fmt >= 7) {
             drum_map_apply(saved_kit, saved_map);
             proj.dpreset = saved_preset >= DPRESET_COUNT ? (uint8_t)kit_factory(saved_kit) : saved_preset;
         }
@@ -6162,6 +6219,11 @@ static void pattern_copy_to(int n)        /* the whole pattern, all four tracks 
     proj.p[n] = *cur();
     for (i = 0; i < NINST; i++)
         proj.gen[n][i] = proj.gen[proj.pat][i];
+    for (i = 0; i < NTRK; i++) {          /* its clips' LFOs with it (a track on the pattern now: the one it plays) */
+        proj.plfo[n][i] = clip_of(i) == proj.pat ? proj.lfo[i] : proj.plfo[proj.pat][i];
+        if (clip_of(i) == n)
+            proj.lfo[i] = proj.plfo[n][i];
+    }
     plat_unlock(f);
     dirty = 1;
     two_digits(n + 1, t);
@@ -9895,6 +9957,9 @@ static void speak(void)                   /* a screen reader that has just start
             text_cat(t, " NOW ");
             int_text(gov.fx_shed, u);
             text_cat(t, u);
+            text_cat(t, " GUARD ");
+            int_text((int32_t)gov.guards, u);
+            text_cat(t, u);
             text_cat(t, ". CORE2 ");
             int_text(cpu2 && plat_cpu2_on(), u);
             text_cat(t, u);
@@ -10418,6 +10483,8 @@ int app_expect(const char *what, int *got)
         *got = (int)gov.cuts;
     } else if (!strcmp(what, "govshed")) {   /* voices shed so far */
         *got = (int)gov.caps;
+    } else if (!strcmp(what, "govguard")) {   /* the guard's blocks so far */
+        *got = (int)gov.guards;
     } else if (!strcmp(what, "govfx")) {  /* the effects out of the chain now: bit t Color, bit 4 + t the insert */
         *got = gov.fx_shed;
     } else if (!strncmp(what, "cpupk", 5) && what[5] >= '0' && what[5] < '0' + CS_NUM && !what[6]) {

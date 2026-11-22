@@ -1,0 +1,134 @@
+# Each clip its own LFO (0.5, project format 8): a track's LFO belongs to the pattern's part it plays. A project saved
+# before (format 7) loads with every clip given its track's LFO, so nothing changes until one is turned; then each
+# pattern keeps its own, through a switch stopped or playing, a save and a restart, and a pattern copied takes its
+# LFOs along.  tools/build.py ../../app --host, then  app/build/host/ghettomachine_host app/tests/cliplfo.txt OUTDIR
+# lsetN_K: track N's LFO now: K 1 its rate, 7 its destination, 8 its depth
+flash_load app/tests/fixtures/proj_v7.img
+reboot
+wait 600
+expect projfmt 7
+# ---- the format-7 save: T2's LFO (destination 1, depth 20, rate 66), the drums' (the bass drum's second knob, depth
+# 12); every pattern has them
+expect lset2_7 1
+expect lset2_8 20
+expect lset2_1 66
+expect lset1_7 1
+expect lset1_8 12
+tap HOME
+wait 30
+expect page 3
+key 2 down
+wait 30
+key 2 up
+wait 30
+expect pat 2
+expect lset2_8 20
+expect lset1_8 12
+# ---- pattern 2's own: T2's depth 40, the drums' 30
+turn ALGO 1
+wait 30
+expect trk 2
+tap LFO
+wait 30
+expect page 7
+spin K3 20
+wait 30
+expect lset2_8 40
+turn ALGO -1
+wait 30
+expect trk 1
+expect page 7
+spin K3 18
+wait 30
+expect lset1_8 30
+# back on pattern 1: as it was; pattern 2 again: its own
+tap HOME
+wait 30
+expect page 3
+key 0 down
+wait 30
+key 0 up
+wait 30
+expect pat 1
+expect lset2_8 20
+expect lset1_8 12
+key 2 down
+wait 30
+key 2 up
+wait 30
+expect pat 2
+expect lset2_8 40
+expect lset1_8 30
+# ---- one track's clip alone (its track key held + a pattern): T2 on pattern 1's clip, the drums still on pattern 2's
+key 3 down
+wait 30
+key 0 down
+wait 30
+key 0 up
+wait 30
+key 3 up
+wait 30
+expect clip2 1
+expect clip1 2
+expect lset2_8 20
+expect lset1_8 30
+key 3 down
+wait 30
+key 2 down
+wait 30
+key 2 up
+wait 30
+key 3 up
+wait 30
+expect clip2 2
+expect lset2_8 40
+# ---- pattern 2 copied to pattern 3 (SAVE held + its key): its LFOs with it
+press SAVE
+wait 30
+key 4 down
+wait 30
+key 4 up
+wait 30
+release SAVE
+wait 30
+key 4 down
+wait 30
+key 4 up
+wait 30
+expect pat 3
+expect lset2_8 40
+expect lset1_8 30
+# ---- saved (format 8) and started again: the pattern it was on, its LFOs; the others' kept
+tap SAVE
+wait 400
+expect projfmt 8
+expect dirty 0
+reboot
+wait 600
+expect projfmt 8
+expect pat 3
+expect lset2_8 40
+expect lset1_8 30
+expect page 3
+key 0 down
+wait 30
+key 0 up
+wait 30
+expect pat 1
+expect lset2_8 20
+expect lset2_7 1
+expect lset1_8 12
+# ---- playing: a scene queued changes the LFO when its bar comes, not before
+tap PLAY
+wait 300
+key 2 down
+wait 30
+key 2 up
+wait 100
+expect lset2_8 20
+wait 2200
+expect pat 2
+expect lset2_8 40
+expect lset1_8 30
+tap PLAY
+wait 300

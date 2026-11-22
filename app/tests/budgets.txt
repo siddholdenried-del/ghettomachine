@@ -1,5 +1,6 @@
-# The sections' budgets (0.5): the drums 30 %, the synth 40 %, the effects 25 % of a block's time (1741, 2322 and 1451
-# of its 5805 us; 20 and 30 % at first, loosened once the FM-1 showed what they cut). Over its share a section gives up its least important work: the synth's voices are capped at what
+# The sections' budgets (0.5): the drums 20 %, the synth 30 %, the effects 25 % of a block's time (1161, 1741 and 1451
+# of its 5805 us), and the guard: a block that took over 90 % (5224 us) on the first core cuts every drum sound not
+# just hit and sheds two voices at once (govguard: its blocks so far). Over its share a section gives up its least important work: the synth's voices are capped at what
 # its share buys (a voice over the cap fades out in about 10 ms, whatever its release), the drums' oldest ringing sound
 # is cut, a Color strip and then an insert leave the chain and come back when there is room. The simulator's clock is
 # the computer's, so the budgets see the times a test gives them (cpufakeN_US: stage N takes US microseconds a block;
@@ -37,8 +38,7 @@ key 9 down
 wait 100
 expect voices3 6
 expect govcap 16
-# the synth takes 3000 us a block with six voices: 500 a voice, so its 2322 us buy four; the test's time stays 3000 as
-# they go (750 a voice with four: three; 1000 with three), so the cap comes down to its floor of three voices, the
+# the synth takes 3000 us a block with six voices: 500 a voice, so its 1741 us buy three (the cap's floor too), the
 # others gone in 10 ms
 expect cpufake1_3000 1
 wait 100
@@ -143,6 +143,42 @@ wait 4100
 expect govfx 0
 expect cpufake2_0 1
 expect cpufake3_0 1
+# ---- the guard: the drums playing, six voices held, and a block of 5500 us: the voices down by two a block to the
+# floor of three, the drums' ringing sounds cut
+tap PLAY
+wait 600
+turn ALGO 2
+wait 30
+expect trk 3
+key 0 down
+wait 20
+key 2 down
+wait 20
+key 4 down
+wait 20
+key 5 down
+wait 20
+key 7 down
+wait 20
+key 9 down
+wait 100
+expect voices3 6
+expect govguard 0
+expect cpufake6_5500 1
+wait 100
+expect govguard >0
+expect voices3 3
+expect cpufake6_0 1
+key 0 up
+key 2 up
+key 4 up
+key 5 up
+key 7 up
+key 9 up
+tap PLAY
+wait 300
+turn ALGO -2
+wait 30
 # ---- a screen reader's "where" also hears the processor: the stages, the blocks late, the voices and the budgets
 listen
 wait 100

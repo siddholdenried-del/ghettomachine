@@ -739,7 +739,7 @@ expect playing 0
 tap SAVE
 wait 400
 expect dirty 0
-expect projfmt 7
+expect projfmt 8
 reboot
 wait 600
 expect sounds 0

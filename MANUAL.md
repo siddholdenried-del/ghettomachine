@@ -5,7 +5,7 @@ GhettoMachine, part of the BongWare firmware line engineered by BongTech, turns 
 - **Drums:** an 808 or a 909 kit, or a Custom kit mixing the two pad by pad.
 - **T2, T3, T4:** instrument tracks. Each is a MONO synth, a POLY synth or a SAMPLER.
 - **One sequencer** of up to 128 steps a track, 16 patterns, and a song chain.
-- **An LFO on every track,** an arpeggiator and one optional insert effect on T2–T4, and per-step locks.
+- **An LFO for every clip** (each track's part of each pattern has its own), an arpeggiator and one optional insert effect on T2–T4, and per-step locks.
 - **A mixer**, a reverb, a tempo delay, and **a master bus with a mastering chain**: EQ, compressor, tape saturation,
   stereo width and a limiter, with presets and a loudness meter.
 - **Made to be played live:** a scene grid (each track on its own pattern), seven perform keys (roll, fill, stutter,
@@ -27,10 +27,13 @@ GhettoMachine, part of the BongWare firmware line engineered by BongTech, turns 
 > sounds in a minute and held the synth to 4 or 5 voices with a third of the first core unused. Loosened to 30 %, 40 %
 > and 25 %, that went on it the same night (7 to 9 voices, few drum cuts; the first core at about 70 %). The 606 and
 > the 707 were then cut (their code and memory given to the processor's budget) and FILL made to leave the drum clip
-> where it would have been: on the FM-1 since that night. The synth made cheaper without changing its sound (below) is
-> in the source, not on the FM-1 yet. 0.5 is 0.4 plus the USB stems. 0.4 is 0.3 plus the 303 generator, the new name and the boot screen's logo; 0.3 is 0.2 plus the performance
-> update (the scene grid onwards) and the synth update. 0.5 passes its simulator tests (2,120 checks, 39 more on the
-> synth itself and 48 on the master bus's sound). It reads a project saved by 0.2, 0.3 or 0.4.
+> where it would have been: on the FM-1 since that night. The synth made cheaper without changing its sound (below)
+> went on it later that night (the synth's mix from 450 to about 250 us a block; steady playing at about 60 % of the
+> first core, the only late blocks at kit changes). Then, asked for: the budgets back at 20 %, 30 % and 25 % with a
+> guard for the block that takes too long, and the LFO made each clip's own (project format 8): in the source, not on
+> the FM-1 yet. 0.5 is 0.4 plus the USB stems. 0.4 is 0.3 plus the 303 generator, the new name and the boot screen's logo; 0.3 is 0.2 plus the performance
+> update (the scene grid onwards) and the synth update. 0.5 passes its simulator tests (2,175 checks, 39 more on the
+> synth itself and 48 on the master bus's sound). It reads a project saved by 0.2, 0.3 or 0.4, and by 0.5 before each clip had its own LFO.
 
 ## Installing it, and getting back
 
@@ -341,7 +344,11 @@ Turning a knob without recording on, or stopped, only changes the sound.
 
 ## LFO, arpeggiator, locks
 
-- **LFO** (every track; LFO 1 on T2–T4, whose LFO pages go on to LFO 2 and MATRIX, above):
+- **LFO** (every track; LFO 1 on T2–T4, whose LFO pages go on to LFO 2 and MATRIX, above). **Each clip has its own:**
+  the LFO page shows and sets the LFO of the pattern's part the track is playing. Switch a track (or a whole scene) to
+  another pattern and its LFO changes with it, when the clip starts; come back and it is as you left it. A pattern
+  copied (SAVE + its key) takes its LFOs along; a new project's clips all start with the LFO off; a project saved
+  before this loads with every clip given its track's LFO, so it plays as it did until you turn one.
   - Page 1: SHAPE, RATE (free, or with SYNC from 4 bars to 1/32), DEPTH, DEST.
   - Page 2: SYNC, RETRIG (FREE, NOTE, BAR), FADE IN, PHASE.
   - LFO 1 is the track's (one for all its notes, and it can follow the tempo); it's also a source in the matrix.
@@ -568,17 +575,20 @@ the sound saved with the pattern it's on.
   pattern switch with SOUNDS PER PATTERN, RELOAD, a project) holds the audio off for one pad at a time, not for all
   four kits at once (about a millisecond on the FM-1).
 - **Budgets** (21 Nov, in the source): each section has a share of the processor it can't pass, so one can't take the
-  others' time: the **drums 30 %**, the **synth 40 %**, the **effects 25 %** (the inserts, Color, the reverb and the
+  others' time: the **drums 20 %**, the **synth 30 %**, the **effects 25 %** (the inserts, Color, the reverb and the
   delay together). Over its share a section gives up its least important work, without a glitch in the rest:
-  - the synth's voices are capped at what 40 % buys (about 8 on the FM-1: a voice was measured at about 4 % of a
-    block), at what a voice is measured to cost as you play; a note over the
+  - the synth's voices are capped at what 30 % buys (about 6 or 7 on the FM-1), at what a voice is measured to cost
+    as you play; a note over the
     cap takes the place of the quietest voice letting go, else the oldest. A shed voice fades out in about 10 ms
     whatever its release (before, a pad's long release kept it costing for seconds);
   - the drums' oldest sound still ringing is cut (a cymbal's or a tom's tail before a hit just played);
   - an effect leaves the chain: Color on the drums, then on T4, T3, T2, then the inserts on T4, T3, T2, one at a time,
     and comes back, from silence, when there is room (one every 4 s). The reverb, the delay and the master bus stay.
   SETUP's CPU view has a notch under the DRUMS and SYNTH bars at their budgets, and a section's number turns red for a
-  second when it gave something up (and while an effect is out). Releasing STUTTER or TAPE STOP no longer holds the
+  second when it gave something up (and while an effect is out). And a **guard**: a block that takes over 90 % of its
+  time on the first core (a kit changed while the old one's tails ring, every section at its peak together) cuts
+  every drum sound not just hit and sheds two voices at once, before the next block can run late. (The budgets were
+  30 % and 40 % for a day: fuller, but blocks ran late again.) Releasing STUTTER or TAPE STOP no longer holds the
   sound off for 1.5 ms while the delay's memory is cleared, and the 606's clap costs a third as much to hit (its filter
   bank is kept between hits at the same TUNE).
 - **The synth, cheaper, the same sound** (21 Nov, in the source; every sound and every test recording bit for bit as

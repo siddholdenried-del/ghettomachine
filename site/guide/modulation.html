@@ -1,4 +1,4 @@
-<p class="gm-guide-lead">Modulation moves a sound while it plays, without you touching a knob. GhettoMachine has five sources of movement: <strong>LFO 1</strong> (one per track, can follow the tempo), <strong>LFO 2</strong> (one per note), the <strong>MOD ENV</strong> (a third envelope per note), the four <strong>MACRO</strong> knobs, and <strong>step locks</strong> written by the sequencer. On T2–T4 the <strong>MATRIX</strong> connects LFO 1, LFO 2, the three envelopes, velocity, the note, a random value and the macros to 17 destinations, six routes per sound. This chapter covers where each one lives, what it can reach, how far it moves things, and recipes to start from.</p>
+<p class="gm-guide-lead">Modulation moves a sound while it plays, without you touching a knob. GhettoMachine has five sources of movement: <strong>LFO 1</strong> (one per track, with its own settings in every clip; it can follow the tempo), <strong>LFO 2</strong> (one per note), the <strong>MOD ENV</strong> (a third envelope per note), the four <strong>MACRO</strong> knobs, and <strong>step locks</strong> written by the sequencer. On T2–T4 the <strong>MATRIX</strong> connects LFO 1, LFO 2, the three envelopes, velocity, the note, a random value and the macros to 17 destinations, six routes per sound. This chapter covers where each one lives, what it can reach, how far it moves things, and recipes to start from.</p>
 
 <h2 id="where">Where the modulation pages are</h2>
 <p>Each section button opens the page you last used in that section. Press it again for the next page. The quickest way to a page is to press its button, then turn <strong>SELECT</strong> to move between that section's pages. SELECT stops at the first and last page, so turning it fully right always lands on the last page.</p>
@@ -15,8 +15,9 @@
 </tbody></table>
 <p>Pressing LFO on the last LFO page (MATRIX) returns to KEYS. On DRUMS, LFO has two pages, LFO 1 and LFO 1 MORE, and then returns to STEPS. The drums have no LFO 2, MOD ENV, macros or matrix.</p>
 
-<h2 id="lfo1">LFO 1: one per track</h2>
-<p>LFO 1 moves the whole track at once: every note of a chord sweeps together. It is the only modulation source that can lock to the tempo. Its settings belong to the project, not to the sound, so changing PRESETS keeps the LFO as it is.</p>
+<h2 id="lfo1">LFO 1: one per track, set per clip</h2>
+<p>Each clip (a track's part of a pattern) keeps its own LFO 1 settings. The LFO page shows the LFO of the clip the track is playing. Switch the track or the whole scene to another pattern and the LFO changes with it when the clip starts; switch back and it is as you left it. Copying a pattern (hold SAVE, tap its key) copies its LFOs too. In a new project every clip starts with the LFO off. A project saved before this change loads with every clip given its track's LFO, so it plays as before until you change one.</p>
+<p>LFO 1 moves the whole track at once: every note of a chord sweeps together. It is the only modulation source that can lock to the tempo. Its settings belong to the clip, not to the sound, so changing PRESETS keeps the LFO as it is.</p>
 <table>
 <caption>LFO 1 and LFO 1 MORE settings</caption>
 <thead><tr><th scope="col">Knob</th><th scope="col">Values</th><th scope="col">What it does</th></tr></thead>

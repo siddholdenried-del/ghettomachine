@@ -77,7 +77,7 @@ midi 82 3C 00
 wait 100
 tap SAVE
 wait 350
-expect projfmt 7
+expect projfmt 8
 reboot
 wait 600
 expect color1_5 0
