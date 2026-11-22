@@ -54,6 +54,8 @@
     "bongcult-frame/windchest/tracks.png",
     "bongcult-frame/windchest/windchest-frame.png",
     "chapter-redirect.js",
+    "drumengine/drumengine.css",
+    "drumengine/index.html",
     "dungeon-bbs-tokens.css",
     "emu/app.js",
     "emu/app.wasm",
@@ -176,7 +178,8 @@
     "/guide/setup/",
     "/emu/",
     "/technical/",
-    "/guide/sounds/"
+    "/guide/sounds/",
+    "/drumengine/"
   ],
   "schema": 1,
   "site": "https://ghettomachine.bongcult.com",

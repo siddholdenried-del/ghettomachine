@@ -252,7 +252,7 @@ LANDING = """<div class="hero gm-home">
     <a class="gm-button gm-primary" href="/guide/">Open the User Guide</a>
     <a class="gm-button" href="/emu/">Play in browser</a>
   </div>
-  <p class="gm-home-links"><a href="/technical/">How it works</a> · <a href="REPO">Source on GitHub</a></p>
+  <p class="gm-home-links"><a href="/technical/">How it works</a> · <a href="/drumengine/">DrumEngine architecture</a> · <a href="REPO">Source on GitHub</a></p>
   <details class="gm-technical-topics">
     <summary>Technical topics</summary>
     TECHNICAL_TOPIC_LINKS
@@ -364,6 +364,7 @@ def build_landing(out):
     contents = contents.replace('<div class="screen">', '<div class="screen gm-chapter-head"><div class="gm-title-copy">', 1)
     contents = contents.replace('  <p class="lede">', frontispiece("technical") + '</div>\n  <p class="lede">', 1)
     (tech_dir / "index.html").write_text(render_document(head, "Inside GhettoMachine · Technical tour", "/technical/", contents))
+    shutil.copytree(ROOT / "site" / "drumengine", out / "drumengine", dirs_exist_ok=True)
     (out / "guide-toc.js").write_text(TOC_SCRIPT)
     slugs = [slug for slug, _, _ in GUIDE]
     if slugs != [slug for _, members in GUIDE_PARTS for slug in members] or set(CHAPTER_SUMMARIES) != set(slugs):

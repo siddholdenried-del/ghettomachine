@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1a1023">
+<meta name="description" content="Inside GhettoMachine DrumEngine: eleven synthesized pads, six voice families and a stereo drum bus, measured on the M‑VAVE FM‑1.">
+<title>GhettoMachine DrumEngine · BongCult</title>
+<link rel="canonical" href="https://ghettomachine.bongcult.com/drumengine/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/bongcult-frame/editorial/mast.css">
+<link rel="stylesheet" href="/drumengine/drumengine.css">
+</head>
+<body class="gm-bong-cult">
+<a class="skip" href="#main">Skip to architecture</a>
+<header class="gm-family">
+  <a class="gm-family-brand" href="https://bongcult.com/" aria-label="BongCult"><img src="/bong-cult-logo.svg" width="145" height="54" alt="BongCult"></a>
+  <nav class="gm-family-links" aria-label="Bong Cult"><a href="https://bongcult.com/">Journal</a><a href="https://tools.bongcult.com/">Audio Tools</a><a href="https://bongcult.com/guestbook/">Guestbook</a><a href="https://bongcult.com/about/">About</a></nav>
+</header>
+<main id="main" class="wrap" tabindex="-1">
+  <header class="hero">
+    <div class="plaque">
+      <p class="tag">BongWare firmware / GhettoMachine</p>
+      <h1>GhettoMachine <span>DrumEngine</span></h1>
+      <p>Eleven pads. Six synthesis families. Every voice is generated on the hit, not read from a sample bank.</p>
+      <a href="/guide/">GhettoMachine manual ↗</a>
+    </div>
+    <div class="plate" aria-hidden="true">
+      <svg viewBox="0 0 280 108"><path d="M0 54h280M70 0v108m70-108v108m70-108v108"/><path d="M0 55h29l12-43 10 77 12-61 12 45 13-38 13 31 12-27 14 24 14-19 14 16 14-13 14 10 15-8 15 7 17-5 15 4 35-1"/></svg>
+      <span>FIG. A / A DRUM TAIL</span>
+    </div>
+  </header>
+  <div class="article">
+    <nav class="toc" aria-label="On this page"><span class="tag">Contents</span><a href="#signal">Signal path</a><a href="#voices">Voice families</a><a href="#metal">Shared metal source</a><a href="#bus">Drum bus</a><a href="#budget">FM‑1 measurements</a></nav>
+    <div class="sections">
+      <section id="signal"><p class="tag">01 / Architecture</p><h2>From step to speaker</h2>
+      <p>A pad press and a sequenced step hit the same voice code. Each strike takes the pad’s current settings and velocity. Edits shape the next strike; a preset change does not have to cut off a cymbal that’s already ringing.</p>
+      <figure class="flow"><ol><li><span>01</span>Pad or sequencer</li><li><span>02</span>Voice + hit envelope</li><li><span>03</span>Stereo mix + ROOM / DIGI returns</li><li><span>04</span>Four-stage drum bus</li></ol><figcaption>The drum path feeds the instrument mix. It does not replace the firmware’s master processing.</figcaption></figure></section>
+      <section id="voices"><p class="tag">02 / Sound generation</p><h2>Six synthesis families</h2>
+      <dl class="voices">
+      <div><dt><span>01</span>Kick</dt><dd>A pitched body, fast pitch envelope and separate click. <strong>808 Round</strong> and <strong>909 Punch</strong> are editable presets of the same kick voice: longer low-end weight versus a stronger beater and a wider pitch sweep.</dd></div>
+      <div><dt><span>02</span>Snare</dt><dd>Two pitched shell modes and a separate noise layer for the wires.</dd></div>
+      <div><dt><span>03</span>Clap</dt><dd>A short succession of noise bursts gives the initial slap; a smoother decay follows it.</dd></div>
+      <div><dt><span>04–06</span>Toms</dt><dd>One membrane-and-mallet design in three registers, with independent tuning and decay. The Round Tom preset settles at about 97, 142 or 204 Hz depending on the pad.</dd></div>
+      <div><dt><span>07–09</span>Metal</dt><dd>Closed and open hats share the metallic oscillator design with the cymbal pad. Pad 9 also covers ride, riser and noise-drop sounds.</dd></div>
+      <div><dt><span>10–11</span>Percussion</dt><dd>Two independently editable SY‑1-inspired voices. The same slots can cover a downward zap, metallic FM, a velocity-driven upward sweep or a filtered noise hit.</dd></div>
+      </dl></section>
+      <section id="metal"><p class="tag">03 / Shared work</p><h2>Six pulses, separate tails</h2>
+      <p>The metal voices share a six-pulse oscillator source when their active tuning matches. A second active tuning uses a second bank, so a new articulation does not force the old one to retune. Each voice keeps its own filtering and envelope. The closed hat chokes the open hat, not the cymbal or percussion.</p>
+      <p>V6 computes the shared pulse bank in small blocks before filtering it. The revised pulse calculation reproduced the earlier output in the verification tests. This is why sharing saves work without turning all the metal voices into variations of one envelope.</p></section>
+      <section id="bus"><p class="tag">04 / Signal processing</p><h2>The drum bus</h2>
+      <p>Each pad feeds the stereo mix and has independent sends to ROOM reverb and DIGI delay. The returns join the stereo drums before group gain and pan. The four processors then run in this order:</p>
+      <ol class="bus"><li><b>Saturator</b><span>Adds harmonics.</span></li><li><b>Compressor</b><span>Controls the stereo group’s dynamics.</span></li><li><b>Transient</b><span>Rounds or emphasizes the attack.</span></li><li><b>Limiter</b><span>Catches sample peaks, including the effects returns.</span></li></ol>
+      <p><strong>Dry</strong> keeps the pad and group mix but bypasses the audible returns and the four bus stages. <strong>Bus</strong> lets you hear the processing on the same groove. The limiter sets a sample-peak ceiling, not a guaranteed true-peak ceiling.</p></section>
+      <section id="budget"><p class="tag">05 / Instrument measurements</p><h2>What fits on the FM‑1</h2>
+      <p>Results from the physical FM‑1 running development build V6, at 44.1 kHz and 256 frames: <strong>5.805 ms per callback</strong>. These are whole-instrument peaks with the full drum bus enabled, not time spent in the drum engine alone.</p>
+      <dl class="bench"><div><dt>Factory groove</dt><dd><strong>3.375 ms</strong><span>58.1% of deadline</span></dd></div><div><dt>Factory rack + four sounding synth voices</dt><dd><strong>4.777 ms</strong><span>82.3% of deadline</span></dd></div><div><dt>Dense hits + four synth voices + rapid cymbal preset changes</dt><dd><strong>5.534 ms</strong><span>95.3% of deadline</span></dd></div></dl>
+      <p>The scored runs had no missed deadlines or early drum-tail cuts. The last run hit the synth voice guard 17 times. That kept playback on time, but it wasn’t full synth polyphony throughout.</p>
+      <p class="fine">This page documents the V6 development build and its test conditions. It is not a firmware download or a claim that the public browser emulator runs this build.</p></section>
+    </div>
+  </div>
+  <footer><a href="/">GhettoMachine home</a> <a href="https://bongcult.com/">BongCult Journal</a></footer>
+</main>
+</body>
+</html>

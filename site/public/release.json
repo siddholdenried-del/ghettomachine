@@ -216,6 +216,14 @@
       "bytes": 460,
       "sha256": "54224b06a8ffe51621547e0b1a8081811fcf06bff9614e829c5d1f1a86a3a969"
     },
+    "drumengine/drumengine.css": {
+      "bytes": 3839,
+      "sha256": "49333664a9c5fc7c114b0a3d5339873c1f4d71a514a361723061a9c66005e64c"
+    },
+    "drumengine/index.html": {
+      "bytes": 7126,
+      "sha256": "c666d09ca28d37c4b6163581fda3c5903b71dc9994ba969d674aa945193e80fa"
+    },
     "dungeon-bbs-tokens.css": {
       "bytes": 1052,
       "sha256": "45aa96236241aceb26c8a824f558e570a84fed17f73e8bf39a62b8038bb97cf2"
@@ -281,8 +289,8 @@
       "sha256": "cb738f8ea7f4358ad13f1c5e33579fb93f71cd5bb6d91f484bdb030b1842dd15"
     },
     "guide/index.html": {
-      "bytes": 27859,
-      "sha256": "35768a855b93d60ef4c79274df3c1f2f84523c840083fb14ed0c4a6091490e77"
+      "bytes": 27907,
+      "sha256": "3e4615a9251c217ff0dc49ed018a9a29d28e633513c4e0cb2a7924cd7f2f7ad0"
     },
     "guide/mixer/index.html": {
       "bytes": 23123,
@@ -313,8 +321,8 @@
       "sha256": "8a36e31630b04f125caf88199e4c35c07fda4ca8f3e592c4f2a83d89d72b26f3"
     },
     "index.html": {
-      "bytes": 14711,
-      "sha256": "81d45563e954e4c98f489b3ea161454019291b4c2a6a63d0d2781b481651f428"
+      "bytes": 14765,
+      "sha256": "c0b9c243b59bbd6d421fd92528e0f26168e49e28e19962dd92cbebc2755d5d55"
     },
     "technical/index.html": {
       "bytes": 74898,
