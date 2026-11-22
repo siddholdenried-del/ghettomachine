@@ -9,8 +9,8 @@
       "sha256": "1f41ff7770b55d1a465a3ece6d23b970bf0e6b049e41559f5f9ed4a87b9a2224"
     },
     "bong-cult-shell.css": {
-      "bytes": 13238,
-      "sha256": "486eabc3204db05494e5b93c19d6caeaf6ce41f3733ad6a873e6ce285a0c588e"
+      "bytes": 15230,
+      "sha256": "42349766a8c99da2f202739824d70b74044a4f0ace00b9e1a8ea46f731790d18"
     },
     "bongcult-frame/frame.css": {
       "bytes": 1455,
@@ -23,6 +23,34 @@
     "bongcult-frame/trim-rosette.webp": {
       "bytes": 1358,
       "sha256": "abef9fa0a59dbce27415b79f1c679aea618ca6126bf35d2a3896ac916beccc41"
+    },
+    "bongcult-frame/windchest/keys-small.png": {
+      "bytes": 2501,
+      "sha256": "f3c80ae3af19d3875247668706fe8e0bc111cfed6f6939d330a9f99736fc15f0"
+    },
+    "bongcult-frame/windchest/keys.png": {
+      "bytes": 48845,
+      "sha256": "f0ac2c4acc3df5dd9be24834b40c77aa2d29f206b7deb367d5bb7709d89ae15a"
+    },
+    "bongcult-frame/windchest/manual-small.png": {
+      "bytes": 1892,
+      "sha256": "df43101623d9f8c5f8795900adc3ca68520719b7683e862b25122f7e61cd958c"
+    },
+    "bongcult-frame/windchest/manual.png": {
+      "bytes": 25159,
+      "sha256": "7fdd61697290cc9ccba1947789975668623829915461ff4c90be142e128e52e8"
+    },
+    "bongcult-frame/windchest/tracks-small.png": {
+      "bytes": 2083,
+      "sha256": "314a171169c15076c60b12a53b6b853f00d2b7198512e7e52b43da4a95138971"
+    },
+    "bongcult-frame/windchest/tracks.png": {
+      "bytes": 26339,
+      "sha256": "27629b66327bbb9e2491253bbd84825aa1e206320d24766aae0fb83df036b6f7"
+    },
+    "bongcult-frame/windchest/windchest-frame.png": {
+      "bytes": 83072,
+      "sha256": "f4ad2d91c4310dcc54852dc265311c8758c79003b543710fb891c3e83d8395bd"
     },
     "chapter-redirect.js": {
       "bytes": 460,
