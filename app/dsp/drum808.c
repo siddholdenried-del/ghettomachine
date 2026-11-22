@@ -1808,6 +1808,34 @@ static int voice_run(drum808_t *d, int l, float *buf, int m, const float *bus, c
 /* the track each lane belongs to (its pan): the clave is the RS track's, the maracas the CP's */
 static const uint8_t k_lane_track[L_NUM] = {D8_BD, D8_SD, D8_LT, D8_MT, D8_HT, D8_RS, D8_RS, D8_CP, D8_CP,
                                             D8_CB, D8_CH, D8_OH, D8_CY};
+/* Query real circuit lanes, including the clap/maracas and rim/clave pair.
+ * The existing output choke runs after shaping and feeds every bus; a fresh
+ * trigger resets cg/cstep on just its own lane. */
+static int governor_lane(const drum808_t *d, int l, int track)
+{
+    return k_lane_track[l] == track && lane_on(d, l) && d->lane[l].cstep == 0.0f;
+}
+
+int drum808_governor_tail_active(const drum808_t *d, int track)
+{
+    if (track < D8_LT || track >= D8_NUM) return 0;
+    for (int l = L_T0; l < L_NUM; ++l)
+        if (governor_lane(d, l, track)) return 1;
+    return 0;
+}
+
+int drum808_governor_release_tail(drum808_t *d, int track)
+{
+    if (track < D8_LT || track >= D8_NUM) return 0;
+    int changed = 0;
+    for (int l = L_T0; l < L_NUM; ++l)
+        if (governor_lane(d, l, track)) {
+            choke_lane(&d->lane[l]);
+            changed = 1;
+        }
+    return changed;
+}
+
 static float *d8_dry_r;         /* the render in progress: its right side (0: mono) */
 
 static void lane_mix(drum808_t *d, d8_lane_t *l, const float *buf, int m, float *dry, float *rev, float *dly)
@@ -1899,7 +1927,11 @@ static void d8_render(drum808_t *d, float *dry, float *rev, float *dly, int n)
                 d8_dry_r = dr;
             }
 #if D8_TAIL_DB
-            lane_tail(d, l, buf, got);
+            /* The peak-relative cutoff sees the signal before drive. BD/SD
+             * can still be audible after it trips; let their native circuits
+             * reach their own quiet endpoints at every processor load. */
+            if (l != L_BD && l != L_SD)
+                lane_tail(d, l, buf, got);
 #endif
         }
     }

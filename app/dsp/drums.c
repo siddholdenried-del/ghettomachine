@@ -91,6 +91,27 @@ void drums_render(int kit, float *l, float *r, float *rev, float *dly, int n)
 
 int drums_active(int kit) { return kit == KIT_808 ? drum808_active(&d808) : kit == KIT_909 ? drum909_active(&d909) : 0; }
 
+static int governor_pad(int pad)
+{
+    return pad >= DR_LT && pad < DRUMS_NPADS;   /* never truncate kick or snare */
+}
+
+int drums_governor_tail_active(int pad)
+{
+    if (!governor_pad(pad)) return 0;
+    return drum909_governor_tail_active(&d909, pad) ||
+           drum808_governor_tail_active(&d808, PAD808[pad]);
+}
+
+int drums_governor_release_tail(int pad)
+{
+    if (!governor_pad(pad)) return 0;
+    /* A factory-to-factory change can leave the preceding kit ringing. */
+    int a = drum909_governor_release_tail(&d909, pad);
+    int b = drum808_governor_release_tail(&d808, PAD808[pad]);
+    return a || b;
+}
+
 int drums_nparams(int kit, int pad)
 {
     int v = voice(kit, pad);

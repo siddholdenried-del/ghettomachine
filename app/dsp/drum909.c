@@ -426,6 +426,7 @@ void drum909_trigger(drum909_t *d, int voice, float vel)
 {
     if (voice < 0 || voice >= DR_NUM)
         return;
+    d->tail_fade[voice] = 0;   /* a new hit owns this lane immediately */
     if (!(vel >= 0.0f)) vel = 0.0f;
     if (vel > 1.0f) vel = 1.0f;
     const float vgain = d->accent * (1.0f - d->vel_depth * (1.0f - vel));
@@ -485,7 +486,9 @@ void drum909_trigger(drum909_t *d, int voice, float vel)
         d9_smp_t *s = &d->smp[voice - DR_CH];
         if (voice == DR_CH || voice == DR_OH) {
             /* one pair of cymbals: each choke the other with a 3 ms fade */
-            d9_smp_t *o = &d->smp[voice == DR_CH ? DR_OH - DR_CH : 0];
+            int peer = voice == DR_CH ? DR_OH : DR_CH;
+            d9_smp_t *o = &d->smp[peer - DR_CH];
+            if (d->tail_fade[peer] == 0) d->tail_fade[peer] = -1;
             d9_env_exp(&o->out, 0.00001f, 3.0f * 0.001f * D9_SR);
             o->mute = d9_ceil(6.0f * 0.001f * D9_SR);
         }
@@ -503,6 +506,7 @@ void drum909_trigger(drum909_t *d, int voice, float vel)
 /* Silence one lane before the next render, preserving pots and other voices. */
 void drum909_cut(drum909_t *d, int voice)
 {
+    if ((unsigned)voice < DR_NUM) d->tail_fade[voice] = 0;
     switch (voice) {
     case DR_BD: case DR_SD: d->bt[voice].mute = 0; break;
     case DR_LT: case DR_MT: case DR_HT: d->tom[voice - DR_LT].mute = 0; break;
@@ -735,6 +739,12 @@ static void d9_render_clap(d9_clap_t *v, const float *nz, const d9_bus_t *bus, i
 
 /* Hats, ride, crash (render_sampler). Past the sample's end and at a whole-number rate: after Optimist
  * (github.com/w0ts/optimist 537fbf00, GPL-3.0-only), the same samples */
+static int sample_finished(const d9_smp_t *s)
+{
+    return s->pos >= s->len && (s->drive <= 0.25f || s->shape.type == 0 ||
+           s->shape.type == 2 || s->shape.type == 4 || s->shape.type == 5);
+}
+
 static void d9_render_smp(d9_smp_t *s, const d9_bus_t *bus, int n)
 {
     if (!s->playing)
@@ -747,8 +757,7 @@ static void d9_render_smp(d9_smp_t *s, const d9_bus_t *bus, int n)
      * the drive stage's +0 for the shapes that give +0 at 0 (Diode, SAT, PDIST, Fold; not the asymmetric clip or
      * BFZ, whose small DC at 0 stays, nor Crush, whose hold count runs on): nothing to add. The envelope is not
      * needed again (a hit sets it anew; a choke's ramp only scales these 0s) */
-    if (s->pos >= len && (!drive || s->shape.type == 0 || s->shape.type == 2 || s->shape.type == 4
-                          || s->shape.type == 5))
+    if (sample_finished(s))
         return;
     d9_env_anchor(&s->out);
     const float pre = 1.0f + s->drive * 0.5f;
@@ -804,6 +813,67 @@ static inline void d9_bus(d9_bus_t *b, drum909_t *d, int voice, float *dry, floa
     b->dly = b->sdly != 0.0f ? dly : 0;
 }
 
+enum { GOVERNOR_FADE = 64 };      /* 1.45 ms at 44.1 kHz */
+
+int drum909_governor_tail_active(const drum909_t *d, int voice)
+{
+    if (voice < DR_LT || voice >= DR_NUM || d->tail_fade[voice]) return 0;
+    if (voice <= DR_HT) return d->tom[voice - DR_LT].mute > 0;
+    if (voice == DR_RS) return d->rim.mute > 0;
+    if (voice == DR_CP) return d->clap.mute > 0;
+    const d9_smp_t *s = &d->smp[voice - DR_CH];
+    return s->playing && s->mute > 0 && !sample_finished(s);
+}
+
+int drum909_governor_release_tail(drum909_t *d, int voice)
+{
+    if (!drum909_governor_tail_active(d, voice)) return 0;
+    d->tail_fade[voice] = GOVERNOR_FADE;
+    return 1;
+}
+
+static inline void render_tail(drum909_t *d, int voice, const float *nz, const d9_bus_t *bus, int n)
+{
+    if (voice <= DR_HT)
+        d9_render_tom(&d->tom[voice - DR_LT], &d->bt[voice], nz, bus, n);
+    else if (voice == DR_RS)
+        d9_render_rim(&d->rim, nz, bus, n);
+    else if (voice == DR_CP)
+        d9_render_clap(&d->clap, nz, bus, n);
+    else
+        d9_render_smp(&d->smp[voice - DR_CH], bus, n);
+}
+
+/* Apply the pressure ramp after the voice's distortion and before pan and
+ * sends. The regular per-sample path never checks a fade flag. This stack
+ * buffer is used only during release, with at most 64 samples in total. */
+static __attribute__((noinline)) void render_release(drum909_t *d, int voice, const float *nz,
+                                                    const d9_bus_t *bus, int n)
+{
+    float x[GOVERNOR_FADE];
+    d9_bus_t mono = {0};
+    mono.dry = x;
+    int left = d->tail_fade[voice];
+    int m = n < left ? n : left;
+    for (int i = 0; i < m; ++i) x[i] = 0;
+    render_tail(d, voice, nz, &mono, m);
+    for (int i = 0; i < m; ++i) {
+        float g = left * (1.0f / GOVERNOR_FADE);
+        d9_emit(bus, i, x[i] * g * g);
+        --left;
+    }
+    d->tail_fade[voice] = (int8_t)left;
+    if (!left) drum909_cut(d, voice);
+}
+
+static inline void route_tail(drum909_t *d, int voice, const float *nz, const d9_bus_t *bus, int n)
+{
+    if (d->tail_fade[voice] > 0)
+        render_release(d, voice, nz, bus, n);
+    else
+        render_tail(d, voice, nz, bus, n);
+}
+
 static void d9_render(drum909_t *d, float *dry, float *rev, float *dly, int n)
 {
     d9_bus_t bus;
@@ -834,22 +904,22 @@ static void d9_render(drum909_t *d, float *dry, float *rev, float *dly, int n)
     for (int t = 0; t < 3; ++t)
         if (d->tom[t].mute > 0) {
             d9_bus(&bus, d, DR_LT + t, dry, rev, dly);
-            d9_render_tom(&d->tom[t], &d->bt[DR_LT + t], nz, &bus, n);
+            route_tail(d, DR_LT + t, nz, &bus, n);
         }
     if (d->rim.mute > 0) {
         d9_bus(&bus, d, DR_RS, dry, rev, dly);
-        d9_render_rim(&d->rim, nz, &bus, n);
+        route_tail(d, DR_RS, nz, &bus, n);
     }
     if (d->clap.mute > 0) {
         d9_bus(&bus, d, DR_CP, dry, rev, dly);
-        d9_render_clap(&d->clap, nz, &bus, n);
+        route_tail(d, DR_CP, nz, &bus, n);
     }
     static const uint8_t order[4] = { DR_OH, DR_RD, DR_CR, DR_CH };
     for (int k = 0; k < 4; ++k) {
         d9_smp_t *s = &d->smp[order[k] - DR_CH];
         if (s->mute > 0) {
             d9_bus(&bus, d, order[k], dry, rev, dly);
-            d9_render_smp(s, &bus, n);
+            route_tail(d, order[k], nz, &bus, n);
         }
     }
 }

@@ -1,14 +1,21 @@
-# Begin with a real format-5 save, configure both candidate features, and round-trip them together. (The save was made
-# on the 606, cut on 21 Nov: it loads on the 808.)
+# Load a real v5 project, change one drum's source and its own level, enable
+# drum Color, then save and reload into v8. The discontinued 606 kit becomes
+# the 808. Its historic T2 insert is retained as opaque project data.
 flash_load app/tests/fixtures/proj_v5.img
 reboot
 wait 600
 expect projfmt 5
 expect kit 1
 expect insert2 2
+expect insert2_0 38
+expect insert2_1 88
+expect insert2_2 64
+expect insert2_3 110
 expect pot7_0 64
 expect color3_5 0
-# Mix a 909 open-hat lane into the kit.
+
+# Assign the 909 open hat to the 808 kit. K1 on its first EDIT page now
+# controls the 909 Level (97). The neighboring closed hat stays with the 808.
 key 20 down
 wait 30
 key 20 up
@@ -22,10 +29,16 @@ wait 30
 expect model8 0
 expect model7 1
 expect kitcustom 1
-# Put Color on T3. Open the mixed hat and the synth together.
-turn ALGO 2
+turn SELECT -8
 wait 30
-expect trk 3
+expect pad 8
+expect pot8_0 97
+spin K1 -8
+wait 30
+expect pot8_0 89
+expect pot7_0 64
+
+# Drum Color processes this mixed drum track. Trigger the hat and synth together.
 tap FX
 wait 30
 tap FX
@@ -39,14 +52,19 @@ wait 30
 expect page 17
 spin K4 1
 wait 30
-expect color3_5 1
-expect color1_5 0
+expect color1_5 1
+turn ALGO 2
+wait 30
+expect trk 3
+expect page 5
+expect color3_5 0
 midi 92 3C 7F
 midi 99 2E 7F
 wait 35
 expect stem1 >-600
 expect stem3 >-600
-# Mute only the drums; their current 909 hat cuts, T3 keeps processing.
+
+# Muting only the drums cuts the mixed hat, including its Color state.
 tap HOME
 wait 30
 key 1 down
@@ -77,8 +95,14 @@ expect projfmt 8
 expect kitcustom 1
 expect model8 0
 expect model7 1
-expect color1_5 0
+expect pot8_0 89
+expect pot7_0 64
+expect color1_5 1
 expect color2_5 0
-expect color3_5 1
+expect color3_5 0
 expect color4_5 0
 expect insert2 2
+expect insert2_0 38
+expect insert2_1 88
+expect insert2_2 64
+expect insert2_3 110

@@ -1,12 +1,7 @@
-# The sections' budgets (0.5): the drums 20 %, the synth 30 %, the effects 25 % of a block's time (1161, 1741 and 1451
-# of its 5805 us), and the guard: a block that took over 90 % (5224 us) on the first core cuts every drum sound not
-# just hit and sheds two voices at once (govguard: its blocks so far). Over its share a section gives up its least important work: the synth's voices are capped at what
-# its share buys (a voice over the cap fades out in about 10 ms, whatever its release), the drums' oldest ringing sound
-# is cut, a Color strip and then an insert leave the chain and come back when there is room. The simulator's clock is
-# the computer's, so the budgets see the times a test gives them (cpufakeN_US: stage N takes US microseconds a block;
-# 0 DRUMS 1 SYNTH 2 INSERT+COLOR 3 REVERB+DELAY). govcap: the synth's voices allowed; govshed: voices shed so far;
-# govcuts: drum sounds cut so far; govfx: the effects out now (bit t: track t's Color, bit 4 + t: its insert).
-#   tools/build.py ../../app --host, then  app/build/host/ghettomachine_host app/tests/budgets.txt OUTDIR
+# A 256-frame half at 44.1 kHz has 5804.99 us. The soft drum target is 25%,
+# the synth target is 30%, and drum Color plus shared returns have 25%.
+# cpufakeN_US supplies deterministic stage times solely to the load governor.
+# Stages 0, 1, 2, 3 and 6 are drums, synth, drum Color, returns and core 0 total.
 wait 600
 master 4096
 expect govcap 16
@@ -62,53 +57,28 @@ key 5 up
 key 7 up
 key 9 up
 wait 30
-# ---- the drums: the default beat playing; over their share the oldest sound ringing is cut, a block at a time
+# ---- The default beat stays intact at 1451 us. At 1452 us eligible ringing tails release.
 turn ALGO -2
 wait 30
 expect trk 1
 tap PLAY
 wait 1000
 expect govcuts 0
-expect cpufake0_2000 1
+expect cpufake0_1451 1
 wait 500
+expect govcuts 0
+expect cpufake0_1452 1
+wait 700
 expect govcuts >0
 expect cpufake0_0 1
 tap PLAY
 wait 300
-# ---- the effects: Color on T2 and on the drums, an insert on T3; over their share they leave one at a time in
-# order (the drums' Color, then T2's, then T3's insert: 1, then 1 + 2, then 1 + 2 + 64), and come back one every 4 s
-turn ALGO 1
-wait 30
-expect trk 2
-tap FX
-wait 30
-tap FX
-wait 30
-tap FX
-wait 30
-tap FX
-wait 30
-tap FX
-wait 30
-expect page 17
-spin K4 1
-wait 30
-turn ALGO 1
-wait 30
-expect trk 3
-press SEL
-wait 30
-tap FX
-wait 30
-release SEL
-wait 30
-expect page 16
-turn SELECT 3
-wait 30
-spin K4 64
-wait 30
-turn ALGO -2
-wait 30
+# Shared returns contribute to cost, but there is nothing to shed until drum Color is enabled.
+expect cpufake3_1800 1
+wait 200
+expect govfx 0
+expect cpufake3_0 1
+wait 200
 expect trk 1
 tap FX
 wait 30
@@ -123,28 +93,27 @@ wait 30
 expect page 17
 spin K4 1
 wait 30
+expect color1_5 1
 expect govfx 0
+# Color plus returns (1800 us) exceeds the 1451 us threshold. Only the drum strip leaves.
 expect cpufake2_1000 1
 expect cpufake3_800 1
-wait 60
+wait 160
 expect govfx 1
-wait 50
-expect govfx 3
-wait 50
-expect govfx 67
-# with room again: back in the reverse order, the last out first, one every 4 s
+# Between 60% and 100% of the budget the bypass holds. Well below 60% it recovers.
+expect cpufake2_500 1
+expect cpufake3_500 1
+wait 250
+expect govfx 1
 expect cpufake2_100 1
 expect cpufake3_300 1
-wait 300
-expect govfx 3
-wait 4100
-expect govfx 1
-wait 4100
+wait 250
 expect govfx 0
+expect color1_5 1
 expect cpufake2_0 1
 expect cpufake3_0 1
-# ---- the guard: the drums playing, six voices held, and a block of 5500 us: the voices down by two a block to the
-# floor of three, the drums' ringing sounds cut
+# ---- the guard: the drums playing, six voices held, and a block above 90%: the voices down by two a block to the
+# floor of three. The drum guard shares its hat-first selection with the stage budget.
 tap PLAY
 wait 600
 turn ALGO 2
@@ -163,8 +132,10 @@ wait 20
 key 9 down
 wait 100
 expect voices3 6
+expect cpufake6_5224 1
+wait 100
 expect govguard 0
-expect cpufake6_5500 1
+expect cpufake6_5225 1
 wait 100
 expect govguard >0
 expect voices3 3
@@ -184,7 +155,10 @@ listen
 wait 100
 where
 wait 100
-said CPU 0 MAX
+said CPU
+where
+wait 100
+said MAX
 where
 wait 100
 said CAP 16 POOL 16

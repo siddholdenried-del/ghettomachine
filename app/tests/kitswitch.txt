@@ -1,6 +1,7 @@
 # A kit change stops the kit that leaves (0.5): its tails used to ring on under the new kit's hits, two kits to render
 # at once (on the FM-1 the drums took 44-48 % of a block at a scene's change, and blocks ran late). Now the old kit's
-# sounds are cut as the new one comes, by PRESETS or by a scene with its own kit (SOUNDS PER PATTERN).
+# sounds are cut as the new one comes, by PRESETS or by a scene with its own kit (SOUNDS PER PATTERN); only its kick
+# and its snare ring out (they are never cut short).
 #   tools/build.py ../../app --host, then  app/build/host/ghettomachine_host app/tests/kitswitch.txt OUTDIR
 # stem1: the drums' stem's peak since stemreset, dB x 10 (-1200: silence)
 wait 600
@@ -69,6 +70,11 @@ expect pat 2
 expect kit 0
 tap PLAY
 wait 100
+expect stemreset 1
+wait 200
+# (the 808's cymbal is gone: it rang over -70 dB. Its kick and its snare are never cut short: they ring out, far lower)
+expect stem1 <-800
+wait 2500
 expect stemreset 1
 wait 200
 expect stem1 -1200

@@ -126,12 +126,7 @@ void syn_prepare(void);
 void syn_half(uint32_t half);
 /* the mixer's view of a track (phase 5): pan 0..127 (64 the centre), its reverb and delay sends 0..1 */
 void syn_mixer(int trk, int pan, float rev, float dly);
-/* Optional track insert, called once per new synth block before pan/shared sends/stem. It returns 1 when it did
- * nothing and has nothing to give (silence in, its chain asleep on silence): the mix then leaves the track alone, and
- * the insert uncalled, until a voice sounds on it again (0.5: three silent tracks' inserts cost 3 % of a block) */
-typedef int (*syn_insert_fn)(int trk, float *l, float *r, unsigned frames);
-void syn_set_insert(int trk, syn_insert_fn fn);
-void syn_mix_repack(float *l, float *r, float *rev, float *dly); /* merge unmuted cached blocks without running inserts twice */
+void syn_mix_repack(float *l, float *r, float *rev, float *dly); /* merge unmuted cached blocks after a track cut */
 void syn_mix(float *l, float *r, float *rev, float *dly);   /* SYN_CTL samples each, overwritten: the mix and its sends */
 /* the same in parts (0.5: the tracks' mix shared between the two cores): each track once, on either core (its
  * buffers, its insert and its meters are its own), then the mix of them */

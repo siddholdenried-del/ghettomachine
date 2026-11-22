@@ -48,6 +48,11 @@ void drums_cut_mapped(int base, const uint8_t *map, int pad);
  * pads' reverb and delay sends (each pad's Rev and Dly knobs) into rev / dly (all overwritten) */
 void drums_render(int kit, float *l, float *r, float *rev, float *dly, int n);
 int drums_active(int kit);
+/* Only for CPU pressure, between render blocks. The sequencer protects recent
+ * hits separately. BD/SD cannot be selected. A release is specific to the
+ * sounding owners of this pad and does not inhibit its next trigger. */
+int drums_governor_tail_active(int pad);
+int drums_governor_release_tail(int pad);
 
 /* the parameters of a pad (or DRUMS_PAD_KIT): the engine's own descriptors and integer pots */
 int drums_nparams(int kit, int pad);

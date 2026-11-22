@@ -99,6 +99,8 @@ struct drum909 {
     float pan_lc[DR_NUM], pan_rc[DR_NUM]; /* where each voice's pan gains are now, gliding to pan_l/r */
     float pan_dl[DR_NUM], pan_dr[DR_NUM]; /* this block's glide per sample */
     float accent, vel_depth;      /* kit */
+    /* 0 eligible, positive samples left in governor fade, -1 natural hat choke. */
+    int8_t tail_fade[DR_NUM];
     uint32_t noise;
     float nz_buf[DR_NZ_BUF];      /* noise, linear; the block plus >= DR_NZ_HIST before it */
     int32_t nz_pos;               /* where the next block's noise starts */
@@ -109,6 +111,8 @@ typedef struct drum909 drum909_t;
 void drum909_init(drum909_t *d);
 void drum909_trigger(drum909_t *d, int voice, float vel);
 void drum909_cut(drum909_t *d, int track);
+int drum909_governor_tail_active(const drum909_t *d, int voice);
+int drum909_governor_release_tail(drum909_t *d, int voice);
 void drum909_render(drum909_t *d, float *dry, float *rev, float *dly, int n);
 /* X0X stereo: each voice placed by its PAN into dry_l / dry_r (sends mono); all centred, both are
  * drum909_render's dry exactly */

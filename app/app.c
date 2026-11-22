@@ -18,7 +18,6 @@
 #include "dsp/synth.h"
 #include "dsp/track_insert.h"
 #include "dsp/color.h"
-#include "dsp/preset_color.h"
 #include "dsp/fx.h"
 #include "dsp/uimath.h"
 #include "logo.h"                       /* tools/gen_logo.py: the boot screen's logo */
@@ -324,13 +323,8 @@ static const plat_file_t PROJ_FILE = {0x97000u, 0x9F000u, 8u * 4096u};
 _Static_assert(PROJ_V3_SIZE == 32120u, "format 3 as 0.4 saved it");
 
 static project_t proj PLAT_POOL;
-/* The FM-1 linker has distinct BSS/POOL budgets. Balance six fixed delay
- * channels between them; no flash or sampler memory is borrowed. */
-static track_insert_t insert_rt[NINST];
-static color_state_t color_rt[NTRK];
+static color_state_t drum_color_rt;
 static color_sends_t color_drums_send;
-static int16_t insert_ring[(NINST * 2) - 1][TI_DELAY];
-static int16_t insert_pool[TI_DELAY] PLAT_POOL;
 static uint8_t (*kit_pots(int k))[NPOTS] { return k == KIT_707 ? proj.pots707 : k == KIT_606 ? proj.pots606 : proj.pots[k]; }
 static int drum_model(int pad) { return drums_model(proj.kit, proj.model, pad); }
 
@@ -409,7 +403,7 @@ static void sync_drum_mutes(void)
         return;
     drum_mutes_applied = mask;
     roll_inhibit_pads |= cut;
-    if (cut) color_reset(&color_rt[TR_DRUM]); /* no history from a newly cut lane */
+    if (cut) color_reset(&drum_color_rt); /* no history from a newly cut lane */
     for (pad = 0; cut && pad < NPADS; pad++)
         if (cut >> pad & 1u) {
             drums_cut_mapped(proj.kit, proj.model, pad);
@@ -418,25 +412,20 @@ static void sync_drum_mutes(void)
 }
 
 /* The sections' budgets (0.5; govern(), before app_render): each section a share of a block's time, kept by giving
- * up its least important work: the drums BUD_DRUMS % (over it, the oldest ringing sound is cut), the synth BUD_SYNTH %
+ * up its least important work: the drums BUD_DRUMS % (release an aged hat tail first, then other percussion;
+ * the kick and snare keep their full decay even if these two alone exceed the target), the synth BUD_SYNTH %
  * (its voices capped at what that buys, at the cost a voice is measured to have; a voice over the cap fades out in
- * about 10 ms), the effects BUD_FX % (the inserts, Color, the reverb and the delay together: over it, a Color strip,
- * then an insert, leaves the chain, and comes back when there is room; the reverb, the delay and the master bus
- * always stay). So no section can take the others' time */
-#define BUD_DRUMS 20                      /* (20 and 30 as asked; 30 and 40 for a day: fuller, but late blocks came
-                                           * back with them; back at 20 and 30 once the synth was cheaper, asked for) */
+ * about 10 ms), and the effects BUD_FX % (drum Color and the shared returns together). Drum Color can be bypassed
+ * until there is room again. The reverb, delay and master bus continue to run. */
+#define BUD_DRUMS 25
 #define BUD_SYNTH 30
 #define BUD_FX 25
-#define BUD_GUARD 90                      /* the guard: a block that took this much of its time on the first core (a
-                                           * kit changed with the old one's tails ringing, every section at its peak
-                                           * together): at once, every drum sound not just hit is cut and two synth
-                                           * voices are shed */
+#define BUD_GUARD 90                      /* one eligible drum tail and up to two synth voices when core 0 runs hot */
 static struct {
     uint32_t clock;                       /* blocks rendered */
     uint32_t pad_at[NPADS];               /* each pad's last hit (clock) */
-    uint16_t pad_live;                    /* the pads hit and not cut since */
     uint8_t cap;                          /* the synth's voices its budget allows */
-    uint8_t fx_shed;                      /* the effects out of the chain: bit t track t's Color, bit 4 + t its insert */
+    uint8_t fx_shed;                      /* drum Color bypassed by the budget */
     uint16_t fx_wait;                     /* blocks before the effects' next move */
     float per_voice, syn_base;            /* the synth: a voice's time a block and its time with none, us (measured) */
     float d_prev, fx_mean;                /* the drums' last block; the effects' running mean, us */
@@ -452,7 +441,6 @@ static void pad_fire(int pad, float vel)
         return;
     drums_trigger_mapped(proj.kit, proj.model, pad, vel);
     gov.pad_at[pad] = gov.clock;
-    gov.pad_live |= (uint16_t)(1u << pad);
     if (vel > pad_hit[pad])
         pad_hit[pad] = vel;
 }
@@ -820,8 +808,8 @@ static uint32_t crc32_of(const uint8_t *d, uint32_t n) { return ~crc32_more(0xFF
 
 /* the render's time by stage (0.5, CPU): plat_ticks24 (24 a microsecond: one register read on the FM-1) around each,
  * kept as a running mean in microseconds per block: SETUP shows it, the tests read it (cpuN). DRUMS: the kits and their
- * mix; SYNTH: the voices on both cores (waiting for the second included) and their mix; FX IN: the inserts and Color
- * (the drums' too); FX: the reverb and the delay; MASTER: the master bus; REST: the sequencer, the perform effects, the
+ * mix; SYNTH: the voices on both cores (waiting for the second included) and their mix; FX IN: drum Color;
+ * FX: the reverb and the delay; MASTER: the master bus; REST: the sequencer, the perform effects, the
  * metronome, the stems and the output */
 enum { CS_DRUMS, CS_SYNTH, CS_FXIN, CS_FX, CS_MASTER, CS_REST, CS_TOTAL, CS_NUM };
 static uint32_t cs_t[CS_NUM];             /* this block's ticks */
@@ -838,7 +826,7 @@ static float cs_mx[CS_MXB][CS_NUM];
 static uint8_t cs_mxi;
 static uint16_t cs_mxn;
 /* the synth's stage in three parts (speak): the control tick (the LFOs, the arpeggiators, syn_prepare), the voices
- * (both halves, the second core's waited for) and the mix (without the inserts and Color: FX IN's) */
+ * (both halves, the second core's waited for) and the dry track mix */
 enum { SY_PREP, SY_VOICES, SY_MIX, SY_NUM };
 static uint32_t sy_t[SY_NUM];             /* this block's ticks */
 static float sy_us[SY_NUM];               /* the running means, us per block */
@@ -848,12 +836,10 @@ static float gov_fake[CS_NUM];            /* the simulator: the stages' times th
 #endif
 #define CS_MARK(v) uint32_t v = plat_ticks24()
 
-/* GhettoMachine 0.5 (CPU): a track's insert and Color sleep once their input has been silent and their output too, for
- * FXS_AFTER samples (their tails rung out): silence in, silence out, no work. The track's next sound wakes them at once
- * (they pick up from silent lines). Silent: every sample under FXS_LEVEL (-120 dBFS) */
+/* Sleep the drum Color strip when both the dry signal and sends have gone quiet. */
 #define FXS_LEVEL 1.0e-6f
 #define FXS_AFTER 4096u
-static uint32_t fxs_quiet[NTRK];          /* samples the chain has given silence for silence */
+static uint32_t drum_color_quiet;          /* samples the chain has given silence for silence */
 static float fxs_peak(const float *a, const float *b, unsigned n)
 {
     float m = 0.0f;
@@ -865,53 +851,23 @@ static float fxs_peak(const float *a, const float *b, unsigned n)
     }
     return m;
 }
-static int fxs_asleep(int t, int in_quiet)  /* before the chain: 1 to skip it */
+static int fxs_asleep(int in_quiet)  /* before the chain: 1 to skip it */
 {
     if (!in_quiet)
-        fxs_quiet[t] = 0;
-    return in_quiet && fxs_quiet[t] >= FXS_AFTER;
+        drum_color_quiet = 0;
+    return in_quiet && drum_color_quiet >= FXS_AFTER;
 }
-static void fxs_after(int t, int in_quiet, int out_quiet, unsigned n)   /* after it: the quiet counted on */
+static void fxs_after(int in_quiet, int out_quiet, unsigned n)   /* after it: the quiet counted on */
 {
-    fxs_quiet[t] = in_quiet && out_quiet ? fxs_quiet[t] + n : 0u;
-}
-
-static int insert_process(int t, float *l, float *r, unsigned n)   /* 1: silence in, the chain asleep: nothing done */
-{
-    CS_MARK(t0);
-    int q = fxs_peak(l, r, n) < FXS_LEVEL, slept = 1;
-    if (!fxs_asleep(t, q)) {              /* (gov.fx_shed: out of the chain while the effects are over budget) */
-        slept = 0;
-        if (!(gov.fx_shed >> (4 + t) & 1u))
-            track_insert_process(&insert_rt[t-1], &proj.insert[t-1], l, r, n);
-        if (!(gov.fx_shed >> t & 1u))
-            color_run(&color_rt[t], &proj.color[t], l, r, n);
-        fxs_after(t, q, fxs_peak(l, r, n) < FXS_LEVEL, n);
-    }
-    fxin_t[plat_core() & 1u] += plat_ticks24() - t0;
-    return slept;
-}
-
-static void insert_route(int t)
-{
-    const track_insert_param_t *p = &proj.insert[t-1];
-    syn_set_insert(t, (((p->mode != TI_OFF && p->v[3]) || color_active(&proj.color[t])) && !(proj.tmute >> t & 1u)) ? insert_process : 0);
+    drum_color_quiet = in_quiet && out_quiet ? drum_color_quiet + n : 0u;
 }
 
 static void project_check(void)           /* a loaded project's values kept in range */
 {
     int i, t, s, n;
-    for (t = 0; t < NTRK; t++)
-        for (i = 0; i < COL_NUM; i++)
-            proj.color[t].v[i] = (uint8_t)clamp(proj.color[t].v[i], 0, i == COL_ON ? 1 : 127);
-
-    for (t = 0; t < NINST; t++) {
-        track_insert_param_t *p = &proj.insert[t];
-        if (p->mode >= TI_MODES)
-            track_insert_default(p, TI_OFF);
-        for (i = 0; i < 4; i++)
-            p->v[i] = (uint8_t)clamp(p->v[i], 0, 127);
-    }
+    /* Synth insert and Color settings are opaque compatibility data for older builds. */
+    for (i = 0; i < COL_NUM; i++)
+        proj.color[TR_DRUM].v[i] = (uint8_t)clamp(proj.color[TR_DRUM].v[i], 0, i == COL_ON ? 1 : 127);
 
     for (i = 0; i < NPAT; i++) {
         dpart_t *d = &proj.p[i].d;
@@ -1640,22 +1596,25 @@ static void drum_map_apply(int base, const uint8_t *map)
     const int mixed = kit_is_custom(proj.model) || kit_is_custom(map);
     if (base != proj.kit) {               /* another kit: the one leaving stops sounding (0.5). Its tails used to ring on
                                            * under the new kit's hits: two kits to render at a scene's change, the drums
-                                           * at 44-48 % of a block on the FM-1, and the late blocks there */
-        for (int r = 0; r < NPADS; r++) {
+                                           * at 44-48 % of a block on the FM-1, and the late blocks there. Its kick and
+                                           * its snare ring out (they are never cut short: two voices at most) */
+        for (int r = 2; r < NPADS; r++) {
             drums_cut_pad(r);
             pad_hit[r] = 0.0f;
         }
-        gov.pad_live = 0;
     }
     for (int r = 0; r < NPADS; r++) {
         const int model = drums_model(base, map, r);
         if (mixed && drum_model(r) != model) {
-            drums_cut_mapped(proj.kit, proj.model, r);
+            /* A change of model routes the next kick or snare to its new owner.
+             * The old physical voice keeps rendering its existing tail. */
+            if (r >= 2)
+                drums_cut_mapped(proj.kit, proj.model, r);
             roll_inhibit_pads |= (uint16_t)(1u << r);
             pad_hit[r] = 0.0f;
         }
     }
-    /* Cut all owners before publishing any new aliases. Earlier lanes can
+    /* Release eligible old owners before publishing new aliases. Earlier lanes can
      * otherwise mask a later lane's old owner during a live scene change. */
     for (int r = 0; r < NPADS; r++) {
         const int model = drums_model(base, map, r);
@@ -2820,7 +2779,6 @@ static uint32_t mix_split(void)           /* the tracks for the second core (bit
 static void syn_block(void)
 {
     int t;
-    uint32_t in0;
     CS_MARK(t0);
     for (t = 0; t < NTRK; t++)
         lfo_tick(t, SYN_CTL);
@@ -2843,7 +2801,6 @@ static void syn_block(void)
         t0 = plat_ticks24();
         sy_t[SY_VOICES] += t0 - t1;
     }
-    in0 = fxin_t[0];
     {
         const uint32_t there = cpu2 ? mix_split() : 0u;
         if (there && plat_cpu2_on() && plat_cpu2_run(mix_job, there)) {
@@ -2855,7 +2812,7 @@ static void syn_block(void)
         }
     }
     PLAT_FAR(syn_mix_end)(syn_l, syn_r, syn_rv, syn_dl);   /* (RAM code) */
-    sy_t[SY_MIX] += (plat_ticks24() - t0) - (fxin_t[0] - in0);
+    sy_t[SY_MIX] += plat_ticks24() - t0;
     syn_at = 0;
 }
 
@@ -3095,7 +3052,7 @@ static void pf_output(float *l, float *r, uint32_t n, uint8_t on)   /* STUTTER, 
 
 /* GhettoMachine 0.5, the second CPU pass: a block's tail on the second core while the first renders the next block.
  * The first core renders block N (the sequencer, the drums, the synth: its voices shared with the second core once
- * that is free, the inserts, Color) into one set of buses, and notes here what the tail needs. At the start of block
+ * that is free, and drum Color) into one set of buses, and notes here what the tail needs. At the start of block
  * N + 1 the second core takes it (post_job): the reverb and the delay, a sample being recorded, the master bus,
  * STUTTER, TAPE STOP and CRUSH, the metronome, in place in that set; the first core waits for it at the end of block
  * N + 1 and outputs it. Everything is heard a block (5.8 ms) later; nothing else changes. Without the second core (off,
@@ -3222,20 +3179,33 @@ static void pool_apply(void)              /* the voices allowed: the CPU's shedd
     syn_pool(pool_now < gov.cap ? pool_now : gov.cap);
 }
 
-static int fx_unit_on(int u)              /* effect u (bit t: Color; 4 + t: insert) in the chain and switched on */
+/* Same selection for both pressure signals. Pad 0 is BD and pad 1 is SD in each kit.
+ * An unsigned age keeps a hit's protection intact across the block counter wrapping. */
+static void govern_drum_tail(void)
 {
-    if (u < 4)
-        return color_active(&proj.color[u]) && !track_is_muted(u);
-    return proj.insert[u - 5].mode != TI_OFF && proj.insert[u - 5].v[3] && !track_is_muted(u - 4);
+    enum { CLOSED_HAT = 7, OPEN_HAT = 8, ATTACK_BLOCKS = 4 };
+    int oldest[2] = {-1, -1};             /* other percussion, hats */
+    uint32_t max_age[2] = {0, 0};
+    for (int pad = 2; pad < NPADS; pad++) {
+        int hat = pad == CLOSED_HAT || pad == OPEN_HAT;
+        uint32_t age = gov.clock - gov.pad_at[pad];
+        if (age >= ATTACK_BLOCKS && age > max_age[hat] && drums_governor_tail_active(pad)) {
+            oldest[hat] = pad;
+            max_age[hat] = age;
+        }
+    }
+    int pad = oldest[1] >= 0 ? oldest[1] : oldest[0];
+    if (pad >= 0 && drums_governor_release_tail(pad)) {
+        gov.cuts++;
+        gov.act[0] = gov.clock;
+    }
 }
 
 static void govern(uint32_t t_drums, uint32_t t_synth, uint32_t t_fxin, uint32_t t_fx, uint32_t t_total)
 {
-    /* the effects in the order they go: Color on the drums, T4, T3, T2, then the inserts on T4, T3, T2 */
-    static const uint8_t ORDER[7] = {0, 3, 2, 1, 7, 6, 5};
     const float d = gov_us(CS_DRUMS, t_drums), sy = gov_us(CS_SYNTH, t_synth);
     const float fx = gov_us(CS_FXIN, t_fxin) + gov_us(CS_FX, t_fx);
-    int k;
+    const int guard = gov_us(CS_TOTAL, t_total) > BUD_US(BUD_GUARD);
     gov.clock++;
     {   /* the synth: its time is syn_base + per_voice a voice, both measured as it plays (three voices or more: a
          * running mean, a rise followed in about 4 blocks, a fall in about 20, so one slow block sheds little and a
@@ -3263,59 +3233,30 @@ static void govern(uint32_t t_drums, uint32_t t_synth, uint32_t t_fxin, uint32_t
             pool_apply();
         }
     }
-    {   /* the drums: over their share for two blocks, the oldest sound still ringing is cut (not one hit in the last
-         * four blocks: a new hit is heard) */
+    {   /* One release per block even when both the drum stage and the total run over. */
         float m = 0.5f * (d + gov.d_prev);
         gov.d_prev = d;
-        if (m > BUD_US(BUD_DRUMS) && gov.pad_live) {
-            int old = -1;
-            for (k = 0; k < NPADS; k++)
-                if ((gov.pad_live >> k & 1u) && (old < 0 || (int32_t)(gov.pad_at[k] - gov.pad_at[old]) < 0))
-                    old = k;
-            if (old >= 0 && gov.clock - gov.pad_at[old] >= 4u) {
-                drums_cut_mapped(proj.kit, proj.model, old);
-                gov.pad_live &= (uint16_t)~(1u << old);
-                gov.cuts++;
-                gov.act[0] = gov.clock;
-            }
-        }
+        if (m > BUD_US(BUD_DRUMS) || guard)
+            govern_drum_tail();
     }
-    {   /* the effects: over their share, the next one in ORDER leaves the chain (one every 8 blocks); with room
-         * again (under 0.6 of it), the last to leave comes back, from silence, one every 4 s */
+    {   /* Keep the shared returns running. Drum Color can restart from silence when the combined cost falls. */
         gov.fx_mean += (fx - gov.fx_mean) * 0.25f;
         if (gov.fx_wait) {
             gov.fx_wait--;
-        } else if (gov.fx_mean > BUD_US(BUD_FX)) {
-            for (k = 0; k < 7; k++)
-                if (!(gov.fx_shed >> ORDER[k] & 1u) && fx_unit_on(ORDER[k])) {
-                    gov.fx_shed |= (uint8_t)(1u << ORDER[k]);
-                    gov.fx_wait = 8;
-                    gov.sheds++;
-                    gov.act[2] = gov.clock;
-                    break;
-                }
+        } else if (gov.fx_mean > BUD_US(BUD_FX) && !gov.fx_shed &&
+                   color_active(&proj.color[TR_DRUM]) && !track_is_muted(TR_DRUM)) {
+            gov.fx_shed = 1;
+            gov.fx_wait = 8;
+            gov.sheds++;
+            gov.act[2] = gov.clock;
         } else if (gov.fx_shed && gov.fx_mean < 0.6f * BUD_US(BUD_FX)) {
-            for (k = 6; k >= 0; k--)
-                if (gov.fx_shed >> ORDER[k] & 1u) {
-                    int u = ORDER[k];
-                    if (u < 4)
-                        color_reset(&color_rt[u]);
-                    else
-                        track_insert_reset(&insert_rt[u - 5]);
-                    gov.fx_shed &= (uint8_t)~(1u << u);
-                    gov.fx_wait = 688;
-                    break;
-                }
+            color_reset(&drum_color_rt);
+            gov.fx_shed = 0;
+            gov.fx_wait = 688;
         }
     }
-    if (gov_us(CS_TOTAL, t_total) > BUD_US(BUD_GUARD)) {   /* the guard (BUD_GUARD) */
+    if (guard) {
         int v = syn_voices(-1);
-        for (k = 0; k < NPADS; k++)
-            if ((gov.pad_live >> k & 1u) && gov.clock - gov.pad_at[k] >= 4u) {
-                drums_cut_mapped(proj.kit, proj.model, k);
-                gov.pad_live &= (uint16_t)~(1u << k);
-                gov.cuts++;
-            }
         if (v > GOV_MIN_VOICES) {
             int to = v - 2 < GOV_MIN_VOICES ? GOV_MIN_VOICES : v - 2;
             syn_pool(to);                 /* (the two go; the pool as it was for the notes to come) */
@@ -3323,7 +3264,7 @@ static void govern(uint32_t t_drums, uint32_t t_synth, uint32_t t_fxin, uint32_t
             gov.caps += (uint32_t)(v - to);
         }
         gov.guards++;
-        gov.act[0] = gov.act[1] = gov.clock;
+        gov.act[1] = gov.clock;
     }
 }
 
@@ -3484,15 +3425,14 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         CS_MARK(cs_d0);
         drums_render(proj.kit, buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, (int)chunk);
         cs_t[CS_DRUMS] += plat_ticks24() - cs_d0;
-        if (!track_is_muted(TR_DRUM) && color_active(&proj.color[TR_DRUM]) && !(gov.fx_shed & 1u)) {   /* (asleep on
-                                                                               * silence: insert_process) */
+        if (!track_is_muted(TR_DRUM) && color_active(&proj.color[TR_DRUM]) && !(gov.fx_shed & 1u)) {
             int q = fxs_peak(buf_l + done, buf_r + done, chunk) < FXS_LEVEL &&
                     fxs_peak(bus_rev + done, bus_dly + done, chunk) < FXS_LEVEL;
             CS_MARK(cs_c0);
-            if (!fxs_asleep(TR_DRUM, q)) {
-                color_run_drums(&color_rt[TR_DRUM], &color_drums_send, &proj.color[TR_DRUM],
+            if (!fxs_asleep(q)) {
+                color_run_drums(&drum_color_rt, &color_drums_send, &proj.color[TR_DRUM],
                                 buf_l+done, buf_r+done, bus_rev+done, bus_dly+done, chunk);
-                fxs_after(TR_DRUM, q, fxs_peak(buf_l + done, buf_r + done, chunk) < FXS_LEVEL &&
+                fxs_after(q, fxs_peak(buf_l + done, buf_r + done, chunk) < FXS_LEVEL &&
                                       fxs_peak(bus_rev + done, bus_dly + done, chunk) < FXS_LEVEL, chunk);
             }
             fxin_t[0] += plat_ticks24() - cs_c0;
@@ -3511,11 +3451,10 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             }
             drum_pk = pk;
         }
-        {   /* (the inserts run inside: counted as FX IN, taken out of SYNTH) */
-            uint32_t in0 = fxin_t[0];
+        {
             CS_MARK(cs_s0);
             synth_add(buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, chunk, done);
-            cs_t[CS_SYNTH] += (plat_ticks24() - cs_s0) - (fxin_t[0] - in0);
+            cs_t[CS_SYNTH] += plat_ticks24() - cs_s0;
         }
         if (sq.playing) {
             sq.bar_left -= (float)chunk;
@@ -3622,7 +3561,6 @@ void app_panic(void)
 
 void app_init(void)
 {
-    int t;
     drums_init();
     syn_init();
     lfo_init();
@@ -3637,12 +3575,8 @@ void app_init(void)
     syn_pool(pool_max);
     user_load();
     project_load();
-    for (t = 0; t < NTRK; t++) color_reset(&color_rt[t]);
-    for (t = 1; t < NTRK; t++) {
-        track_insert_bind(&insert_rt[t-1], insert_ring[(t-1)*2],
-                          t < NINST ? insert_ring[(t-1)*2+1] : insert_pool);
-        insert_route(t);
-    }
+    color_reset(&drum_color_rt);
+    drum_color_quiet = 0;
     bank_scan();
     seq_reset_tracks();
     sq.queued = -1;
@@ -3736,9 +3670,9 @@ static void undo_step(int redo)
 
 /* ------------------------------------------------------------------------ UI --- */
 enum { PG_SEQ, PG_EDIT, PG_MUTE, PG_HOME, PG_KIT, PG_KEYS, PG_ENV, PG_LFO, PG_ARP, PG_MIX, PG_FX, PG_SONG, PG_MST, PG_SETUP,
-       PG_GEN, PG_PICK, PG_INSERT, PG_COLOR };
+       PG_GEN, PG_PICK, PG_COLOR = 17 };
 static const char *const PAGE_NAME[] = {"STEPS", "EDIT", "MUTE", "PATTERNS", "KIT", "KEYS", "ENV", "LFO", "ARP", "MIXER",
-                                        "FX", "SONG", "MASTER", "SETUP", "ACID", "PICK NOTES", "INSERT", "COLOR"};
+                                        "FX", "SONG", "MASTER", "SETUP", "ACID", "PICK NOTES", "", "COLOR"};
 #define NGENPAGE 3                        /* the 303 generator's (SEQ after STEPS, T2..T4): ACID, NOTES, LINE (SELECT) */
 static const char *const TRK_NAME[NTRK] = {"DRUMS", "T2", "T3", "T4"};
 static const char *const TYPE_NAME[NTYPES] = {"MONO", "POLY", "SAMPLER"};
@@ -3962,7 +3896,8 @@ static void drum_model_turn(int pad, int32_t e)
             if (ovr_mask[pad] >> k & 1u)
                 drums_set(old, pad, k, ovr_base[pad][k]);
         ovr_mask[pad] = 0;
-        drums_cut_mapped(proj.kit, proj.model, pad);
+        if (pad >= 2)
+            drums_cut_mapped(proj.kit, proj.model, pad);
         roll_inhibit_pads |= (uint16_t)(1u << pad);
         pad_hit[pad] = 0.0f;
         proj.model[pad] = which == proj.kit ? 0 : (uint8_t)(which + 1);
@@ -5055,10 +4990,6 @@ static void preset_load(int tr, int i, const char *bank)  /* one selected sound,
     syn_release(tr, 0);
     syn_source(tr, 0);
     syn_sound(tr, ts->snd);
-    if (s < 0 && preset_color_apply(&proj.color[tr], syn_preset_color(factory_preset_index(i)))) {
-        color_reset(&color_rt[tr]);
-        insert_route(tr);
-    }
     plat_unlock(f);
     dirty = 1;
     preset_name(i, t);
@@ -5071,7 +5002,7 @@ static void preset_load(int tr, int i, const char *bank)  /* one selected sound,
 static void preset_turn(int32_t e)
 {
     int tr = ui.trk, old = tset(tr)->preset, i = preset_step(old, e, npresets(), preset_ok);
-    /* A turn beyond the last new entry isn't a command to erase manual Color edits. */
+    /* Turning beyond the end leaves the current patch in place. */
     if (i == old && i >= PRESET_EXTRA_FIRST)
         return;
     preset_load(tr, i, 0);
@@ -5871,13 +5802,12 @@ static void track_pick(int tr)
 {
     tr = clamp(tr, 0, NTRK - 1);
     if (tr != ui.trk) {
-        if (tr == TR_DRUM && ui.page == PG_INSERT) ui.page = PG_SEQ;
         if (ui.page == PG_PICK)
             pick_leave();
         /* between the drums and an instrument track: the track's own page (its keys play), unless on EDIT or
          * HOME; between instrument tracks the page stays */
         if ((tr == TR_DRUM) != (ui.trk == TR_DRUM) && ui.page != PG_EDIT && ui.page != PG_HOME && ui.page != PG_LFO &&
-            ui.page != PG_MIX && ui.page != PG_FX && ui.page != PG_COLOR && ui.page != PG_SONG && ui.page != PG_MST && ui.page != PG_SETUP)
+            ui.page != PG_MIX && ui.page != PG_FX && ui.page != PG_SONG && ui.page != PG_MST && ui.page != PG_SETUP)
             ui.page = (uint8_t)home_page(tr);
         keys_let_go();
         ui.trk = (uint8_t)tr;
@@ -6145,17 +6075,14 @@ static void set_track_mutes(uint8_t mask)
     sync_drum_mutes();
     if (cut & 1u) {
         drum_pk = 0.0f;
-        color_reset(&color_rt[TR_DRUM]);
+        color_reset(&drum_color_rt);
     }
     for (t = 1; t < NTRK; t++)
         if (cut >> t & 1u) {
             arp_clear(t);
             sq.slid[t] = 0;
             syn_cut_track(t);
-            track_insert_reset(&insert_rt[t-1]);
-            color_reset(&color_rt[t]);
         }
-    for (t = 1; t < NTRK; t++) insert_route(t);
     if ((cut & 0x0Eu) && syn_at < SYN_CTL)
         PLAT_FAR(syn_mix_repack)(syn_l, syn_r, syn_rv, syn_dl);
     plat_unlock(f);
@@ -6677,55 +6604,6 @@ static void rec_knob(int k, int32_t e)    /* REC held: K1 the metronome, K2 the 
     dirty = 1;
 }
 
-static void insert_select(int tr, int e)
-{
-    track_insert_param_t *p = &proj.insert[tr-1];
-    int mode = clamp(p->mode + e, TI_OFF, TI_MODES - 1);
-    if (mode != p->mode) {
-        uint32_t f = plat_lock();
-        track_insert_default(p, mode);
-        track_insert_reset(&insert_rt[tr-1]);
-        insert_route(tr);
-        plat_unlock(f);
-        dirty = 1;
-    }
-    app_say("INSERT", track_insert_name(mode));
-}
-
-static void insert_text(const track_insert_param_t *p, int k, char *text)
-{
-    int n = p->v[k];
-    if (p->mode == TI_SHIFT && k < 3) {
-        static const int scale[3] = {900, 25, 15};
-        int_text((n-64)*scale[k]/64, text);
-        text_cat(text, " HZ");
-    } else if (k == 3) {
-        int_text(n*100/127, text);
-        text_cat(text, "%");
-    } else {
-        int_text(n, text);
-    }
-}
-
-static void insert_knob(int tr, int k, int e)
-{
-    track_insert_param_t *p = &proj.insert[tr-1];
-    char value[8];
-    int v = clamp(p->v[k] + e, 0, 127);
-    if (!p->mode || v == p->v[k])
-        return;
-    {
-        uint32_t f = plat_lock();
-        if (k == 3 && (!p->v[3] || !v)) track_insert_reset(&insert_rt[tr-1]);
-        p->v[k] = (uint8_t)v;
-        insert_route(tr);
-        plat_unlock(f);
-    }
-    dirty = 1;
-    insert_text(p, k, value);
-    app_say(track_insert_label(p->mode, k), value);
-}
-
 static const char *const COLOR_LABEL[COL_NUM] = {"AMOUNT", "WEAR", "WOW", "DIGITAL", "DROPOUT", "COLOR"};
 static int color_index(int k)
 {
@@ -6734,9 +6612,8 @@ static int color_index(int k)
 static void color_knob(int k, int32_t e)
 {
     int id = color_index(k), v, was;
-    int tr = ui.trk;
-    color_params_t *p = &proj.color[tr];
-    color_state_t *rt = &color_rt[tr];
+    color_params_t *p = &proj.color[TR_DRUM];
+    color_state_t *rt = &drum_color_rt;
     char t[8];
     uint32_t f;
     if (id < 0) return;
@@ -6756,7 +6633,6 @@ static void color_knob(int k, int32_t e)
     }
     p->v[id] = (uint8_t)v;
     if (was != color_active(p)) color_reset(rt);
-    if (tr != TR_DRUM) insert_route(tr);
     plat_unlock(f);
     dirty = 1;
     int_text(v*100/127,t);
@@ -6820,8 +6696,6 @@ static void knob(int k, int32_t e)        /* KNOB 1..4 (k 0..3) on the page show
         song_knob(k, e);
     } else if (ui.page == PG_MIX) {
         mix_knob(k, e);
-    } else if (inst && ui.page == PG_INSERT) {
-        insert_knob(ui.trk, k, e);
     } else if (ui.page == PG_COLOR) {
         color_knob(k,e);
     } else if (ui.page == PG_FX) {
@@ -7008,7 +6882,7 @@ static void input(void)
             else
                 gen_mutate();
         } else if (inst && (ui.page == PG_KEYS || ui.page == PG_EDIT || ui.page == PG_ENV || ui.page == PG_LFO ||
-                            ui.page == PG_ARP || ui.page == PG_MIX || ui.page == PG_FX || ui.page == PG_MST || ui.page == PG_INSERT)) {
+                            ui.page == PG_ARP || ui.page == PG_MIX || ui.page == PG_FX || ui.page == PG_MST)) {
             octave(up);
         } else if (ui.page == PG_SEQ || ui.page == PG_EDIT) {
             ui.spage = (uint8_t)clamp(ui.spage + (up ? 1 : -1), 0, npages() - 1);
@@ -7162,10 +7036,9 @@ static void input(void)
         }
     }
     if (pressed >> B_FX & 1u) {           /* the FX: REVERB, DELAY, DELAY 2, FILTER, then back */
-        if ((btn >> B_SEL & 1u) && inst) {
+        if ((btn >> B_SEL & 1u) && inst)
             ui.sel_used = 1;
-            ui.page = ui.page == PG_INSERT ? (uint8_t)home_page(ui.trk) : PG_INSERT;
-        } else if (ui.page == PG_INSERT || ui.page == PG_COLOR) {
+        if (ui.page == PG_COLOR) {
             ui.page = (uint8_t)home_page(ui.trk);
         } else if (ui.page != PG_FX) {
             ui.page = PG_FX;
@@ -7174,7 +7047,7 @@ static void input(void)
         } else {
             ui.fxpage = 0;
             ui.color_page = 0;
-            ui.page = PG_COLOR;
+            ui.page = inst ? (uint8_t)home_page(ui.trk) : PG_COLOR;
         }
     }
 
@@ -7310,8 +7183,6 @@ static void input(void)
                 text_cat(t, "%");
             }
             app_say("SETUP", ui.setup_view ? t : "CLOCK, SOUNDS");
-        } else if (inst && ui.page == PG_INSERT) {
-            insert_select(ui.trk, e);
         } else if (ui.held_step >= 0 && !(inst && (ui.page == PG_EDIT || ui.page == PG_ENV || ui.page == PG_LFO))) {
             /* (there: pages to lock on) */
             if (inst)
@@ -7462,7 +7333,7 @@ static void lights(void)
     }
     if (ui.page != PG_KEYS)
         b |= 1u << (ui.page == PG_SEQ || ui.page == PG_GEN || ui.page == PG_PICK ? B_SEQ : ui.page == PG_EDIT ? B_EDIT : ui.page == PG_MUTE || ui.page == PG_ENV ? B_ENV
-                    : ui.page == PG_LFO ? B_LFO : ui.page == PG_ARP ? B_ARP : ui.page == PG_FX || ui.page == PG_INSERT || ui.page == PG_COLOR ? B_FX
+                    : ui.page == PG_LFO ? B_LFO : ui.page == PG_ARP ? B_ARP : ui.page == PG_FX || ui.page == PG_COLOR ? B_FX
                     : ui.page == PG_HOME || ui.page == PG_SONG || ui.page == PG_SETUP ? B_HOME : B_GLO);
     if (sq.playing)
         b |= LED_PLAY_GREEN;
@@ -7877,7 +7748,7 @@ static void strip(void)                   /* four cells in one hard-edged grid, 
 
 /* ---- each kind of page's four knobs */
 enum { KD_SEQ, KD_HELD, KD_DRUM, KD_KIT, KD_MODEL, KD_INST, KD_ENV, KD_LFO, KD_ARP, KD_MIX, KD_FX, KD_MST, KD_SONG, KD_REC, KD_PF,
-       KD_SETUP, KD_FOLLOW, KD_GEN, KD_INSERT, KD_COLOR };
+       KD_SETUP, KD_FOLLOW, KD_GEN, KD_COLOR };
 
 static int fx_mid(int i)                  /* a two-way FX knob's middle, or -1 */
 {
@@ -7894,18 +7765,11 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
     case KD_COLOR: {
         int id = color_index(k);
         if (id < 0) return 0;
-        v = proj.color[tr].v[id];
+        v = proj.color[TR_DRUM].v[id];
         int_text(v * 100 / 127,t);
         text_cat(t, "%");
         card_put(c, COLOR_LABEL[id], id == COL_ON ? (v ? "ON" : "BYPASS") : t,
                  v, 0, id == COL_ON ? 1 : 127, -1);
-        return 1;
-    }
-    case KD_INSERT: {
-        const track_insert_param_t *p = &proj.insert[tr-1];
-        if (!p->mode) return 0;
-        insert_text(p, k, t);
-        card_put(c, track_insert_label(p->mode, k), t, p->v[k], 0, 127, p->mode == TI_SHIFT && k < 3 ? 64 : -1);
         return 1;
     }
     case KD_SEQ: {
@@ -9340,7 +9204,7 @@ static void page_home(void)               /* the scene grid: 16 patterns across 
  * core's, which waits for the second at the end of a block (OTHER) and for its half of the synth's voices (SYNTH) */
 static void page_cpu(void)
 {
-    static const char *const NM[CS_NUM] = {"DRUMS", "SYNTH", "INSERT+COLOR", "REV+DLY CORE2", "MASTER CORE2", "OTHER",
+    static const char *const NM[CS_NUM] = {"DRUMS", "SYNTH", "DRUM COLOR", "REV+DLY CORE2", "MASTER CORE2", "OTHER",
                                            "TOTAL"};
     const float per = 100.0f * 44100.0f / (1.0e6f * (float)APP_BLOCK);   /* us a block -> % of its time */
     char t[24], u[8];
@@ -9852,7 +9716,7 @@ static void page_color(void)
 {
     int i;
     char title[24], amount[12];
-    const color_params_t *p = &proj.color[ui.trk];
+    const color_params_t *p = &proj.color[TR_DRUM];
     band_set(trk_rgb(ui.trk), TRK_NAME[ui.trk], ui.color_page ? "COLOR: MODULES" : "COLOR: AMOUNT", "PRE-SEND + USB STEM", 2, ui.color_page);
     rrect(4,4,232,124,6,C_PANEL);
     title[0] = 0;
@@ -9872,18 +9736,6 @@ static void page_color(void)
     cards_of(KD_COLOR,0);
 }
 
-static void page_insert(void)
-{
-    const track_insert_param_t *p = &proj.insert[ui.trk-1];
-    band_set(trk_rgb(ui.trk), TRK_NAME[ui.trk], "INSERT", track_insert_name(p->mode), 0, 0);
-    rrect(4, 4, 232, 124, 6, C_PANEL);
-    cv_text(12, 16, &FONT_M, track_insert_name(p->mode), C_INK);
-    cv_text(12, 56, &FONT_S, "SELECT: EFFECT / OFF", C_INK);
-    cv_text(12, 80, &FONT_XS, "PRE-SEND + USB STEM", TH_FG);
-    cv_text(12, 101, &FONT_XS, "FX: BACK", TH_FG);
-    cards_of(KD_INSERT, 0);
-}
-
 /* the page now: its band's text and its knobs set, its picture drawn (the canvas begun and blitted by the caller) */
 static void page(void)
 {
@@ -9898,7 +9750,6 @@ static void page(void)
     case PG_LFO: page_lfo(); break;
     case PG_MIX: page_mix(); break;
     case PG_FX: page_fx(); break;
-    case PG_INSERT: page_insert(); break;
     case PG_COLOR: page_color(); break;
     case PG_MST: page_mst(); break;
     case PG_ARP: page_arp(); break;
@@ -9977,7 +9828,7 @@ static void speak(void)                   /* a screen reader that has just start
              * share of a block, its mean and its worst block of the last 10 s; the blocks late; the voices
              * sounding, the budget's cap and the pool; what the budgets gave up (drum sounds cut, voices shed,
              * effects taken out, and which are out now); the second core; the synth's parts */
-            static const char *const NM[CS_NUM] = {"DRUMS", "SYNTH", "INSERTS", "REVERB", "MASTER", "OTHER", "CPU"};
+            static const char *const NM[CS_NUM] = {"DRUMS", "SYNTH", "DRUM COLOR", "REVERB", "MASTER", "OTHER", "CPU"};
             static const uint8_t SEQ[CS_NUM] = {CS_TOTAL, CS_DRUMS, CS_SYNTH, CS_FXIN, CS_FX, CS_MASTER, CS_REST};
             const float per = 100.0f * 44100.0f / (1.0e6f * (float)APP_BLOCK);
             char u[12];
@@ -10532,8 +10383,8 @@ int app_expect(const char *what, int *got)
             stem_pk[s][0] = stem_pk[s][1] = 0.0f;
         *got = 1;
     } else if (!strncmp(what, "fxsleep", 7) && what[7] >= '1' && what[7] < '1' + NTRK && !what[8]) {
-        /* fxsleepN: track N's insert and Color asleep (silence in, silence out for FXS_AFTER samples) */
-        *got = fxs_quiet[what[7] - '1'] >= FXS_AFTER;
+        /* Only drums have a local effect chain. */
+        *got = what[7] != '1' || drum_color_quiet >= FXS_AFTER;
     } else if (!strcmp(what, "setupview")) {   /* SETUP: 0 the clock and sounds, 1 the CPU by stage */
         *got = ui.setup_view;
     } else if (!strncmp(what, "cpu", 3) && what[3] >= '0' && what[3] < '0' + CS_NUM && !what[4]) {
@@ -10555,7 +10406,7 @@ int app_expect(const char *what, int *got)
         *got = (int)gov.caps;
     } else if (!strcmp(what, "govguard")) {   /* the guard's blocks so far */
         *got = (int)gov.guards;
-    } else if (!strcmp(what, "govfx")) {  /* the effects out of the chain now: bit t Color, bit 4 + t the insert */
+    } else if (!strcmp(what, "govfx")) {  /* drum Color out of the chain now */
         *got = gov.fx_shed;
     } else if (!strncmp(what, "cpupk", 5) && what[5] >= '0' && what[5] < '0' + CS_NUM && !what[6]) {
         /* cpupkN: stage N's worst block lately, us x 10 */

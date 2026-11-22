@@ -1324,9 +1324,6 @@ GM_RAM void syn_half(uint32_t h)
 static volatile float trk_pk[SYN_TRACKS];   /* each track's peak in the mix since the screen last looked */
 static float trk_l[SYN_TRACKS][SYN_CTL], trk_r[SYN_TRACKS][SYN_CTL];   /* the last block, each track alone */
 static float trk_send[SYN_TRACKS][SYN_CTL];
-static syn_insert_fn trk_insert[SYN_TRACKS];
-static uint32_t trk_idle[SYN_TRACKS];     /* the track's insert said it sleeps on silence (syn_insert_fn's 1): nothing to
-                                           * mix, nothing to call, until a voice sounds on the track or its insert is set */
 static uint32_t trk_on[SYN_TRACKS];       /* this block: the track is in the mix (syn_mix_track; a word each: either
                                            * core writes its own tracks') */
 static uint32_t trk_used;                 /* bit t: track t sounded in it */
@@ -1355,14 +1352,6 @@ const float *syn_track(int t, int side)
     return side ? trk_r[t] : trk_l[t];
 }
 
-void syn_set_insert(int t, syn_insert_fn fn)
-{
-    if (t >= 1 && t < SYN_TRACKS) {
-        trk_insert[t] = fn;
-        trk_idle[t] = 0;
-    }
-}
-
 /* (GhettoMachine 0.5: the mix runs from RAM, gm_ram.h, with the tracks' gains read once a block: the stores into the
  * float buffers may alias them for all the compiler knows, so it read them again every sample) */
 GM_RAM void syn_mix_repack(float *l, float *r, float *rev, float *dly)
@@ -1384,12 +1373,11 @@ GM_RAM void syn_mix_repack(float *l, float *r, float *rev, float *dly)
 }
 
 /* The tracks' voices (the halves' sums: centred voices in acc_m, unison voices off the centre in acc_l / acc_r) into
- * each track's block, through its insert, its pan and its sends' feed, then the mix. A track with no voice this block
- * and no insert is left out; so is one whose insert said it sleeps on silence (trk_idle). The usual track has only
- * centred voices: one sum and one conversion a sample, its peak taken as a whole number and scaled once (the same
- * value: scaling by a gain that is not negative keeps the order). The same samples as the loop this replaced.
- * A track at a time (syn_mix_track), so the tracks can be shared between the two cores: each track's buffers, its
- * insert's state and its meters are its own; syn_mix_end then makes the mix of them */
+ * each track's block, through its pan and its sends' feed, then the mix. A track with no voice this block is left
+ * out. The usual track has only centred voices: one sum and one conversion a sample, its peak taken as a whole number
+ * and scaled once (the same value: scaling by a gain that is not negative keeps the order).
+ * A track at a time (syn_mix_track), so the tracks can be shared between the two cores: each track's buffers and its
+ * meters are its own; syn_mix_end then makes the mix of them */
 GM_RAM void syn_mix_track(int t)
 {
     static const int32_t NONE[SYN_CTL];
@@ -1398,33 +1386,25 @@ GM_RAM void syn_mix_track(int t)
     trk_on[t] = 0;
     do {
         const int m0 = used_m[0][t], m1 = used_m[1][t], s0 = used_lr[0][t], s1 = used_lr[1][t];
-        const syn_insert_fn fn = trk_insert[t];
         const float pl = mix[t].pl * g, pr = mix[t].pr * g;
         const int32_t *a0 = m0 ? acc_m[0][t] : NONE, *a1 = m1 ? acc_m[1][t] : NONE;
         float *tl = trk_l[t], *tr = trk_r[t], *ts = trk_send[t];
         float pk = trk_pk[t];
-        if (m0 | m1 | s0 | s1)
-            trk_idle[t] = 0;
-        else if (!fn || trk_idle[t])
+        if (!(m0 | m1 | s0 | s1))
             continue;
         trk_on[t] = 1;
         if (s0 | s1) {                    /* unison voices off the centre too */
             const int32_t *l0 = s0 ? acc_l[0][t] : NONE, *l1 = s1 ? acc_l[1][t] : NONE;
             const int32_t *r0 = s0 ? acc_r[0][t] : NONE, *r1 = s1 ? acc_r[1][t] : NONE;
-            const float gl = fn ? g : pl, gr = fn ? g : pr;
             for (k = 0; k < SYN_CTL; k++) {
                 float m = (float)(a0[k] + a1[k]);
                 float ul = (float)(l0[k] + l1[k]);
                 float ur = (float)(r0[k] + r1[k]);
-                tl[k] = (m + ul) * gl;
-                tr[k] = (m + ur) * gr;
-                if (!fn)
-                    ts[k] = m + 0.5f * (ul + ur);
+                tl[k] = (m + ul) * pl;
+                tr[k] = (m + ur) * pr;
+                ts[k] = m + 0.5f * (ul + ur);
             }
-        } else if (fn) {                  /* centred voices into an insert: one signal, both sides */
-            for (k = 0; k < SYN_CTL; k++)
-                tl[k] = tr[k] = (float)(a0[k] + a1[k]) * g;
-        } else {                          /* centred voices, no insert: panned, the sends' feed, the peak */
+        } else {                          /* centered voices: pan, sends and peak */
             int32_t top = 0;
             for (k = 0; k < SYN_CTL; k++) {
                 int32_t v = a0[k] + a1[k];
@@ -1443,19 +1423,6 @@ GM_RAM void syn_mix_track(int t)
             }
             trk_pk[t] = pk;
             continue;
-        }
-        if (fn) {
-            const float gl = mix[t].pl, gr = mix[t].pr;
-            if (fn(t, tl, tr, SYN_CTL) && !(m0 | m1 | s0 | s1)) {   /* asleep on silence: left out from here */
-                trk_idle[t] = 1;
-                trk_on[t] = 0;
-                continue;
-            }
-            for (k = 0; k < SYN_CTL; k++) {
-                ts[k] = (tl[k] + tr[k]) * (0.5f * 36000.f);
-                tl[k] *= gl;
-                tr[k] *= gr;
-            }
         }
         for (k = 0; k < SYN_CTL; k++) {
             float a = tl[k], b = tr[k];

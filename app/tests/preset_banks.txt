@@ -25,11 +25,11 @@ expect color2_5 0
 turn PRESET 1
 wait 40
 expect preset2 62
-expect color2_5 1
-expect color2_0 26
-expect color2_1 45
+expect color2_5 0
+expect color2_0 110
+expect color2_1 26
 expect color3_5 0
-# Go back to Motor City: original bank does not alter active track Color.
+# Moving between banks leaves the archived Color bytes untouched.
 press SEL
 wait 30
 turn PRESET -1
@@ -37,9 +37,9 @@ wait 30
 release SEL
 wait 40
 expect preset2 40
-expect color2_5 1
-expect color2_0 26
-# Back to clean House 61: bypass but don't wipe the track's module settings.
+expect color2_5 0
+expect color2_0 110
+# House 61 continues to select its factory voice.
 press SEL
 wait 30
 turn PRESET 1
@@ -48,7 +48,7 @@ release SEL
 wait 40
 expect preset2 61
 expect color2_5 0
-expect color2_1 45
+expect color2_1 26
 press SEL
 wait 30
 turn PRESET 3

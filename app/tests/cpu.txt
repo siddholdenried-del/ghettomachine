@@ -1,70 +1,27 @@
-# CPU (0.5): a track's insert and Color sleep once silence has gone through them a while (fxsleepN: track N's chain
-# asleep), and wake with its next sound; SETUP turned with SELECT shows the render's time by stage (cpuN: stage N's
-# running mean, us x 10 a block: 0 DRUMS 1 SYNTH 2 INSERT+COLOR 3 REVERB+DELAY 4 MASTER 5 OTHER 6 TOTAL; cpupkN: its
-# worst block lately, the tick on its bar; the band's PEAK, the total's). Since the second CPU pass the reverb and delay
-# and the master bus run on the second core, a block behind the first (3 and 4 are its time).
-#   tools/build.py ../../app --host, then  app/build/host/ghettomachine_host app/tests/cpu.txt OUTDIR (OUTDIR must exist)
+# Drum Color sleeps after its input and output settle, then wakes on a real drum hit.
+# Stage times use the host clock and the governor receives its separate fixture costs.
 wait 600
 master 4096
-# ---- T2: Color on (FX past its last page: COLOR, K4 ON); silent, so it goes to sleep
-turn ALGO 1
-wait 30
-expect trk 2
-tap FX
-wait 30
-tap FX
-wait 30
-tap FX
-wait 30
-tap FX
-wait 30
-tap FX
-wait 30
-expect page 17
-spin K4 1
-wait 30
-expect fxsleep2 0
-wait 300
+# Synth notes still render on their own USB stems with all three local FX chains absent.
 expect fxsleep2 1
-# a note wakes it; it stays awake while the note and its tail sound, then sleeps again
-tap SEQ
-wait 30
-tap SEQ
-wait 30
-tap SEQ
-wait 30
-expect page 5
-key 7 down
-wait 50
-expect fxsleep2 0
-wait 300
-expect fxsleep2 0
-key 7 up
-wait 50
-expect fxsleep2 0
-wait 3000
-expect fxsleep2 1
-# ---- T3: an insert (SEL + FX, SELECT: CHORUS, K4 its mix), silent: asleep too
-turn ALGO 1
-wait 30
-expect trk 3
-press SEL
-wait 20
-tap FX
-wait 30
-release SEL
-wait 30
-expect page 16
-turn SELECT 3
-wait 30
-spin K4 64
-wait 30
-wait 300
 expect fxsleep3 1
-# ---- the drums' Color: awake while the beat plays, asleep once it has stopped and rung out
-turn ALGO -2
-wait 30
+expect fxsleep4 1
+expect stemreset 1
+midi 91 30 7F
+midi 92 3C 7F
+midi 93 48 7F
+wait 150
+expect stem2 >-600
+expect stem3 >-600
+expect stem4 >-600
+expect fxsleep2 1
+expect fxsleep3 1
+expect fxsleep4 1
+midi 81 30 00
+midi 82 3C 00
+midi 83 48 00
 expect trk 1
+# Starting on the drums, FX past FILTER opens the drum Color strip.
 tap FX
 wait 30
 tap FX
@@ -78,11 +35,16 @@ wait 30
 expect page 17
 spin K4 1
 wait 30
+expect color1_5 1
+expect fxsleep1 0
+wait 300
+expect fxsleep1 1
 tap PLAY
 wait 1000
 expect fxsleep1 0
 expect fxsleep2 1
 expect fxsleep3 1
+expect fxsleep4 1
 # ---- SETUP, SELECT: the CPU by stage; every stage measured while it plays
 tap HOME
 wait 30
@@ -96,6 +58,9 @@ turn SELECT 1
 wait 600
 expect setupview 1
 expect cpu0 >0
+expect cpu1 >0
+expect cpu2 >0
+expect cpu5 >0
 expect cpu6 >0
 expect cpu3 >0
 expect cpu4 >0

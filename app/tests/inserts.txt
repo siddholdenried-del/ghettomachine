@@ -1,5 +1,5 @@
-# Exercise routing via the panel, track isolation, and migration from the shipped/private 606 128-step save (the 606
-# was cut on 21 Nov: the save loads on the 808, kit 1, with the 808's own knobs).
+# Old formats retain their stored instrument insert data. SEL+FX and FX on
+# T2-T4 reach only the four shared FX pages, then return to the playing keys.
 flash_load app/tests/fixtures/proj_v4.img
 reboot
 wait 600
@@ -9,6 +9,12 @@ expect insert3 0
 expect insert4 0
 expect kit 1
 expect pot7_0 64
+
+flash_load app/tests/fixtures/proj_v5.img
+reboot
+wait 600
+expect projfmt 5
+expect insert2 2
 turn ALGO 1
 wait 30
 expect trk 2
@@ -17,17 +23,21 @@ wait 30
 tap FX
 release SEL
 wait 30
-expect page 16
-turn SELECT 1
+expect page 10
+tap FX
 wait 30
-expect insert2 1
-expect insert3 0
-spin K4 -12
+expect page 10
+tap FX
 wait 30
-expect insert2_3 53
+expect page 10
+tap FX
+wait 30
+expect page 10
 tap FX
 wait 30
 expect page 5
+expect insert2 2
+expect stemreset 1
 midi 91 3C 7F
 wait 60
 expect stem2 >-500
@@ -49,22 +59,12 @@ wait 30
 expect tmute 0
 wait 40
 expect stem2 -1200
-press SEL
-wait 30
-tap FX
-release SEL
-wait 30
-turn SELECT 1
-wait 30
-expect insert2 2
-expect insert2_3 110
+midi 81 3C 00
 tap SAVE
 wait 400
 expect projfmt 8
 reboot
 wait 600
 expect insert2 2
-expect insert2_3 110
-expect insert3 0
 expect kit 1
 expect pot7_0 64
