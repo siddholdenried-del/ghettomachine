@@ -4,6 +4,10 @@
       "bytes": 83,
       "sha256": "6afe4d32493a69d2e19d9813fd2975f66f7a6b7dd9332e8d9b421cd737288b13"
     },
+    "_redirects": {
+      "bytes": 96,
+      "sha256": "669af4b65b186a3af558c151748bb3af40368e52583060bdb351155034bd3901"
+    },
     "bong-cult-logo.svg": {
       "bytes": 130438,
       "sha256": "1f41ff7770b55d1a465a3ece6d23b970bf0e6b049e41559f5f9ed4a87b9a2224"
@@ -101,8 +105,8 @@
       "sha256": "90538032ff4480f3090397bf0c9fb42dbad31f40032a85ab3fd45d422a9a5c2e"
     },
     "bongcult-frame/editorial/reader.css": {
-      "bytes": 10860,
-      "sha256": "144708da3cacb4c1934ddb52dcdf96a53e375290cb3dd2fb3881e98329af707e"
+      "bytes": 10821,
+      "sha256": "7ce7e371e3b6033d925c810a8b03a38d9015334354068a49a37fdadd99dffbb0"
     },
     "bongcult-frame/editorial/recording-field.webp": {
       "bytes": 32646,
@@ -212,17 +216,37 @@
       "bytes": 83072,
       "sha256": "f4ad2d91c4310dcc54852dc265311c8758c79003b543710fb891c3e83d8395bd"
     },
+    "bongdrums/bongdrums.css": {
+      "bytes": 5925,
+      "sha256": "71cc97d0951916ed9c8ab6159016951600fe26080f837f6296ab82b3ff734b8a"
+    },
+    "bongdrums/field.webp": {
+      "bytes": 23418,
+      "sha256": "0300e8193b6967afd4bb2a0c6e3107210d8080c35d33bf6bd1e16925b9513743"
+    },
+    "bongdrums/index.html": {
+      "bytes": 8040,
+      "sha256": "07b72adc1f29d487c92052764b9387651529cdfe0d48388affd3b209ee3c2384"
+    },
+    "bongdrums/instrument.webp": {
+      "bytes": 65254,
+      "sha256": "5d9ebf6b58050cdd3f77224eb1a24b430ac2533f9cefa7dcfd65c3d14fc8017d"
+    },
+    "bongdrums/print-sources.json": {
+      "bytes": 1425,
+      "sha256": "e7966284349baaf41ca38dbcfb2ea4441d80ed03271f4bc7ca24111c6d24864c"
+    },
+    "bongdrums/trim.webp": {
+      "bytes": 842,
+      "sha256": "2cab525420316deedd5737517e949574cb3c4d2fa1e4d317e7d5bee60d27d628"
+    },
     "chapter-redirect.js": {
       "bytes": 460,
       "sha256": "54224b06a8ffe51621547e0b1a8081811fcf06bff9614e829c5d1f1a86a3a969"
     },
-    "drumengine/drumengine.css": {
-      "bytes": 3839,
-      "sha256": "49333664a9c5fc7c114b0a3d5339873c1f4d71a514a361723061a9c66005e64c"
-    },
     "drumengine/index.html": {
-      "bytes": 7126,
-      "sha256": "c666d09ca28d37c4b6163581fda3c5903b71dc9994ba969d674aa945193e80fa"
+      "bytes": 496,
+      "sha256": "a8cb22913727e46f619e853d9d60c74fc535c7505181db6d706cf55dd1b1a70b"
     },
     "dungeon-bbs-tokens.css": {
       "bytes": 1052,
@@ -285,48 +309,48 @@
       "sha256": "e205d8b375cf94cef107f04849f7d326db70aa8ea9f0882b0ff569e7084dddbd"
     },
     "guide/beats/index.html": {
-      "bytes": 31523,
-      "sha256": "cb738f8ea7f4358ad13f1c5e33579fb93f71cd5bb6d91f484bdb030b1842dd15"
+      "bytes": 31727,
+      "sha256": "ffea3aed6a7b72be71018de16fb842045fd80b14b49666f2ecd41afd0d0c35ed"
     },
     "guide/index.html": {
-      "bytes": 27907,
-      "sha256": "3e4615a9251c217ff0dc49ed018a9a29d28e633513c4e0cb2a7924cd7f2f7ad0"
+      "bytes": 28111,
+      "sha256": "7a805316d5a0ecb81d286fa610bacaf53ccf1926f6adb1ad7b439fc4b0411449"
     },
     "guide/mixer/index.html": {
-      "bytes": 23123,
-      "sha256": "e8eb94beafdd236de93f67a1922a0d34761e48bac59c6295927ad30ef54d704e"
+      "bytes": 23327,
+      "sha256": "9b496827634cc80c4a9a8b95ae61316bcfced23452a50e98db8bf90734b23076"
     },
     "guide/modulation/index.html": {
-      "bytes": 39105,
-      "sha256": "b8a49e71e4d923a8a54f2f1c3b9fa6ae58272b8a70f415e6f7977eb3e5e7db25"
+      "bytes": 39309,
+      "sha256": "28ee6e010832643ab6af6aabf63405badf3d770e9874b24ab038d4d860a96471"
     },
     "guide/performance/index.html": {
-      "bytes": 22690,
-      "sha256": "a3602a3b6453c7acb8c4d44137e1637eaac5c1e42d9236648c760167f89fae00"
+      "bytes": 22894,
+      "sha256": "fa9910c0b29fd0474180110457d36c9a741144d27a30af4b4d70c0f0b787ace0"
     },
     "guide/recording/index.html": {
-      "bytes": 26326,
-      "sha256": "99feb2ca4eea61696bbd250da2eafa1f1406df2592fbd6b8fddad1065a10b8cd"
+      "bytes": 26530,
+      "sha256": "6388e1012af8a718a44287ae1142ef67aeeed9c9763b36dd2695a9e28a501e8b"
     },
     "guide/reference/index.html": {
-      "bytes": 56479,
-      "sha256": "ef40cb625d385e65cc6b58db877f8373e4b54d962f51497f52b1dbdb4d38e261"
+      "bytes": 56683,
+      "sha256": "d72860e24393ff3ed993dd7c13b05c146adb8e5c1a71d0f63142f54ae92b5e64"
     },
     "guide/setup/index.html": {
-      "bytes": 32695,
-      "sha256": "9be85de35fa9f82a838ad28c62110d35ff6492f2d6fee617724886753539a787"
+      "bytes": 32899,
+      "sha256": "805054664ed72344ed8f62fec8bc052ab360716033281b934cbe14aa79db2922"
     },
     "guide/sounds/index.html": {
-      "bytes": 27903,
-      "sha256": "8a36e31630b04f125caf88199e4c35c07fda4ca8f3e592c4f2a83d89d72b26f3"
+      "bytes": 28107,
+      "sha256": "7a65144a10f72fd45e854df5b629d6bccb9e6365da5d9f4738ad77d5ed4542de"
     },
     "index.html": {
-      "bytes": 14765,
-      "sha256": "c0b9c243b59bbd6d421fd92528e0f26168e49e28e19962dd92cbebc2755d5d55"
+      "bytes": 14930,
+      "sha256": "853e10aaa60b18f4fc1ec0b060534a688c4931948c60564f1cdd51aa61eb6e18"
     },
     "technical/index.html": {
-      "bytes": 74898,
-      "sha256": "357b68a7c764bc749d4aa7b501089047c8008e893468f3a4cbbd192fe355dac1"
+      "bytes": 75102,
+      "sha256": "6ff1906563c4b8dded322730252d83cf037aadcd04cde85ab84c0014c304d09c"
     }
   },
   "project": "GhettoMachine",

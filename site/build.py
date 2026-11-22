@@ -228,10 +228,13 @@ MASTHEAD = '<a class="bc-skip" href="#gm-main">Skip to content</a>\n' + FAMILY_M
 
 
 def frontispiece(slug):
-    description = html.escape(PRINT_SOURCES[slug]["instrument"]["title"], quote=True)
+    drawing = PRINT_SOURCES[slug]["instrument"]
+    description = html.escape(drawing["title"], quote=True)
     return (
         f'<figure class="gm-plate"><img alt="{description}" '
-        f'src="{EDITORIAL_BASE}/{slug}-instrument.webp" decoding="async"></figure>'
+        f'src="{EDITORIAL_BASE}/{slug}-instrument.webp" decoding="async">'
+        f'<figcaption><a href="{html.escape(drawing["source"], quote=True)}">'
+        'John Tyndall, <i>Sound</i> (1902)</a></figcaption></figure>'
     )
 
 
@@ -247,12 +250,13 @@ LANDING = """<div class="hero gm-home">
       sizes="(max-width: 620px) calc(84vw - 3rem), (min-width: 1547px) 39rem, 39vw" width="1080" height="800"
       alt="A hand reaches across four organ registers, one printed in hot pink, above a row of keys." fetchpriority="high">
   </div>
-  <div class="gm-home-entry"><p class="lede">GhettoMachine is BongSoft custom firmware engineered by BongTech, part of <a href="https://bongcult.com/">BongCult</a>. Make a beat in the browser or look up the controls for the FM-1.</p>
+  <p class="gm-home-print-credit">Field: <a href="https://www.gutenberg.org/ebooks/54969">John Tyndall, <i>Sound</i> (1902), fog-siren frontispiece</a>.</p>
+  <div class="gm-home-entry"><p class="lede">GhettoMachine is BongWare custom firmware engineered by BongTech, part of <a href="https://bongcult.com/">BongCult</a>. Make a beat in the browser or look up the controls for the FM-1.</p>
   <div class="gm-actions" id="play">
     <a class="gm-button gm-primary" href="/guide/">Open the User Guide</a>
     <a class="gm-button" href="/emu/">Play in browser</a>
   </div>
-  <p class="gm-home-links"><a href="/technical/">How it works</a> · <a href="/drumengine/">DrumEngine architecture</a> · <a href="REPO">Source on GitHub</a></p>
+  <p class="gm-home-links"><a href="/technical/">How it works</a> · <a href="/bongdrums/">BongDrums architecture</a> · <a href="REPO">Source on GitHub</a></p>
   <details class="gm-technical-topics">
     <summary>Technical topics</summary>
     TECHNICAL_TOPIC_LINKS
@@ -273,7 +277,7 @@ def nav_link(href, label, current):
 def render_document(head, title, path, content, guide_slug=None, topics=()):
     is_guide = guide_slug is not None
     play_label = "Play in browser" if is_guide else "Play"
-    nav = [("/", "Home"), ("/guide/", "User Guide"), ("/emu/", play_label), ("/technical/", "How it works")]
+    nav = [("/", "Home"), ("/guide/", "User Guide"), ("/emu/", play_label), ("/technical/", "How it works"), ("/bongdrums/", "BongDrums")]
     site_nav = "".join(nav_link(href, label, path) for href, label in nav)
     chapters = ""
     if is_guide:
@@ -297,17 +301,17 @@ def render_document(head, title, path, content, guide_slug=None, topics=()):
         '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n'
         '<meta name="theme-color" content="#10100f">\n'
-        '<meta name="description" content="GhettoMachine is BongSoft custom firmware by BongTech: a four-track groovebox for the M-VAVE FM-1, playable in the browser.">\n'
+        '<meta name="description" content="GhettoMachine is BongWare custom firmware by BongTech: a four-track groovebox for the M-VAVE FM-1, playable in the browser.">\n'
         f'<link rel="canonical" href="https://ghettomachine.bongcult.com{path}">\n'
         + re.sub(r'<title>[^<]*</title>', f'<title>{html.escape(title)}</title>', head, count=1) + '\n'
         + ICON.replace("HREF", "/favicon.svg")
         + FRAME_STYLESHEET + '<link rel="stylesheet" href="/bong-cult-shell.css">\n'
-        + FAMILY_STYLESHEET + f'<link rel="stylesheet" href="{EDITORIAL_BASE}/reader.css">\n' + js + '</head>\n'
+        + FAMILY_STYLESHEET + f'<link rel="stylesheet" href="{EDITORIAL_BASE}/reader.css?v=bongdrums-r1">\n' + js + '</head>\n'
         + f'<body class="gm-bong-cult{css_class}" data-edition="{section}">\n' + MASTHEAD
-        + '<div class="gm-project"><p>BongSoft · BongTech</p>'
+        + '<div class="gm-project"><p>BongWare · BongTech</p>'
         + f'<nav aria-label="GhettoMachine">{site_nav}</nav></div>\n'
         + '<div class="gm-page-shell">\n' + aside
-        + f'<main class="wrap" id="gm-main" tabindex="-1">\n{content}\n</main>\n</div>\n' + FRAME_BOTTOM + '</body>\n</html>\n'
+        + f'<main class="wrap" id="gm-main" tabindex="-1">\n{content}\n</main>\n</div>\n' + '<div class="gm-colophon" aria-hidden="true"></div>\n</body>\n</html>\n'
     )
 
 
@@ -358,13 +362,18 @@ def build_landing(out):
         "})();\n"
     )
     landing = LANDING.replace("RELEASE_VERSION_LABEL", html.escape(RELEASE["targets"]["web"]["landing_label"])).replace("REPO", REPO).replace("TECHNICAL_TOPIC_LINKS", fallback)
-    (out / "index.html").write_text(render_document(head, "GhettoMachine · BongSoft", "/", landing))
+    (out / "index.html").write_text(render_document(head, "GhettoMachine · BongWare", "/", landing))
     tech_dir = out / "technical"
     tech_dir.mkdir(exist_ok=True)
     contents = contents.replace('<div class="screen">', '<div class="screen gm-chapter-head"><div class="gm-title-copy">', 1)
     contents = contents.replace('  <p class="lede">', frontispiece("technical") + '</div>\n  <p class="lede">', 1)
     (tech_dir / "index.html").write_text(render_document(head, "Inside GhettoMachine · Technical tour", "/technical/", contents))
-    shutil.copytree(ROOT / "site" / "drumengine", out / "drumengine", dirs_exist_ok=True)
+    shutil.copytree(ROOT / "site" / "bongdrums", out / "bongdrums", dirs_exist_ok=True)
+    old_name = out / "drumengine"
+    old_name.mkdir(exist_ok=True)
+    (old_name / "drumengine.css").unlink(missing_ok=True)
+    shutil.copyfile(ROOT / "site" / "drumengine" / "index.html", old_name / "index.html")
+    shutil.copyfile(ROOT / "site" / "redirects", out / "_redirects")
     (out / "guide-toc.js").write_text(TOC_SCRIPT)
     slugs = [slug for slug, _, _ in GUIDE]
     if slugs != [slug for _, members in GUIDE_PARTS for slug in members] or set(CHAPTER_SUMMARIES) != set(slugs):

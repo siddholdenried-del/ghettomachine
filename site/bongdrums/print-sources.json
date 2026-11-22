@@ -1,0 +1,24 @@
+{
+  "instrument": {
+    "title": "Kettledrums, Symphony Society of New York — Karl Glassmann",
+    "work": "Esther Singleton, The Orchestra and Its Instruments (1917), plate facing p. 122",
+    "source": "https://archive.org/details/orchestraitsinst00sing",
+    "scan": "https://upload.wikimedia.org/wikipedia/commons/4/45/The_orchestra_and_its_instruments_%28IA_orchestraitsinst00sing%29.pdf",
+    "scan_sha256": "86e83c5f5a96c0e4233ad323ca801c53de86659a5a969ed2e29e3fae41b48e8e",
+    "treatment": "Rotated and cropped to photographic print, duotoned; public-domain 1917 US publication."
+  },
+  "field": {
+    "title": "Melde’s six sectors of vibration in vibrating glass and liquid (Fig. 80)",
+    "scan": "i_194b.jpg",
+    "source": "https://raw.githubusercontent.com/GITenberg/Sound_54969/094a18734ce33182e20f2d2c22e8459f05022fff/54969-h/images/i_194b.jpg",
+    "sha256": "0fb6d8bf0ab9db36291105ebad506a6ac9105f9d535e89a28de251088c6115d1",
+    "treatment": "Duotoned source; unmodified line positions."
+  },
+  "trim": {
+    "title": "Vibrating segments of a bell (Fig. 77)",
+    "scan": "i_190.jpg",
+    "source": "https://raw.githubusercontent.com/GITenberg/Sound_54969/094a18734ce33182e20f2d2c22e8459f05022fff/54969-h/images/i_190.jpg",
+    "sha256": "c13f9e783ceee87d0f19119c4da9220259ac7168efbc9bbb3d7d1a096d2effa0",
+    "treatment": "Standalone figure cut into the corners and connected with plain rules."
+  }
+}

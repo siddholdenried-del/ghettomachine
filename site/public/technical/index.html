@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#10100f">
-<meta name="description" content="GhettoMachine is BongSoft custom firmware by BongTech: a four-track groovebox for the M-VAVE FM-1, playable in the browser.">
+<meta name="description" content="GhettoMachine is BongWare custom firmware by BongTech: a four-track groovebox for the M-VAVE FM-1, playable in the browser.">
 <link rel="canonical" href="https://ghettomachine.bongcult.com/technical/">
 <title>Inside GhettoMachine · Technical tour</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -182,7 +182,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 0.85rem; border-top: 
 <link rel="stylesheet" href="/bongcult-frame/frame.css">
 <link rel="stylesheet" href="/bong-cult-shell.css">
 <link rel="stylesheet" href="/bongcult-frame/editorial/mast.css">
-<link rel="stylesheet" href="/bongcult-frame/editorial/reader.css">
+<link rel="stylesheet" href="/bongcult-frame/editorial/reader.css?v=bongdrums-r1">
 </head>
 <body class="gm-bong-cult" data-edition="technical">
 <a class="bc-skip" href="#gm-main">Skip to content</a>
@@ -195,7 +195,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 0.85rem; border-top: 
     <a href="https://bongcult.com/about/">About</a>
   </nav>
 </header>
-<div class="gm-project"><p>BongSoft · BongTech</p><nav aria-label="GhettoMachine"><a href="/">Home</a><a href="/guide/">User Guide</a><a href="/emu/">Play</a><a href="/technical/" aria-current="page">How it works</a></nav></div>
+<div class="gm-project"><p>BongWare · BongTech</p><nav aria-label="GhettoMachine"><a href="/">Home</a><a href="/guide/">User Guide</a><a href="/emu/">Play</a><a href="/technical/" aria-current="page">How it works</a><a href="/bongdrums/">BongDrums</a></nav></div>
 <div class="gm-page-shell">
 <main class="wrap" id="gm-main" tabindex="-1">
 <header class="hero">
@@ -210,7 +210,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 0.85rem; border-top: 
       <div><b>16</b><span>voices</span></div>
     </div>
   </div>
-<figure class="gm-plate"><img alt="Sensitive flame and acoustic tunnel" src="/bongcult-frame/editorial/technical-instrument.webp" decoding="async"></figure></div>
+<figure class="gm-plate"><img alt="Sensitive flame and acoustic tunnel" src="/bongcult-frame/editorial/technical-instrument.webp" decoding="async"><figcaption><a href="https://raw.githubusercontent.com/GITenberg/Sound_54969/094a18734ce33182e20f2d2c22e8459f05022fff/54969-h/images/i_334.jpg">John Tyndall, <i>Sound</i> (1902)</a></figcaption></figure></div>
   <p class="lede">GhettoMachine is BongSoft custom firmware engineered by BongTech. It replaces the FM-1's stock firmware. It has one drum track (a 909 or an 808), three instrument tracks that can each be a mono synth, a poly synth or a sampler, a sequencer, effects, and a mastering chain. It's about 430 KB of code, and the same code runs in your browser, right here.</p>
   <p><strong>Historical tour (0.5).</strong> The specifications and test history below describe that build. The linked browser instrument now runs the newer development preview; use the <a href="/guide/">current User Guide</a> for its 128-step sequencer and track inserts.</p>
   <p>This is the tour: what runs where, how a note becomes sound, where things are saved, and how we build and test it. Each chapter is coloured the way the FM-1's screen colours that part of the instrument.</p>
@@ -689,6 +689,6 @@ footer { margin-top: 48px; color: var(--muted); font-size: 0.85rem; border-top: 
 <footer>GhettoMachine 0.5, as of 20 November 2026. BongSoft firmware by BongTech, part of <a href="https://bongcult.com/">BongCult</a>. Built on fm1-base (Charles Vestal), with X0X's drum models and effects and Felucca-Engines' ANALOG voice. It's free software under the GPL-3.0: the source and the full manual are at <a href="https://github.com/siddholdenried-del/ghettomachine">github.com/siddholdenried-del/GhettoMachine</a>.</footer>
 </main>
 </div>
-<div class="bc-frame bc-frame-bottom" aria-hidden="true"><i></i><span></span><i></i></div>
+<div class="gm-colophon" aria-hidden="true"></div>
 </body>
 </html>

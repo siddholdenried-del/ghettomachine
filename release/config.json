@@ -54,7 +54,13 @@
     "bongcult-frame/windchest/tracks.png",
     "bongcult-frame/windchest/windchest-frame.png",
     "chapter-redirect.js",
-    "drumengine/drumengine.css",
+    "_redirects",
+    "bongdrums/bongdrums.css",
+    "bongdrums/field.webp",
+    "bongdrums/index.html",
+    "bongdrums/instrument.webp",
+    "bongdrums/print-sources.json",
+    "bongdrums/trim.webp",
     "drumengine/index.html",
     "dungeon-bbs-tokens.css",
     "emu/app.js",
@@ -137,11 +143,11 @@
       "path": "technical/index.html"
     },
     {
-      "literal": "BongSoft \u00b7 BongTech",
+      "literal": "BongWare \u00b7 BongTech",
       "path": "index.html"
     },
     {
-      "literal": "GhettoMachine is BongSoft custom firmware engineered by BongTech, part of",
+      "literal": "GhettoMachine is BongWare custom firmware engineered by BongTech, part of",
       "path": "index.html"
     },
     {
@@ -179,7 +185,8 @@
     "/emu/",
     "/technical/",
     "/guide/sounds/",
-    "/drumengine/"
+    "/drumengine/",
+    "/bongdrums/"
   ],
   "schema": 1,
   "site": "https://ghettomachine.bongcult.com",
