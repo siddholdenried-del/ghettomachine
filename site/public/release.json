@@ -25,8 +25,8 @@
       "sha256": "c4fc02bbe685f3161e16c6233e7f7f1fb3a36f4de9c8a874103030b6751bcfa9"
     },
     "emu/app.wasm": {
-      "bytes": 658041,
-      "sha256": "570bf90785c6d3c174f486aa669a9091e674f82c2adb91b13cc03c537863da93"
+      "bytes": 663599,
+      "sha256": "6b98601553f97ead569937d04e5deb1b496f8bb366b14cf1359c89fe61ab09f2"
     },
     "emu/app_worklet.js": {
       "bytes": 210,
@@ -117,8 +117,8 @@
       "sha256": "884de6127db2635d7504a0ad17e30d1e75e0f9f69f8b206398c53ada7e16ea67"
     },
     "technical/index.html": {
-      "bytes": 70682,
-      "sha256": "2cca49291cd567f1d7bd0aca44443193ef700144c0c28bbdf3a310e1fa2b566d"
+      "bytes": 71691,
+      "sha256": "fe0c491383760d2eccce3efd2a4de50f64d1ef480b1fe849614b3a5e30a74315"
     }
   },
   "project": "GhettoMachine",
@@ -126,20 +126,20 @@
   "site": "https://ghettomachine.bongcult.com",
   "source": {
     "emscripten": "7.0.0+777e6e5db7b4990bcaeb1b9998ed642cc84e6629",
-    "emulator_build_commit": "49f84b0622d7fc3b8ee7260db519b11e43ef259f",
-    "feature_source": "49f84b0622d7fc3b8ee7260db519b11e43ef259f",
+    "emulator_build_commit": "4f2090bb070f07a7f9a603685d10ec961ed7a22c",
+    "feature_source": "4f2090bb070f07a7f9a603685d10ec961ed7a22c",
     "felucca_bsp": "2a5af3dfc8bccb92e37d48a3e7e0bf9a5827e51f",
     "fm1_base": "7337375c15e9db26f23b0c68a1db61429add2f48",
-    "provenance": "Browser development build from the exact clean source with two drum kits: the 909 and the 808 (the 606 and the 707 were cut; projects saved on them load on the 808 and the 909), and FILL returning the drums to their own clip's place.",
-    "remote_main_predecessor": "fb6cc4dfaa895591347665496ae7d6e754ed1196",
+    "provenance": "Browser development build from the exact clean source with the synth made cheaper and its samples unchanged: the second oscillator left out at MIX 0, the matrix skipped when no slot is in use, a lighter track mix, and (on the FM-1) the synth's tables and mix in RAM.",
+    "remote_main_predecessor": "85fed9c54d07cb2f3b3f274bcf08f7644787ba51",
     "repository": "https://github.com/siddholdenried-del/ghettomachine",
-    "runtime_tree": "52fcfcc3ac64495ccf7e02bcbf90fb2bf2c48d82"
+    "runtime_tree": "6b89d87adb165a185fa2f40e184ca163f3f8b45c"
   },
   "targets": {
     "device": {
-      "application_bytes": 526344,
-      "build_from": "49f84b0622d7fc3b8ee7260db519b11e43ef259f",
-      "build_id": "294E907D",
+      "application_bytes": 530080,
+      "build_from": "4f2090bb070f07a7f9a603685d10ec961ed7a22c",
+      "build_id": "01ED9946",
       "build_status": "linked-and-packaged",
       "downloads": [],
       "flashed": false,
@@ -152,12 +152,12 @@
       "hardware_tested": false,
       "package_bytes": 616099,
       "package_identity": "FM-1_800",
-      "package_sha256": "707c89e0dd1f45b400aa7b7a6ab04544b2da878090de122a97e2c0d3d341e32f",
+      "package_sha256": "15e5abbd60d10cfe1b4e18ae07d7c334cbd1ea44544d937c62ea605ab772c093",
       "pool_guard_bytes": 8192,
       "pool_limit_bytes": 344064,
       "pool_used_bytes": 335064,
       "ram_limit_bytes": 98304,
-      "ram_used_bytes": 84276,
+      "ram_used_bytes": 87876,
       "status": "not-distributed",
       "tested_for_this_release": false
     },
@@ -186,7 +186,7 @@
       "identity": "GHETTOMACHINE DEV",
       "path": "emu/app.wasm",
       "platform": "browser",
-      "sha256": "570bf90785c6d3c174f486aa669a9091e674f82c2adb91b13cc03c537863da93"
+      "sha256": "6b98601553f97ead569937d04e5deb1b496f8bb366b14cf1359c89fe61ab09f2"
     }
   ]
 }
