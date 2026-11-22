@@ -825,6 +825,9 @@ static uint32_t crc32_of(const uint8_t *d, uint32_t n) { return ~crc32_more(0xFF
  * metronome, the stems and the output */
 enum { CS_DRUMS, CS_SYNTH, CS_FXIN, CS_FX, CS_MASTER, CS_REST, CS_TOTAL, CS_NUM };
 static uint32_t cs_t[CS_NUM];             /* this block's ticks */
+static uint32_t fxin_t[2];                /* the inserts' and Color's ticks this block on each core (the tracks' mix is
+                                           * shared between them: mix_job): FX IN is both, the first core's alone is
+                                           * part of its block */
 static float cs_us[CS_NUM];               /* the running means, us per block */
 static float cs_pk[CS_NUM];               /* the worst block lately, us: held, falling by half in about 1.3 s (the spikes
                                            * a running mean hides: a pattern starting, a switch) */
@@ -885,7 +888,7 @@ static int insert_process(int t, float *l, float *r, unsigned n)   /* 1: silence
             color_run(&color_rt[t], &proj.color[t], l, r, n);
         fxs_after(t, q, fxs_peak(l, r, n) < FXS_LEVEL, n);
     }
-    cs_t[CS_FXIN] += plat_ticks24() - t0;
+    fxin_t[plat_core() & 1u] += plat_ticks24() - t0;
     return slept;
 }
 
@@ -2769,7 +2772,50 @@ static void syn_job(uint32_t half) { PLAT_FAR(syn_half)(half); }   /* (RAM code,
 /* the second core takes its half of the voices only from SYN_SPLIT_MIN voices up: handing a job over and waiting for
  * it costs the first core about what a voice or two does (the synth with no voices took 8 % of a block on the FM-1,
  * eight hand-offs a block), so with fewer the first core renders them all */
-#define SYN_SPLIT_MIN 4
+#define SYN_SPLIT_MIN 2                   /* (4 at first; measured since: a hand-off about 18 us, a voice about 33 a
+                                           * synth block, so even one voice handed over pays) */
+
+/* The tracks' mix over both cores (0.5): each track's voices summed, its insert and Color, its pan, sends and meter
+ * are its own work on its own buffers (dsp/synth.c syn_mix_track), so the second core takes some tracks while the
+ * first does the others, then the first makes the mix of them. Which: by what each track's mix cost the block before
+ * (mixc, ticks), the split of the three whose longer side is shortest, a hand-off's time on the second core's side;
+ * all here when that saves less than MIX_GAIN, or the second core is busy (a block's tail) */
+#define MIX_HAND (18u * PLAT_TICKS_PER_US)
+#define MIX_GAIN (8u * PLAT_TICKS_PER_US)
+static uint32_t mixc[NTRK];
+
+static void mix_job(uint32_t mask)        /* the tracks in mask (bit t), each mixed and timed; either core */
+{
+    int t;
+    for (t = 1; t < NTRK; t++)
+        if (mask >> t & 1u) {
+            CS_MARK(t0);
+            PLAT_FAR(syn_mix_track)(t);
+            mixc[t] = plat_ticks24() - t0;
+        }
+}
+
+static uint32_t mix_split(void)           /* the tracks for the second core (bit t); 0: none */
+{
+    const uint32_t all = mixc[1] + mixc[2] + mixc[3];
+    uint32_t best = all, pick = 0, m;
+    for (m = 2u; m < 16u; m += 2u) {      /* every set of the tracks 1..3 but none and all */
+        uint32_t there = MIX_HAND, here, longer;
+        int t;
+        if (m == 14u)
+            continue;
+        for (t = 1; t < NTRK; t++)
+            if (m >> t & 1u)
+                there += mixc[t];
+        here = all + MIX_HAND - there;
+        longer = here > there ? here : there;
+        if (longer < best) {
+            best = longer;
+            pick = m;
+        }
+    }
+    return best + MIX_GAIN <= all ? pick : 0u;
+}
 
 static void syn_block(void)
 {
@@ -2797,9 +2843,19 @@ static void syn_block(void)
         t0 = plat_ticks24();
         sy_t[SY_VOICES] += t0 - t1;
     }
-    in0 = cs_t[CS_FXIN];
-    PLAT_FAR(syn_mix)(syn_l, syn_r, syn_rv, syn_dl);   /* (RAM code) */
-    sy_t[SY_MIX] += (plat_ticks24() - t0) - (cs_t[CS_FXIN] - in0);
+    in0 = fxin_t[0];
+    {
+        const uint32_t there = cpu2 ? mix_split() : 0u;
+        if (there && plat_cpu2_on() && plat_cpu2_run(mix_job, there)) {
+            mix_job(14u & ~there);
+            if (plat_cpu2_wait() != 0)    /* it was given up (cpu2_fallback): its tracks here */
+                mix_job(there);
+        } else {
+            mix_job(14u);
+        }
+    }
+    PLAT_FAR(syn_mix_end)(syn_l, syn_r, syn_rv, syn_dl);   /* (RAM code) */
+    sy_t[SY_MIX] += (plat_ticks24() - t0) - (fxin_t[0] - in0);
     syn_at = 0;
 }
 
@@ -3439,7 +3495,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
                 fxs_after(TR_DRUM, q, fxs_peak(buf_l + done, buf_r + done, chunk) < FXS_LEVEL &&
                                       fxs_peak(bus_rev + done, bus_dly + done, chunk) < FXS_LEVEL, chunk);
             }
-            cs_t[CS_FXIN] += plat_ticks24() - cs_c0;
+            fxin_t[0] += plat_ticks24() - cs_c0;
         }
         drum_mix(buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, chunk);
         if (STEMS && stems_on)            /* (the mix holds the drums alone until the synth comes in) */
@@ -3456,10 +3512,10 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             drum_pk = pk;
         }
         {   /* (the inserts run inside: counted as FX IN, taken out of SYNTH) */
-            uint32_t in0 = cs_t[CS_FXIN];
+            uint32_t in0 = fxin_t[0];
             CS_MARK(cs_s0);
             synth_add(buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, chunk, done);
-            cs_t[CS_SYNTH] += (plat_ticks24() - cs_s0) - (cs_t[CS_FXIN] - in0);
+            cs_t[CS_SYNTH] += (plat_ticks24() - cs_s0) - (fxin_t[0] - in0);
         }
         if (sq.playing) {
             sq.bar_left -= (float)chunk;
@@ -3527,7 +3583,9 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     {   /* the stages' running means (about the last 50 blocks: 0.3 s). REVERB+DELAY and MASTER: the block before's
          * tail, on the second core (or this one's, then counted out of REST); REST: the rest of this core's time,
          * waiting for the second included */
-        uint32_t tot = plat_ticks24() - cs_start, sum = cs_t[CS_DRUMS] + cs_t[CS_SYNTH] + cs_t[CS_FXIN];
+        uint32_t tot = plat_ticks24() - cs_start, sum = cs_t[CS_DRUMS] + cs_t[CS_SYNTH] + fxin_t[0];
+        cs_t[CS_FXIN] = fxin_t[0] + fxin_t[1];   /* (both cores' work: the row, the effects' budget) */
+        fxin_t[0] = fxin_t[1] = 0;
         cs_t[CS_FX] = post[prev].t_fx;
         cs_t[CS_MASTER] = post[prev].t_master;
         if (post_here)

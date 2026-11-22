@@ -10,7 +10,7 @@ gen = ["tools/gen_drum_samples.py {gen}/x0x_drum_samples.h",   # the 909 cymbals
        "tools/gen_mono.py {gen}/mono_font.h"]                   # the monospace faces (IBM Plex Mono, OFL)
 words = "words.tsv"
 ble = false                    # no radio: the firmware is GPL-3.0, so JieLi's binary Bluetooth libraries stay out
-ram_code_allow = ["syn_mix", "fx_master"]   # RAM code that calls out: the track mix calls a track's insert (app.c insert_process), the master bus its EQ, TAPE, STEREO and meters while they are on (all in the flash)
+ram_code_allow = ["syn_mix_track", "fx_master"]   # RAM code that calls out: the track mix calls a track's insert (app.c insert_process), the master bus its EQ, TAPE, STEREO and meters while they are on (all in the flash)
 cpu2 = true                    # the second core renders half the synth voices
 cpu2_fallback = true           # one core (8 voices) after a failure of it, instead of a restart
 companion = true              # the project file (plat_file_*); the samples over USB later (tools/fm1_sample.py)

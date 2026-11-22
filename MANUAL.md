@@ -31,7 +31,8 @@ GhettoMachine, part of the BongWare firmware line engineered by BongTech, turns 
 > went on it later that night (the synth's mix from 450 to about 250 us a block; steady playing at about 60 % of the
 > first core, the only late blocks at kit changes). Then, asked for: the budgets back at 20 %, 30 % and 25 % with a
 > guard for the block that takes too long, the LFO made each clip's own (project format 8), and no spike as clips
-> change (a kit that leaves stops sounding): in the source, not on the FM-1 yet. 0.5 is 0.4 plus the USB stems. 0.4 is 0.3 plus the 303 generator, the new name and the boot screen's logo; 0.3 is 0.2 plus the performance
+> change (a kit that leaves stops sounding): on the FM-1 since 22 Nov. The tracks' mix, with their inserts and Color,
+> shared between the two cores: in the source, not on the FM-1 yet. 0.5 is 0.4 plus the USB stems. 0.4 is 0.3 plus the 303 generator, the new name and the boot screen's logo; 0.3 is 0.2 plus the performance
 > update (the scene grid onwards) and the synth update. 0.5 passes its simulator tests (2,194 checks, 39 more on the
 > synth itself and 48 on the master bus's sound). It reads a project saved by 0.2, 0.3 or 0.4, and by 0.5 before each clip had its own LFO.
 
@@ -595,7 +596,11 @@ the sound saved with the pattern it's on.
   kits sounding at once: the old kit's tails under the new kit's hits took the drums to 44–48 % of a block. A kit that
   leaves now stops sounding as the new one comes. A scene's own kit (SOUNDS PER PATTERN) is loaded in the audio's own
   time at the bar: it now sets only the knobs that differ from the ones in place, not every knob of every pad. With
-  SOUNDS shared (SETUP, K2) a scene's change costs no more than any bar's first step. Releasing STUTTER or TAPE STOP no longer holds the
+  SOUNDS shared (SETUP, K2) a scene's change costs no more than any bar's first step.
+- **The tracks' mix on both cores** (22 Nov, in the source; the same samples). Each instrument track's voices summed,
+  its insert and Color, its pan and sends were the first core's work, about a fifth of a block with inserts on three
+  tracks. The second core now takes some of the tracks, by what each cost the block before, while the first does the
+  rest; and it takes its half of the voices from two voices up (it was four). Releasing STUTTER or TAPE STOP no longer holds the
   sound off for 1.5 ms while the delay's memory is cleared, and the 606's clap costs a third as much to hit (its filter
   bank is kept between hits at the same TUNE).
 - **The synth, cheaper, the same sound** (21 Nov, in the source; every sound and every test recording bit for bit as

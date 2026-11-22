@@ -133,6 +133,10 @@ typedef int (*syn_insert_fn)(int trk, float *l, float *r, unsigned frames);
 void syn_set_insert(int trk, syn_insert_fn fn);
 void syn_mix_repack(float *l, float *r, float *rev, float *dly); /* merge unmuted cached blocks without running inserts twice */
 void syn_mix(float *l, float *r, float *rev, float *dly);   /* SYN_CTL samples each, overwritten: the mix and its sends */
+/* the same in parts (0.5: the tracks' mix shared between the two cores): each track once, on either core (its
+ * buffers, its insert and its meters are its own), then the mix of them */
+void syn_mix_track(int trk);
+void syn_mix_end(float *l, float *r, float *rev, float *dly);
 /* the last syn_mix's block of one track alone (its part of l and r: its level and pan, no sends), SYN_CTL samples a
  * side (0 left, 1 right): the USB stems. NULL: the track was silent in it */
 const float *syn_track(int trk, int side);

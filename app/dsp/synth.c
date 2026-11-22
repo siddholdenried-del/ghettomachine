@@ -1325,8 +1325,10 @@ static volatile float trk_pk[SYN_TRACKS];   /* each track's peak in the mix sinc
 static float trk_l[SYN_TRACKS][SYN_CTL], trk_r[SYN_TRACKS][SYN_CTL];   /* the last block, each track alone */
 static float trk_send[SYN_TRACKS][SYN_CTL];
 static syn_insert_fn trk_insert[SYN_TRACKS];
-static uint8_t trk_idle[SYN_TRACKS];      /* the track's insert said it sleeps on silence (syn_insert_fn's 1): nothing to
+static uint32_t trk_idle[SYN_TRACKS];     /* the track's insert said it sleeps on silence (syn_insert_fn's 1): nothing to
                                            * mix, nothing to call, until a voice sounds on the track or its insert is set */
+static uint32_t trk_on[SYN_TRACKS];       /* this block: the track is in the mix (syn_mix_track; a word each: either
+                                           * core writes its own tracks') */
 static uint32_t trk_used;                 /* bit t: track t sounded in it */
 
 void syn_cut_track(int t)
@@ -1385,14 +1387,16 @@ GM_RAM void syn_mix_repack(float *l, float *r, float *rev, float *dly)
  * each track's block, through its insert, its pan and its sends' feed, then the mix. A track with no voice this block
  * and no insert is left out; so is one whose insert said it sleeps on silence (trk_idle). The usual track has only
  * centred voices: one sum and one conversion a sample, its peak taken as a whole number and scaled once (the same
- * value: scaling by a gain that is not negative keeps the order). The same samples as the loop this replaces */
-GM_RAM void syn_mix(float *l, float *r, float *rev, float *dly)
+ * value: scaling by a gain that is not negative keeps the order). The same samples as the loop this replaced.
+ * A track at a time (syn_mix_track), so the tracks can be shared between the two cores: each track's buffers, its
+ * insert's state and its meters are its own; syn_mix_end then makes the mix of them */
+GM_RAM void syn_mix_track(int t)
 {
     static const int32_t NONE[SYN_CTL];
     const float g = 1.0f / 36000.0f;      /* one voice of a typical sound near -12 dBFS */
-    int k, t;
-    trk_used = 0;
-    for (t = 1; t < SYN_TRACKS; t++) {
+    int k;
+    trk_on[t] = 0;
+    do {
         const int m0 = used_m[0][t], m1 = used_m[1][t], s0 = used_lr[0][t], s1 = used_lr[1][t];
         const syn_insert_fn fn = trk_insert[t];
         const float pl = mix[t].pl * g, pr = mix[t].pr * g;
@@ -1403,7 +1407,7 @@ GM_RAM void syn_mix(float *l, float *r, float *rev, float *dly)
             trk_idle[t] = 0;
         else if (!fn || trk_idle[t])
             continue;
-        trk_used |= 1u << t;
+        trk_on[t] = 1;
         if (s0 | s1) {                    /* unison voices off the centre too */
             const int32_t *l0 = s0 ? acc_l[0][t] : NONE, *l1 = s1 ? acc_l[1][t] : NONE;
             const int32_t *r0 = s0 ? acc_r[0][t] : NONE, *r1 = s1 ? acc_r[1][t] : NONE;
@@ -1444,7 +1448,7 @@ GM_RAM void syn_mix(float *l, float *r, float *rev, float *dly)
             const float gl = mix[t].pl, gr = mix[t].pr;
             if (fn(t, tl, tr, SYN_CTL) && !(m0 | m1 | s0 | s1)) {   /* asleep on silence: left out from here */
                 trk_idle[t] = 1;
-                trk_used &= ~(1u << t);
+                trk_on[t] = 0;
                 continue;
             }
             for (k = 0; k < SYN_CTL; k++) {
@@ -1461,8 +1465,26 @@ GM_RAM void syn_mix(float *l, float *r, float *rev, float *dly)
             if (b > pk) pk = b;
         }
         trk_pk[t] = pk;
-    }
+    } while (0);
+}
+
+/* the tracks mixed (syn_mix_track, each once): the mix and the sends from them */
+GM_RAM void syn_mix_end(float *l, float *r, float *rev, float *dly)
+{
+    int t;
+    trk_used = 0;
+    for (t = 1; t < SYN_TRACKS; t++)
+        if (trk_on[t])
+            trk_used |= 1u << t;
     syn_mix_repack(l, r, rev, dly);
+}
+
+void syn_mix(float *l, float *r, float *rev, float *dly)   /* the three tracks, then the mix (one core: the tests) */
+{
+    int t;
+    for (t = 1; t < SYN_TRACKS; t++)
+        GM_FAR(syn_mix_track)(t);
+    GM_FAR(syn_mix_end)(l, r, rev, dly);
 }
 
 float syn_peak(int t)
