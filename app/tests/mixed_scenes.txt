@@ -35,6 +35,7 @@ key 2 up
 wait 30
 expect pat 2
 expect model7 1
+# pattern 2's own map: the closed hat back on the 909, the open hat on the 808
 tap EDIT
 wait 30
 turn SELECT 8
@@ -42,7 +43,16 @@ wait 30
 turn K1 1
 wait 30
 expect kit 0
-expect model7 2
+expect model7 0
+key 20 down
+wait 30
+key 20 up
+wait 30
+turn SELECT 8
+wait 30
+turn K1 1
+wait 30
+expect model8 1
 tap HOME
 wait 30
 key 0 down
@@ -51,18 +61,21 @@ key 0 up
 wait 30
 expect pat 1
 expect model7 1
+expect model8 0
 key 2 down
 wait 30
 key 2 up
 wait 30
 expect pat 2
-expect model7 2
+expect model7 0
+expect model8 1
 tap SAVE
 wait 300
 reboot
 wait 600
 expect pat 2
-expect model7 2
+expect model7 0
+expect model8 1
 expect page 3
 key 0 down
 wait 30
@@ -70,3 +83,4 @@ key 0 up
 wait 30
 expect pat 1
 expect model7 1
+expect model8 0

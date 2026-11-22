@@ -45,13 +45,13 @@ expect dpreset 2
 expect kitcustom 1
 expect model7 1
 expect model0 0
-# The complete 707 factory has its own stable preset ID and an actual kick.
+# Below the user kits, the 808 (the 606 and the 707 were between them until 21 Nov): its own ID, an actual kick.
 turn PRESET -1
 wait 60
-expect dpreset 11
-expect kit 3
-expect model0 3
-expect model7 3
+expect dpreset 1
+expect kit 1
+expect model0 1
+expect model7 1
 expect kitcustom 0
 midi 99 24 7F
 wait 40

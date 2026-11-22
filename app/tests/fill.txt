@@ -1,0 +1,75 @@
+# FILL (0.5): held, the drums play the next pattern's part, by its own LENGTH and RATE; let go, they are back on their
+# own clip where it would have been, in step with the bar and the other clips. (Before, the clip was left wherever the
+# fill's part had got to: after a fill of another length, the drums came back out of step.)
+#   tools/build.py ../../app --host, then  app/build/host/ghettomachine_host app/tests/fill.txt OUTDIR
+# step: the drum part's step now (0: its first); at 120 BPM a step is 125 ms, pattern 1's 16 steps 2 s
+wait 600
+master 4096
+expect len 16
+# ---- pattern 2's drums: 6 steps long, at 1/8 (pattern 1's: 16 steps at 1/16)
+tap HOME
+wait 30
+expect page 3
+key 2 down
+wait 30
+key 2 up
+wait 30
+expect pat 2
+tap SEQ
+wait 30
+expect page 0
+key 0 down
+wait 30
+key 0 up
+wait 30
+spin K1 -10
+wait 30
+expect len 6
+spin K2 1
+wait 30
+tap HOME
+wait 30
+key 0 down
+wait 30
+key 0 up
+wait 30
+expect pat 1
+expect len 16
+# ---- playing: on its tenth step (9) a little over a second in, in the middle of the step
+tap PLAY
+wait 1060
+expect step 9
+# FILL held for 1.9 s: the drums on pattern 2's part (6 steps), their step there
+key 13 down
+wait 100
+expect pfon 2
+expect len 6
+wait 1800
+expect step <6
+key 13 up
+wait 100
+expect pfon 0
+expect len 16
+# let go 2 s (16 steps, the clip's whole length) after the first look: the clip is on the same step again, as if
+# FILL had never been held, and goes on from there (before: on the fill's step, 0 or 1 here, half a bar out)
+expect step 9
+wait 500
+expect step 13
+wait 500
+expect step 1
+wait 1000
+expect step 9
+# ---- a FILL over a scene change: the new scene's drums start at their step 1 when the bar comes, the fill let go
+# after it leaves them there
+key 13 down
+wait 100
+key 2 down
+wait 30
+key 2 up
+wait 1000
+key 13 up
+wait 870
+expect pat 2
+expect len 6
+tap PLAY
+wait 300

@@ -1,4 +1,5 @@
-# Migrate the already released v5 project, then exercise T3-only Color through the panel.
+# Migrate the already released v5 project, then exercise T3-only Color through the panel. (The save was made on the
+# 606, cut on 21 Nov: it loads on the 808, pad 8's LEVEL the 808's own 64, not the 606's 57.)
 flash_load app/tests/fixtures/proj_v5.img
 reboot
 wait 600
@@ -9,7 +10,7 @@ expect color3_5 0
 expect color4_5 0
 expect color3_0 110
 expect insert2 2
-expect pot7_0 57
+expect pot7_0 64
 turn ALGO 2
 wait 30
 expect trk 3
@@ -89,4 +90,4 @@ expect color3_4 79
 expect color3_5 1
 expect color4_5 0
 expect insert2 2
-expect pot7_0 57
+expect pot7_0 64

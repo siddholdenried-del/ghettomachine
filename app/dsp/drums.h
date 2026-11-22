@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* GhettoMachine: the drum track's three kits behind one small interface.
+/* GhettoMachine: the drum track's two kits behind one small interface.
  *
  * The 909 (X0X's drum909, after 9W9) and the 808 (X0X's drum808, after 8W8) share one pad layout,
  * so a pattern keeps its meaning when the kit changes:
@@ -7,7 +7,11 @@
  *   pad   0  1  2  3  4  5  6  7  8  9  10
  *   909   BD SD LT MT HT RS CP CH OH CR RD
  *   808   BD SD LT MT HT RS CP CH OH CY CB
- *   606   BD SD LT -- HT -- CP CH OH CY --
+ *
+ * The 606 and the 707 (and the 707's two extra voices) were cut on 21 Nov 2026 (0.5: their code and memory went to
+ * the processor's budget): their numbers stay, for the projects saved with them, but no engine is behind them. A
+ * kit or a pad's model that names one has no pads (drums_has_pad 0), so a pad falls back to its kit's own sound
+ * (drums_model) and the app moves such a kit to the 808 (a 606) or the 909 (a 707) as it loads.
  *
  * This unit is compiled on its own (fm1.toml o2), so the engines' headers (and X0X's fastmath.h)
  * never meet the platform's in the unity build: the app sees only this header.
@@ -23,11 +27,10 @@
 #define DRUMS_MAX_BLOCK 256
 #define DRUMS_VEL_NORMAL (88.0f / 127.0f)   /* an unaccented sequencer hit; 1.0 is an accent */
 
-enum { KIT_909 = 0, KIT_808 = 1, KIT_606 = 2, KIT_707 = 3, KIT_NUM };
-/* Pad models include the four kits and two alternate 707 voices. A factory
- * kit is still strictly below KIT_NUM. The auxiliary engines are shared,
- * at most one lane per model. */
+enum { KIT_909 = 0, KIT_808 = 1, KIT_606 = 2, KIT_707 = 3, KIT_NUM };   /* (606, 707: cut, numbers kept) */
+/* A pad's model is one of the kits (and, cut with the 707, its two extra voices: numbers kept). */
 enum { DRUM_MODEL_707_CB = KIT_NUM, DRUM_MODEL_707_TB, DRUM_MODEL_NUM };
+int drums_kit_present(int kit);        /* 1: the 909 or the 808 (an engine behind it) */
 const char *drums_model_name(int model);
 const char *drums_kit_name(int kit);
 int drums_has_pad(int kit, int pad);

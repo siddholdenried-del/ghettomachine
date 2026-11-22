@@ -63,14 +63,18 @@ _Static_assert(PRESET_LIMIT <= 256, "project and per-pattern preset IDs are unsi
 static int user_preset_slot(int id) { return id >= PRESET_USER_FIRST && id < PRESET_NEW_FIRST ? id - PRESET_USER_FIRST : -1; }
 static int factory_preset_index(int id) { return id >= PRESET_NEW_FIRST ? id - NUSER : id; }
 #define NUKIT 8                           /* user kits (the drums) */
-#define DPRESET_606 (2 + NUKIT)           /* append; keep every old user kit ID */
+/* the drums' presets PRESET steps through: the 909 (0), the 808 (1), the user kits (2 ..). The 606 and the 707 came
+ * after them (DPRESET_606, _707) until they were cut (21 Nov 2026, dsp/drums.h): a project saved on one loads on the
+ * 808 (a 606) or the 909 (a 707), project_check */
+#define DPRESET_606 (2 + NUKIT)
 #define DPRESET_707 (DPRESET_606 + 1)
-#define DPRESET_COUNT (DPRESET_707 + 1)
-static int dpreset_factory(int i) { return i >= 0 && i < 2 ? i : i == DPRESET_606 ? KIT_606 : i == DPRESET_707 ? KIT_707 : -1; }
-static int kit_factory(int i) { return i == KIT_606 ? DPRESET_606 : i == KIT_707 ? DPRESET_707 : i; }
+#define DPRESET_COUNT (2 + NUKIT)
+static int kit_now(int kit) { return kit == KIT_606 ? KIT_808 : kit == KIT_707 ? KIT_909 : kit; }   /* a cut kit's heir */
+static int dpreset_factory(int i) { return i >= 0 && i < 2 ? i : -1; }
+static int kit_factory(int i) { return kit_now(i); }
 static int dpreset_user(int i) { return i >= 2 && i < DPRESET_606; }
-static int dpreset_display(int i) { return i == DPRESET_606 ? 2 : i == DPRESET_707 ? 3 : dpreset_user(i) ? i + 2 : i; }
-static int dpreset_id(int i) { return i == 2 ? DPRESET_606 : i == 3 ? DPRESET_707 : i > 3 ? i - 2 : i; }
+static int dpreset_display(int i) { return i; }
+static int dpreset_id(int i) { return i; }
 
 
 /* ------------------------------------------------------------------ project --- */
@@ -322,14 +326,6 @@ static int16_t insert_ring[(NINST * 2) - 1][TI_DELAY];
 static int16_t insert_pool[TI_DELAY] PLAT_POOL;
 static uint8_t (*kit_pots(int k))[NPOTS] { return k == KIT_707 ? proj.pots707 : k == KIT_606 ? proj.pots606 : proj.pots[k]; }
 static int drum_model(int pad) { return drums_model(proj.kit, proj.model, pad); }
-#define AUX707_POTS 6
-/* These bytes were zero/unused in v7. The two auxiliary voices have one
- * per-voice set of pots, independent of the normal 707 lane's pots. The high
- * bit on LEVEL distinguishes a real zero-level save from older v7 bytes. */
-static uint8_t *aux707_pots(int model)
-{
-    return &proj.pots707[model - KIT_NUM][NPOTS - AUX707_POTS];
-}
 
 static void drum_map_clean(int base, uint8_t *map)
 {
@@ -347,14 +343,6 @@ static int kit_is_custom(const uint8_t *map)
     return 0;
 }
 static const char *drum_kit_title(void) { return kit_is_custom(proj.model) ? "CUSTOM" : drums_kit_name(proj.kit); }
-static void model_defaults(int kit)
-{
-    for (int pad = 0; pad <= NPADS; ++pad)
-        for (int i = 0; i < NPOTS; ++i) {
-            const x0x_param_t *p = drums_param(kit, pad, i);
-            kit_pots(kit)[pad][i] = p ? p->def : 0;
-        }
-}
 static uint8_t dirty;                     /* changed since the last save: SAVE is lit */
 
 /* the screen's meters, written where the sound is made (the audio interrupt), read and let go by the screen */
@@ -733,27 +721,18 @@ static void pots_from_engines(void)
 {
     int k, pad, i;
     for (k = 0; k < KIT_NUM; k++)
-        for (pad = 0; pad <= NPADS; pad++)
+        for (pad = 0; drums_kit_present(k) && pad <= NPADS; pad++)   /* (a cut kit's saved knobs: left as they are) */
             for (i = 0; i < NPOTS; i++)
                 kit_pots(k)[pad][i] = (uint8_t)(i < drums_nparams(k, pad) ? drums_get(k, pad, i) : 0);
-    for (k = KIT_NUM; k < DRUM_MODEL_NUM; ++k) {
-        uint8_t *pot = aux707_pots(k);
-        for (i = 0; i < AUX707_POTS; ++i) pot[i] = (uint8_t)drums_get(k, 0, i);
-        pot[0] |= 0x80u;
-    }
 }
 
-/* one pad's knobs (model's pad; an aux 707 model has one) into its engine: a switch (808 tom / conga...) first, the
- * knobs after it edit its sound. (The lock held, or the interrupt) */
+/* one pad's knobs (model's pad) into its engine: a switch (808 tom / conga...) first, the knobs after it edit its
+ * sound. (The lock held, or the interrupt) */
 static void pots_apply_pad(int model, int pad)
 {
     int i, pass;
-    if (model >= KIT_NUM) {
-        const uint8_t *pot = aux707_pots(model);
-        for (i = 0; i < AUX707_POTS; ++i)
-            drums_set(model, 0, i, pot[0] & 0x80u ? pot[i] & 127u : drums_param(model, 0, i)->def);
+    if (!drums_kit_present(model))
         return;
-    }
     for (pass = 0; pass < 2; pass++)
         for (i = 0; i < drums_nparams(model, pad) && i < NPOTS; i++)
             if (param_is_switch_sound(drums_param(model, pad, i)) == (pass == 0))
@@ -766,8 +745,8 @@ static void pots_apply_pad(int model, int pad)
 static void pots_to_engines(void)
 {
     int k, pad;
-    for (k = 0; k < DRUM_MODEL_NUM; k++)
-        for (pad = 0; pad <= (k < KIT_NUM ? NPADS : 0); pad++) {
+    for (k = 0; k < KIT_NUM; k++)
+        for (pad = 0; drums_kit_present(k) && pad <= NPADS; pad++) {
             uint32_t f = plat_lock();
             pots_apply_pad(k, pad);
             plat_unlock(f);
@@ -1039,6 +1018,10 @@ static void project_check(void)           /* a loaded project's values kept in r
             for (k = 0; k < SP_NUM; k++)
                 q->snd[k] = (int8_t)clamp(q->snd[k], syn_param(k)->min, syn_param(k)->max);
         }
+        if (proj.pkit[i] == DPRESET_606 + 1)   /* (a pattern's kit: a cut kit's heir) */
+            proj.pkit[i] = KIT_808 + 1;
+        else if (proj.pkit[i] == DPRESET_707 + 1)
+            proj.pkit[i] = KIT_909 + 1;
         if (proj.pkit[i] > DPRESET_COUNT)
             proj.pkit[i] = 0;
         drum_map_clean(-1, proj.pattern_model[i]);
@@ -1046,6 +1029,7 @@ static void project_check(void)           /* a loaded project's values kept in r
             proj.follow[i] = 0;
         proj.follow[i] &= 0x7Fu;
     }
+    proj.kit = (uint8_t)kit_now(proj.kit);   /* (saved on the 606 or the 707: the 808 or the 909 now) */
     drum_map_clean(proj.kit, proj.model);
     proj.version = PROJ_VERSION;
     if (proj.dpreset >= DPRESET_COUNT)
@@ -1248,8 +1232,6 @@ static int project_load(void)
     dirty = 0;
     for (i = 0; i < sizeof proj; i++)
         ((uint8_t *)&proj)[i] = 0;
-    model_defaults(KIT_606);
-    model_defaults(KIT_707);
     if (fmt >= 4) {
         r = project_decode(plat_file_data(&PROJ_FILE), (uint32_t)plat_file_size(&PROJ_FILE), fmt);
     } else if (fmt >= 2) {
@@ -1637,17 +1619,15 @@ static void kit_raw(int i, const uint8_t *scene, int use_slot_pots)
     const uint8_t *map = 0;
     if (dpreset_user(i)) {
         const ukit_t *u = &user.kit[i - 2];
-        if (!u->used || u->kit >= KIT_NUM)
+        if (!u->used || !drums_kit_present(u->kit))   /* (a user kit made on a cut kit: not there any more) */
             return;
         base = u->kit;
         map = user.model[i - 2];
         if (use_slot_pots)
             for (r = 0; r <= NPADS; r++) {
-                const int model = drums_model(base, map, r);
-                uint8_t *pot = model >= KIT_NUM ? aux707_pots(model) : kit_pots(model)[r];
-                for (c = 0; c < (model >= KIT_NUM ? AUX707_POTS : NPOTS); c++)
+                uint8_t *pot = kit_pots(drums_model(base, map, r))[r];
+                for (c = 0; c < NPOTS; c++)
                     pot[c] = u->pots[r][c];
-                if (model >= KIT_NUM) pot[0] |= 0x80u;
             }
     }
     if (base < 0)
@@ -1656,10 +1636,8 @@ static void kit_raw(int i, const uint8_t *scene, int use_slot_pots)
     proj.dpreset = (uint8_t)i;
     if (use_slot_pots && dpreset_user(i))  /* the pads the kit set (above), not every kit's: a pattern switch in the
                                             * interrupt (SOUNDS PER PATTERN) takes a quarter of the time */
-        for (r = 0; r <= NPADS; r++) {
-            const int model = drums_model(base, map, r);
-            pots_apply_pad(model, model >= KIT_NUM ? 0 : r);
-        }
+        for (r = 0; r <= NPADS; r++)
+            pots_apply_pad(drums_model(base, map, r), r);
 }
 
 static void psnd_store(int t, int p)      /* track t's sound now, kept with pattern p */
@@ -2370,6 +2348,63 @@ static void roll_fire(void)               /* ROLL: each track's step as it was p
     }
 }
 
+/* FILL (0.5): the drums play the next pattern's part from where they are, by its own LENGTH and RATE. That used to
+ * leave the drum clip wherever the fill's part had got to: a fill of another length or rate, and the drums came back
+ * out of step with the bar and the other clips. Now the clip's own place goes on silently underneath while FILL is
+ * held (fill_pos: its step and the time to its next, counted with the clip's own part), and the drums take it up
+ * again when FILL is let go: the clip is where it would have been */
+static struct {
+    uint8_t on;                           /* FILL held (as the interrupt last saw it) */
+    int16_t step;                         /* the clip's own step now */
+    float to_next, dur;                   /* samples to its next, and that step's length */
+} fill_pos;
+
+static void fill_pos_restart(void)        /* the drum clip from its step 1 (a scene, a clip started): its place too */
+{
+    fill_pos.step = -1;
+    fill_pos.to_next = 0.0f;
+    fill_pos.dur = 1.0f;
+}
+
+static void fill_pos_run(uint32_t n)      /* audio interrupt, playing: n samples on, the clip's own part's steps */
+{
+    const dpart_t *m;
+    if (!fill_pos.on || clip[TR_DRUM] < 0)
+        return;
+    m = &proj.p[clip_of(TR_DRUM)].d;
+    fill_pos.to_next -= (float)n;
+    while (fill_pos.to_next < 0.5f) {
+        int next = fill_pos.step + 1;
+        float base = 44100.0f * 60.0f / ((float)proj.bpm10 * 0.1f) * 0.25f * RATE_MUL[m->rate % NRATES];
+        float sw = (float)proj.swing * 0.01f;
+        if (next >= m->len)
+            next = 0;
+        fill_pos.step = (int16_t)next;
+        fill_pos.dur = (next & 1) ? 2.0f * base * (1.0f - sw) : 2.0f * base * sw;   /* (step_samples, the clip's) */
+        if (fill_pos.dur < 1.0f)
+            fill_pos.dur = 1.0f;
+        fill_pos.to_next += fill_pos.dur;
+    }
+}
+
+static void fill_pos_follow(void)         /* audio interrupt, a block's start: FILL pressed or let go since the last */
+{
+    int f = fill_on != 0;
+    if (f && !fill_pos.on) {              /* pressed: the clip's place from here, underneath */
+        fill_pos.step = (int16_t)sq.t[TR_DRUM].step;
+        fill_pos.to_next = sq.t[TR_DRUM].to_next;
+        fill_pos.dur = sq.t[TR_DRUM].dur;
+        fill_pos.on = 1;
+    } else if (!f && fill_pos.on) {       /* let go: the drums back on the clip, where it has got to */
+        fill_pos.on = 0;
+        if (sq.playing && clip[TR_DRUM] >= 0 && fill_pos.to_next < 1e8f) {
+            sq.t[TR_DRUM].step = fill_pos.step;
+            sq.t[TR_DRUM].to_next = fill_pos.to_next;
+            sq.t[TR_DRUM].dur = fill_pos.dur;
+        }
+    }
+}
+
 static void seq_reset_tracks(void)
 {
     int t;
@@ -2383,6 +2418,7 @@ static void seq_reset_tracks(void)
     }
     for (t = 0; t < NPADS; t++)
         sq.skip_once[t] = -1;
+    fill_pos_restart();
 }
 
 static void track_restart(int t)          /* a track from its step 1, now */
@@ -2397,6 +2433,7 @@ static void track_restart(int t)          /* a track from its step 1, now */
         int p;
         for (p = 0; p < NPADS; p++)
             sq.skip_once[p] = -1;
+        fill_pos_restart();
     }
 }
 
@@ -2558,6 +2595,8 @@ static void tempo_stretch(void)           /* audio interrupt: a new tempo (the k
             if (sq.t[t].to_next < 1e8f)
                 sq.t[t].to_next *= r;
         click_stretch(r);                 /* (the click's beat: at this block's tail, post_job) */
+        if (fill_pos.on && fill_pos.to_next < 1e8f)
+            fill_pos.to_next *= r;        /* (the drum clip's own place under a FILL) */
         sq.mclk_to *= r;
         perf.roll_to *= r;
         perf.roll_len *= r;
@@ -3209,6 +3248,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             perf.roll_len = bar_samples() * (1.0f / 16.0f) * ROLL_F[perf.roll_rate % 5];
         }
         perf.on = w;
+        fill_pos_follow();                /* FILL: the drum clip's own place kept underneath, taken up again after */
     }
     if (sq.playing && (proj.recq >> 2 & 3u) == 1u) {   /* MIDI CLOCK sent: 24 a beat (to the block) */
         float tick = bar_samples() / 96.0f;
@@ -3358,6 +3398,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
                 sq.t[t].to_next -= (float)chunk;
                 sq.t[t].frac = sq.t[t].dur > 0.0f ? 1.0f - sq.t[t].to_next / sq.t[t].dur : 0.0f;
             }
+            fill_pos_run(chunk);
             sq.clock += chunk;
         }
         done += chunk;
@@ -3788,16 +3829,6 @@ static void drum_model_turn(int pad, int32_t e)
     }
     if (which != old) {
         uint32_t f = plat_lock();
-        if (which >= KIT_NUM) {
-            for (int r = 0; r < NPADS; ++r)
-                if (r != pad && drum_model(r) == which) {
-                    char msg[18] = "IN USE: PAD ";
-                    int_text(r + 1, msg + 12);
-                    plat_unlock(f);
-                    app_say(drums_model_name(which), msg);
-                    return;
-                }
-        }
         for (int k = 0; k < NPOTS; k++)
             if (ovr_mask[pad] >> k & 1u)
                 drums_set(old, pad, k, ovr_base[pad][k]);
@@ -4845,7 +4876,7 @@ static void preset_name(int i, char *t)
 static int dpreset_ok(int display)
 {
     int i = dpreset_id(display);
-    return dpreset_factory(i) >= 0 || (dpreset_user(i) && user.kit[i - 2].used && user.kit[i - 2].kit < KIT_NUM);
+    return dpreset_factory(i) >= 0 || (dpreset_user(i) && user.kit[i - 2].used && drums_kit_present(user.kit[i - 2].kit));
 }
 static void dpreset_name(int i, char *t)
 {
@@ -5025,10 +5056,9 @@ static void save_user(void)               /* SAVE let go after choosing a slot: 
         for (r = 0; r <= NPADS; r++) {
             if (r < NPADS)
                 user.model[s][r] = proj.model[r];
-            const int model = drum_model(r);
-            const uint8_t *pot = model >= KIT_NUM ? aux707_pots(model) : kit_pots(model)[r];
+            const uint8_t *pot = kit_pots(drum_model(r))[r];
             for (c = 0; c < NPOTS; c++)
-                u->pots[r][c] = model < KIT_NUM ? pot[c] : c < AUX707_POTS ? pot[c] & 127u : 0;
+                u->pots[r][c] = pot[c];
         }
         proj.dpreset = (uint8_t)(2 + s);
         dpreset_name(proj.dpreset, t);
@@ -5867,18 +5897,14 @@ static void reload_sound(void)            /* SAVE + OCT-: the track's sound (the
         return;
     }
     if (tr == TR_DRUM) {
-        static uint8_t pots[2][NPADS + 1][NPOTS], saved606[NPADS + 1][NPOTS], saved707[NPADS + 1][NPOTS];
+        static uint8_t pots[2][NPADS + 1][NPOTS];
         uint8_t saved_map[NPADS] = {0}, saved_kit, saved_preset;
-        const uint32_t off707 = PROJ_PREFIX + (uint32_t)offsetof(project_t, pots707) - PROJ_TAIL;
         const uint32_t offmap = PROJ_PREFIX + (uint32_t)offsetof(project_t, model) - PROJ_TAIL;
         if (plat_file_read(&PROJ_FILE, offsetof(project_t, kit), &saved_kit, 1) ||
             plat_file_read(&PROJ_FILE, offsetof(project_t, dpreset), &saved_preset, 1) || saved_kit >= KIT_NUM)
             return;
-        if (fmt >= PROJ_VERSION && (plat_file_read(&PROJ_FILE, off707, saved707, sizeof saved707) ||
-                        plat_file_read(&PROJ_FILE, offmap, saved_map, sizeof saved_map)))
-            return;
-        const uint32_t fmt4_606_off = PROJ_PREFIX + (uint32_t)offsetof(project_t, pots606) - PROJ_TAIL;
-        if (fmt >= 4 && plat_file_read(&PROJ_FILE, fmt4_606_off, saved606, sizeof saved606) != 0)
+        saved_kit = (uint8_t)kit_now(saved_kit);   /* (saved on a cut kit: its heir) */
+        if (fmt >= PROJ_VERSION && plat_file_read(&PROJ_FILE, offmap, saved_map, sizeof saved_map))
             return;
         if (plat_file_read(&PROJ_FILE, fmt >= 4 ? PROJ_PREFIX : fmt >= 2 ? OLD_TAIL : V1_OFF(pots), pots,
                            sizeof pots) != 0)
@@ -5891,20 +5917,6 @@ static void reload_sound(void)            /* SAVE + OCT-: the track's sound (the
                 for (r = 0; r <= NPADS; r++)
                     for (c = 0; c < NPOTS; c++)
                         kit_pots(k)[r][c] = pots[k][r][c];
-            if (fmt >= 4) {
-                for (r = 0; r <= NPADS; r++)
-                    for (c = 0; c < NPOTS; c++)
-                        kit_pots(KIT_606)[r][c] = saved606[r][c];
-            } else {
-                model_defaults(KIT_606);
-            }
-            if (fmt >= PROJ_VERSION) {
-                for (r = 0; r <= NPADS; r++)
-                    for (c = 0; c < NPOTS; c++)
-                        kit_pots(KIT_707)[r][c] = saved707[r][c];
-            } else {
-                model_defaults(KIT_707);
-            }
         }
         if (fmt >= PROJ_VERSION) {
             drum_map_apply(saved_kit, saved_map);
@@ -7820,8 +7832,7 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
         if (k != 0)
             return 0;
         v = drum_model(ui.pad);
-        card_put(c, "MODEL", !drums_has_pad(v, ui.pad) ? "--" : v >= KIT_NUM ?
-                 drums_pad_name(v, ui.pad) : drums_kit_name(v), v, 0, DRUM_MODEL_NUM - 1, -1);
+        card_put(c, "MODEL", !drums_has_pad(v, ui.pad) ? "--" : drums_kit_name(v), v, 0, KIT_808, -1);
         return 1;
     case KD_KIT: {
         const x0x_param_t *p;
