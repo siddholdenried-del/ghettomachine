@@ -25,6 +25,9 @@ static track_t trk[NPART];
 #include "gm_ram.h"
 #define FE_INLINE GM_INLINE
 #define FE_RAM GM_RAM
+#ifndef PLAT_HOST                         /* the engine's tables (sine, pitch, filter, tanh: 3.6 KB) in RAM too: the */
+#define FE_TAB static __attribute__((section(".data.fe_tab")))   /* voices read them every sample */
+#endif
 #include "fe_tables.h"
 #include "felucca/dsp.c"
 #include "felucca/eng_analog.c"
@@ -371,6 +374,7 @@ static struct {
     /* the LFO */
     uint8_t mdest;
     float mlfo, mdepth;
+    uint8_t xm_on;                        /* a matrix slot in use (xm_scan): else the voices skip the matrix */
 } tk[SYN_TRACKS];
 static int pool = NVOICE;
 static uint32_t ages;
@@ -481,6 +485,8 @@ int syn_probe(int t, int what)
     return -1;
 }
 
+static void xm_scan(int t);
+
 void syn_init(void)
 {
     int i, t;
@@ -505,9 +511,21 @@ void syn_init(void)
         tk[t].srate = tk[t].tunef = 1.0f;
         tk[t].root = 60;
         tk[t].pm[1] = 1000;
+        xm_scan(t);
         push(t);
     }
     pool = NVOICE;
+}
+
+static void xm_scan(int t)                /* whether any of the track's matrix slots does anything (matrix()'s test) */
+{
+    const int8_t *s = tk[t].v;
+    int k, on = 0;
+    for (k = 0; k < SYN_SLOTS; k++) {
+        int src = s[SP_XM + 3 * k], dst = s[SP_XM + 3 * k + 1], amt = s[SP_XM + 3 * k + 2];
+        on |= !(!src || !amt || dst < 0 || dst >= MD_NUM || src >= MS_NUM);
+    }
+    tk[t].xm_on = (uint8_t)on;
 }
 
 void syn_sound(int t, const int8_t *v)
@@ -517,6 +535,7 @@ void syn_sound(int t, const int8_t *v)
         return;
     for (i = 0; i < SP_NUM; i++)
         tk[t].v[i] = (int8_t)clamp(v[i], PARAMS[i].min, PARAMS[i].max);
+    xm_scan(t);
     push(t);
 }
 
@@ -525,6 +544,8 @@ void syn_set(int t, int id, int v)
     if (t < 1 || t >= SYN_TRACKS || id < 0 || id >= SP_NUM)
         return;
     tk[t].v[id] = (int8_t)clamp(v, PARAMS[id].min, PARAMS[id].max);
+    if (id >= SP_XM)
+        xm_scan(t);
     push(t);
 }
 
@@ -1114,7 +1135,9 @@ void syn_prepare(void)
         voice_t *v = &vv[i];
         vx_t *x = &vx[i];
         const int8_t *s;
-        float a, acc[MD_NUM], pan;
+        static const float ACC0[MD_NUM];  /* no slot in use: every destination unmoved */
+        float a, accb[MD_NUM], pan;
+        const float *acc = ACC0;
         int32_t amp, p16, mfine, t;
         uint32_t inc;
         if (!x->trk)
@@ -1154,7 +1177,10 @@ void syn_prepare(void)
             x->drn--;
             x->dr += (x->drt - x->dr) * 0.003f;
         }
-        matrix(t, i, acc);
+        if (tk[t].xm_on) {                /* (0.5: no slot in use, no matrix: the same zeros without the work) */
+            matrix(t, i, accb);
+            acc = accb;
+        }
         x->l2rate = acc[MD_L2RATE] * 127.0f;
         if (x->pc != x->pt) {
             float d = x->pt - x->pc;
@@ -1225,9 +1251,10 @@ void syn_prepare(void)
         x->gl = pan > 0.0f ? 1.0f - pan : 1.0f;
         x->gr = pan < 0.0f ? 1.0f + pan : 1.0f;
         x->usep = 0;
-        if (acc[MD_OSC2] != 0.0f || acc[MD_DETUNE] != 0.0f || acc[MD_RESO] != 0.0f || acc[MD_MIX] != 0.0f ||
+        if (tk[t].xm_on &&
+            (acc[MD_OSC2] != 0.0f || acc[MD_DETUNE] != 0.0f || acc[MD_RESO] != 0.0f || acc[MD_MIX] != 0.0f ||
             acc[MD_SUB] != 0.0f || acc[MD_NOISE] != 0.0f || acc[MD_DRIVE] != 0.0f || acc[MD_FM] != 0.0f ||
-            acc[MD_RING] != 0.0f || acc[MD_SHAPE] != 0.0f || acc[MD_BIAS] != 0.0f) {
+            acc[MD_RING] != 0.0f || acc[MD_SHAPE] != 0.0f || acc[MD_BIAS] != 0.0f)) {
             const int16_t *tp = trk[t].p; /* this voice's own engine parameters: the track's, the matrix's moves on */
             int16_t *q = x->pv.p;
             int k;
@@ -1298,6 +1325,8 @@ static volatile float trk_pk[SYN_TRACKS];   /* each track's peak in the mix sinc
 static float trk_l[SYN_TRACKS][SYN_CTL], trk_r[SYN_TRACKS][SYN_CTL];   /* the last block, each track alone */
 static float trk_send[SYN_TRACKS][SYN_CTL];
 static syn_insert_fn trk_insert[SYN_TRACKS];
+static uint8_t trk_idle[SYN_TRACKS];      /* the track's insert said it sleeps on silence (syn_insert_fn's 1): nothing to
+                                           * mix, nothing to call, until a voice sounds on the track or its insert is set */
 static uint32_t trk_used;                 /* bit t: track t sounded in it */
 
 void syn_cut_track(int t)
@@ -1326,56 +1355,106 @@ const float *syn_track(int t, int side)
 
 void syn_set_insert(int t, syn_insert_fn fn)
 {
-    if (t >= 1 && t < SYN_TRACKS)
+    if (t >= 1 && t < SYN_TRACKS) {
         trk_insert[t] = fn;
+        trk_idle[t] = 0;
+    }
 }
 
-void syn_mix_repack(float *l, float *r, float *rev, float *dly)
+/* (GhettoMachine 0.5: the mix runs from RAM, gm_ram.h, with the tracks' gains read once a block: the stores into the
+ * float buffers may alias them for all the compiler knows, so it read them again every sample) */
+GM_RAM void syn_mix_repack(float *l, float *r, float *rev, float *dly)
 {
     int k, t;
     for (k = 0; k < SYN_CTL; k++)
         l[k] = r[k] = rev[k] = dly[k] = 0.0f;
     for (t = 1; t < SYN_TRACKS; t++)
-        if (trk_used >> t & 1u)
+        if (trk_used >> t & 1u) {
+            const float rs = mix[t].rs * (1.f/36000.f), ds = mix[t].ds * (1.f/36000.f);
+            const float *tl = trk_l[t], *tr = trk_r[t], *ts = trk_send[t];
             for (k = 0; k < SYN_CTL; k++) {
-                l[k] += trk_l[t][k];
-                r[k] += trk_r[t][k];
-                rev[k] += trk_send[t][k] * (mix[t].rs * (1.f/36000.f));
-                dly[k] += trk_send[t][k] * (mix[t].ds * (1.f/36000.f));
+                l[k] += tl[k];
+                r[k] += tr[k];
+                rev[k] += ts[k] * rs;
+                dly[k] += ts[k] * ds;
             }
+        }
 }
 
-void syn_mix(float *l, float *r, float *rev, float *dly)
+/* The tracks' voices (the halves' sums: centred voices in acc_m, unison voices off the centre in acc_l / acc_r) into
+ * each track's block, through its insert, its pan and its sends' feed, then the mix. A track with no voice this block
+ * and no insert is left out; so is one whose insert said it sleeps on silence (trk_idle). The usual track has only
+ * centred voices: one sum and one conversion a sample, its peak taken as a whole number and scaled once (the same
+ * value: scaling by a gain that is not negative keeps the order). The same samples as the loop this replaces */
+GM_RAM void syn_mix(float *l, float *r, float *rev, float *dly)
 {
+    static const int32_t NONE[SYN_CTL];
     const float g = 1.0f / 36000.0f;      /* one voice of a typical sound near -12 dBFS */
     int k, t;
     trk_used = 0;
     for (t = 1; t < SYN_TRACKS; t++) {
-        int m0 = used_m[0][t], m1 = used_m[1][t], s0 = used_lr[0][t], s1 = used_lr[1][t];
-        syn_insert_fn fn = trk_insert[t];
-        float pl = mix[t].pl * g, pr = mix[t].pr * g, pk = trk_pk[t];
-        if (!(m0 | m1 | s0 | s1) && !fn)
+        const int m0 = used_m[0][t], m1 = used_m[1][t], s0 = used_lr[0][t], s1 = used_lr[1][t];
+        const syn_insert_fn fn = trk_insert[t];
+        const float pl = mix[t].pl * g, pr = mix[t].pr * g;
+        const int32_t *a0 = m0 ? acc_m[0][t] : NONE, *a1 = m1 ? acc_m[1][t] : NONE;
+        float *tl = trk_l[t], *tr = trk_r[t], *ts = trk_send[t];
+        float pk = trk_pk[t];
+        if (m0 | m1 | s0 | s1)
+            trk_idle[t] = 0;
+        else if (!fn || trk_idle[t])
             continue;
         trk_used |= 1u << t;
-        for (k = 0; k < SYN_CTL; k++) {
-            float m = (float)((m0 ? acc_m[0][t][k] : 0) + (m1 ? acc_m[1][t][k] : 0));
-            float ul = (float)((s0 ? acc_l[0][t][k] : 0) + (s1 ? acc_l[1][t][k] : 0));
-            float ur = (float)((s0 ? acc_r[0][t][k] : 0) + (s1 ? acc_r[1][t][k] : 0));
-            trk_l[t][k] = (m + ul) * (fn ? g : pl);
-            trk_r[t][k] = (m + ur) * (fn ? g : pr);
-            if (!fn)
-                trk_send[t][k] = m + 0.5f * (ul + ur);
+        if (s0 | s1) {                    /* unison voices off the centre too */
+            const int32_t *l0 = s0 ? acc_l[0][t] : NONE, *l1 = s1 ? acc_l[1][t] : NONE;
+            const int32_t *r0 = s0 ? acc_r[0][t] : NONE, *r1 = s1 ? acc_r[1][t] : NONE;
+            const float gl = fn ? g : pl, gr = fn ? g : pr;
+            for (k = 0; k < SYN_CTL; k++) {
+                float m = (float)(a0[k] + a1[k]);
+                float ul = (float)(l0[k] + l1[k]);
+                float ur = (float)(r0[k] + r1[k]);
+                tl[k] = (m + ul) * gl;
+                tr[k] = (m + ur) * gr;
+                if (!fn)
+                    ts[k] = m + 0.5f * (ul + ur);
+            }
+        } else if (fn) {                  /* centred voices into an insert: one signal, both sides */
+            for (k = 0; k < SYN_CTL; k++)
+                tl[k] = tr[k] = (float)(a0[k] + a1[k]) * g;
+        } else {                          /* centred voices, no insert: panned, the sends' feed, the peak */
+            int32_t top = 0;
+            for (k = 0; k < SYN_CTL; k++) {
+                int32_t v = a0[k] + a1[k];
+                float m = (float)v;
+                tl[k] = m * pl;
+                tr[k] = m * pr;
+                ts[k] = m;
+                v = v < 0 ? -v : v;
+                if (v > top)
+                    top = v;
+            }
+            {
+                float p = (float)top * (pl > pr ? pl : pr);
+                if (p > pk)
+                    pk = p;
+            }
+            trk_pk[t] = pk;
+            continue;
         }
         if (fn) {
-            fn(t, trk_l[t], trk_r[t], SYN_CTL);
+            const float gl = mix[t].pl, gr = mix[t].pr;
+            if (fn(t, tl, tr, SYN_CTL) && !(m0 | m1 | s0 | s1)) {   /* asleep on silence: left out from here */
+                trk_idle[t] = 1;
+                trk_used &= ~(1u << t);
+                continue;
+            }
             for (k = 0; k < SYN_CTL; k++) {
-                trk_send[t][k] = (trk_l[t][k] + trk_r[t][k]) * (0.5f * 36000.f);
-                trk_l[t][k] *= mix[t].pl;
-                trk_r[t][k] *= mix[t].pr;
+                ts[k] = (tl[k] + tr[k]) * (0.5f * 36000.f);
+                tl[k] *= gl;
+                tr[k] *= gr;
             }
         }
         for (k = 0; k < SYN_CTL; k++) {
-            float a = trk_l[t][k], b = trk_r[t][k];
+            float a = tl[k], b = tr[k];
             a = a < 0.f ? -a : a;
             b = b < 0.f ? -b : b;
             if (a > pk) pk = a;

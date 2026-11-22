@@ -6,7 +6,8 @@
  * Changed again (20 Nov 2026, the synth update): analog_render_r (WAVE 0..4 with OSC 2's own wave, FM, RING, the
  * SHAPER or the matrix's OSC 2 pitch, P_INTV now -24..24) and the SHAPER in analog_render_x (SYNC, SUB; P_O2 on SYNC's
  * OSC 2 too). With none of them the loops are as they were. And (21 Nov 2026, 0.5) the helpers FE_INLINE and the render
- * loops FE_RAM (dsp.c): run from RAM on GhettoMachine's FM-1. */
+ * loops FE_RAM (dsp.c): run from RAM on GhettoMachine's FM-1; and analog_osc leaves OSC 2 out of its loop while MIX is
+ * at 0 (the same samples: it was multiplied by nothing). */
 /* ANALOG: two band-limited oscillators (saw / square / tri / sine / PWM),
  * noise, drive and a trapezoidal state-variable filter: low-pass, or (1.5, TYPE) band-pass / high-pass.
  * WAVE SYNC and SUB (#104, appended: WAVE 0..4 play as they always did) are two more oscillator pairs (analog_osc_x):
@@ -297,7 +298,7 @@ FE_RAM static __attribute__((noinline)) void analog_render_x(track_t *t, voice_t
 /* WAVE 0..4 through the filter TYPE ft: analog_render's loop with ft 0 (a constant: LP, the code as it always was),
  * analog_render_f's with BP / HP (its own copy: the LP loop gains nothing) */
 static inline __attribute__((always_inline)) void analog_osc(track_t *t, voice_t *v, int32_t *out, uint32_t n,
-                                                             const vmod_t *m, uint32_t ft)
+                                                             const vmod_t *m, uint32_t ft, uint32_t two)
 {
     const int16_t *p = t->p;
     uint32_t wave = (uint32_t)p[P_E0], i;
@@ -319,27 +320,39 @@ static inline __attribute__((always_inline)) void analog_osc(track_t *t, voice_t
     tsvf_coef(&flt, cut, p[P_E5]);
     for (i = 0; i < n; i++) {
         int32_t a, b, s;
-        switch (wave) {
-        case 1:
-            a = osc_pulse(ph0, inc1, 0x80000000u);
-            b = osc_pulse(ph1, inc2, 0x80000000u);
-            break;
-        case 2:
-            a = osc_tri(ph0);
-            b = osc_tri(ph1);
-            break;
-        case 3:
-            a = osc_sine(ph0);
-            b = osc_sine(ph1);
-            break;
-        case 4:
-            a = osc_pulse(ph0, inc1, pw);
-            b = osc_pulse(ph1, inc2, pw);
-            break;
-        default:
-            a = osc_saw(ph0, inc1);
-            b = osc_saw(ph1, inc2);
-            break;
+        if (two) {
+            switch (wave) {
+            case 1:
+                a = osc_pulse(ph0, inc1, 0x80000000u);
+                b = osc_pulse(ph1, inc2, 0x80000000u);
+                break;
+            case 2:
+                a = osc_tri(ph0);
+                b = osc_tri(ph1);
+                break;
+            case 3:
+                a = osc_sine(ph0);
+                b = osc_sine(ph1);
+                break;
+            case 4:
+                a = osc_pulse(ph0, inc1, pw);
+                b = osc_pulse(ph1, inc2, pw);
+                break;
+            default:
+                a = osc_saw(ph0, inc1);
+                b = osc_saw(ph1, inc2);
+                break;
+            }
+        } else {                          /* (GhettoMachine 0.5: MIX at 0, OSC 2 times nothing: not worked out; its
+                                           * phase goes on below, so turning MIX up finds it where it would be) */
+            b = 0;
+            switch (wave) {
+            case 1: a = osc_pulse(ph0, inc1, 0x80000000u); break;
+            case 2: a = osc_tri(ph0); break;
+            case 3: a = osc_sine(ph0); break;
+            case 4: a = osc_pulse(ph0, inc1, pw); break;
+            default: a = osc_saw(ph0, inc1); break;
+            }
         }
         ph0 += inc1;
         ph1 += inc2;
@@ -372,7 +385,10 @@ static inline __attribute__((always_inline)) void analog_osc(track_t *t, voice_t
 }
 FE_RAM static __attribute__((noinline)) void analog_render_f(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
-    analog_osc(t, v, out, n, m, (uint32_t)t->p[P_FTYPE]);
+    if (t->p[P_E2])                       /* (two is a constant in each: a loop with OSC 2, a loop without) */
+        analog_osc(t, v, out, n, m, (uint32_t)t->p[P_FTYPE], 1);
+    else
+        analog_osc(t, v, out, n, m, (uint32_t)t->p[P_FTYPE], 0);
 }
 
 FE_RAM static void analog_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
@@ -384,8 +400,10 @@ FE_RAM static void analog_render(track_t *t, voice_t *v, int32_t *out, uint32_t 
         analog_render_r(t, v, out, n, m);
     else if (t->p[P_FTYPE])
         analog_render_f(t, v, out, n, m);
+    else if (p[P_E2])
+        analog_osc(t, v, out, n, m, 0, 1);
     else
-        analog_osc(t, v, out, n, m, 0);
+        analog_osc(t, v, out, n, m, 0, 0);
 }
 
 static const preset_t ANALOG_PRESETS[] = {

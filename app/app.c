@@ -848,11 +848,12 @@ static void fxs_after(int t, int in_quiet, int out_quiet, unsigned n)   /* after
     fxs_quiet[t] = in_quiet && out_quiet ? fxs_quiet[t] + n : 0u;
 }
 
-static void insert_process(int t, float *l, float *r, unsigned n)
+static int insert_process(int t, float *l, float *r, unsigned n)   /* 1: silence in, the chain asleep: nothing done */
 {
     CS_MARK(t0);
-    int q = fxs_peak(l, r, n) < FXS_LEVEL;
+    int q = fxs_peak(l, r, n) < FXS_LEVEL, slept = 1;
     if (!fxs_asleep(t, q)) {              /* (gov.fx_shed: out of the chain while the effects are over budget) */
+        slept = 0;
         if (!(gov.fx_shed >> (4 + t) & 1u))
             track_insert_process(&insert_rt[t-1], &proj.insert[t-1], l, r, n);
         if (!(gov.fx_shed >> t & 1u))
@@ -860,6 +861,7 @@ static void insert_process(int t, float *l, float *r, unsigned n)
         fxs_after(t, q, fxs_peak(l, r, n) < FXS_LEVEL, n);
     }
     cs_t[CS_FXIN] += plat_ticks24() - t0;
+    return slept;
 }
 
 static void insert_route(int t)
@@ -2745,7 +2747,7 @@ static void syn_block(void)
         sy_t[SY_VOICES] += t0 - t1;
     }
     in0 = cs_t[CS_FXIN];
-    syn_mix(syn_l, syn_r, syn_rv, syn_dl);
+    PLAT_FAR(syn_mix)(syn_l, syn_r, syn_rv, syn_dl);   /* (RAM code) */
     sy_t[SY_MIX] += (plat_ticks24() - t0) - (cs_t[CS_FXIN] - in0);
     syn_at = 0;
 }
@@ -6028,7 +6030,7 @@ static void set_track_mutes(uint8_t mask)
         }
     for (t = 1; t < NTRK; t++) insert_route(t);
     if ((cut & 0x0Eu) && syn_at < SYN_CTL)
-        syn_mix_repack(syn_l, syn_r, syn_rv, syn_dl);
+        PLAT_FAR(syn_mix_repack)(syn_l, syn_r, syn_rv, syn_dl);
     plat_unlock(f);
 }
 

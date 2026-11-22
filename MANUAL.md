@@ -27,7 +27,8 @@ GhettoMachine, part of the BongWare firmware line engineered by BongTech, turns 
 > sounds in a minute and held the synth to 4 or 5 voices with a third of the first core unused. Loosened to 30 %, 40 %
 > and 25 %, that went on it the same night (7 to 9 voices, few drum cuts; the first core at about 70 %). The 606 and
 > the 707 were then cut (their code and memory given to the processor's budget) and FILL made to leave the drum clip
-> where it would have been: in the source, not on the FM-1 yet. 0.5 is 0.4 plus the USB stems. 0.4 is 0.3 plus the 303 generator, the new name and the boot screen's logo; 0.3 is 0.2 plus the performance
+> where it would have been: on the FM-1 since that night. The synth made cheaper without changing its sound (below) is
+> in the source, not on the FM-1 yet. 0.5 is 0.4 plus the USB stems. 0.4 is 0.3 plus the 303 generator, the new name and the boot screen's logo; 0.3 is 0.2 plus the performance
 > update (the scene grid onwards) and the synth update. 0.5 passes its simulator tests (2,120 checks, 39 more on the
 > synth itself and 48 on the master bus's sound). It reads a project saved by 0.2, 0.3 or 0.4.
 
@@ -580,6 +581,13 @@ the sound saved with the pattern it's on.
   second when it gave something up (and while an effect is out). Releasing STUTTER or TAPE STOP no longer holds the
   sound off for 1.5 ms while the delay's memory is cleared, and the 606's clap costs a third as much to hit (its filter
   bank is kept between hits at the same TUNE).
+- **The synth, cheaper, the same sound** (21 Nov, in the source; every sound and every test recording bit for bit as
+  before): a voice with **MIX at 0** no longer works out its second oscillator (a bass or a lead costs about a
+  quarter less); a sound with **no matrix slot in use** skips the matrix; the track mix does one sum a sample for a
+  track whose voices are all centred, and leaves out a track with nothing sounding whose insert and Color are
+  asleep (three silent tracks with inserts cost 3 % of a block); the synth's lookup tables and its mix run from RAM.
+  The master bus's EQ, TAPE, STEREO and meters went back to the flash to make the room: they run on the second core,
+  only while they're on.
 - The first recording of the stems from the FM-1 had each track on its own pair, but the USB buffer ran dry about a
   dozen times in 9 seconds, each a click in the recording (not in the FM-1's own sound). 0.5 now keeps a deeper buffer
   (about 6 ms more delay); recorded from on 21 Nov with MASTER at 0, it had no clicks and the master pair kept its

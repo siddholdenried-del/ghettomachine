@@ -85,7 +85,7 @@ static void bq_bell(mb_bq_t *q, float hz, float db, float qv)
 }
 
 /* one biquad over a block, side c of its state */
-GM_RAM static void bq_run(mb_bq_t *q, float *x, int n, int c)
+static void bq_run(mb_bq_t *q, float *x, int n, int c)
 {
     float b0 = q->b0, b1 = q->b1, b2 = q->b2, a1 = q->a1, a2 = q->a2, z1 = q->z1[c], z2 = q->z2[c];
     int i;
@@ -101,7 +101,7 @@ GM_RAM static void bq_run(mb_bq_t *q, float *x, int n, int c)
 
 /* one biquad over a block, both sides together: two independent recursions in one loop, so an in-order FPU works on
  * one while the other waits for its result */
-GM_RAM static void bq_run2(mb_bq_t *q, float *l, float *r, int n)
+static void bq_run2(mb_bq_t *q, float *l, float *r, int n)
 {
     float b0 = q->b0, b1 = q->b1, b2 = q->b2, a1 = q->a1, a2 = q->a2;
     float zl1 = q->z1[0], zl2 = q->z2[0], zr1 = q->z1[1], zr2 = q->z2[1];
@@ -228,10 +228,11 @@ void mbus_set(mbus_t *m, int i, int v)
         stereo_coefs(m);
 }
 
-/* ---- the audio (GhettoMachine 0.5, CPU: from RAM, gm_ram.h: fx_master calls it; on the second core, whose stack is
- * 2.8 KB: the meter's and STEREO's scratch in pieces of MB_PIECE samples, the same sums) */
+/* ---- the audio (on the second core, whose stack is 2.8 KB: the meter's and STEREO's scratch in pieces of MB_PIECE
+ * samples, the same sums). In the flash again (0.5: they ran from RAM for a day): each is off until its knobs are
+ * turned or its page shown, and the RAM they took went to the synth's mix; fx_master calls one only while it is on */
 #define MB_PIECE 64
-GM_RAM void mbus_eq(mbus_t *m, float *l, float *r, int n)
+void mbus_eq(mbus_t *m, float *l, float *r, int n)
 {
     int b;
     for (b = 0; b < 4; b++)
@@ -239,7 +240,7 @@ GM_RAM void mbus_eq(mbus_t *m, float *l, float *r, int n)
             bq_run2(&m->eq[b], l, r, n);
 }
 
-GM_RAM static void tape_run(mbus_t *m, float *x, int n, int c)
+static void tape_run(mbus_t *m, float *x, int n, int c)
 {
     float k = m->drive, b = m->bias, tb = m->tb, nrm = m->norm, ta = m->tone_a, mix = m->mix;
     float lp = m->lp[c], dx = m->dc_x[c], dy = m->dc_y[c];
@@ -266,7 +267,7 @@ GM_RAM static void tape_run(mbus_t *m, float *x, int n, int c)
     m->dc_y[c] = fm_flush(dy);
 }
 
-GM_RAM void mbus_tape_stereo(mbus_t *m, float *l, float *r, int n)
+void mbus_tape_stereo(mbus_t *m, float *l, float *r, int n)
 {
     int i;
     if (m->tape_on) {
@@ -309,7 +310,7 @@ void mbus_meter_on(mbus_t *m, int on)
     m->meter_on = (uint8_t)(on != 0);
 }
 
-GM_RAM void mbus_meter(mbus_t *m, const float *l, const float *r, int n)
+void mbus_meter(mbus_t *m, const float *l, const float *r, int n)
 {
     float kl[MB_PIECE], kr[MB_PIECE], acc = m->lu_acc, lr = m->c_lr, ll = m->c_ll, rr = m->c_rr;
     const float a = 7.558e-5f;                   /* the correlation's averages: 300 ms */

@@ -159,7 +159,8 @@ void fx_process(const float *dry_l, const float *dry_r, const float *rev, const 
     fxbus_process_st(&fxb, dry_l, dry_r, rev, dly, out_l, out_r, n);
 }
 
-/* (GhettoMachine 0.5, CPU: from RAM, with everything it calls (gm_ram.h); the trim and the input's peak in one pass) */
+/* (GhettoMachine 0.5, CPU: from RAM with the compressor, the limiter and the volume (gm_ram.h); the trim and the
+ * input's peak in one pass) */
 GM_RAM void fx_master(float *l, float *r, int n, float volume)
 {
     int i, byp = own[1];
@@ -174,11 +175,11 @@ GM_RAM void fx_master(float *l, float *r, int n, float volume)
     }
     in_pk[0] = fm_maxf(in_pk[0], pk);
     in_pk[1] = fm_maxf(in_pk[1], pk);
-    if (!byp)
-        mbus_eq(&mb, l, r, n);
+    if (!byp && mb.eq_on)                 /* (the EQ, TAPE and STEREO and the meters: in the flash, called while on) */
+        GM_FAR(mbus_eq)(&mb, l, r, n);
     master_pre_st(&mst, l, r, n);         /* the compressor (not while bypassed), the filter */
-    if (!byp)
-        mbus_tape_stereo(&mb, l, r, n);
+    if (!byp && (mb.tape_on || mb.st_on))
+        GM_FAR(mbus_tape_stereo)(&mb, l, r, n);
     master_post_st(&mst, l, r, n);        /* GAIN, the limiter */
     {
         float a = out_side[0], b = out_side[1];
@@ -195,7 +196,8 @@ GM_RAM void fx_master(float *l, float *r, int n, float volume)
     }
     out_pk[0] = fm_maxf(out_pk[0], pk);
     out_pk[1] = fm_maxf(out_pk[1], pk);
-    mbus_meter(&mb, l, r, n);
+    if (mb.meter_on)
+        GM_FAR(mbus_meter)(&mb, l, r, n);
     master_volume_st(&mst, l, r, n, volume);   /* the MASTER volume, last */
 }
 
