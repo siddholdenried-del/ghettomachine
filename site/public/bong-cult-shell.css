@@ -485,3 +485,25 @@ body.gm-bong-cult {
     border-image: none;
   }
 }
+
+/* Four Registers shares the engraved frame with the landing-page title. */
+.gm-home { container-type: inline-size; }
+.gm-home .gm-hero-copy { display: grid; gap: 10px; min-width: 0; }
+.gm-bong-cult .gm-home .screen { gap: 1.25rem; }
+.gm-four-registers {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 34rem;
+  justify-self: center;
+}
+@container (min-width: 44rem) {
+  .gm-bong-cult .gm-home .screen {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    align-items: center;
+    column-gap: clamp(1.25rem, 3cqw, 2.25rem);
+  }
+  .gm-home .gm-hero-copy h1 .logo {
+    font-size: clamp(1.85rem, 5.2cqw, 3.6rem);
+  }
+}

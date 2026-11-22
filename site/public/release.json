@@ -9,8 +9,8 @@
       "sha256": "1f41ff7770b55d1a465a3ece6d23b970bf0e6b049e41559f5f9ed4a87b9a2224"
     },
     "bong-cult-shell.css": {
-      "bytes": 15230,
-      "sha256": "42349766a8c99da2f202739824d70b74044a4f0ace00b9e1a8ea46f731790d18"
+      "bytes": 15874,
+      "sha256": "f92f3a9e009c98a04cceffe7ab91b834ac543b07c5caa24d1358ef827a19ba8e"
     },
     "bongcult-frame/frame.css": {
       "bytes": 1455,
@@ -23,6 +23,14 @@
     "bongcult-frame/trim-rosette.webp": {
       "bytes": 1358,
       "sha256": "abef9fa0a59dbce27415b79f1c679aea618ca6126bf35d2a3896ac916beccc41"
+    },
+    "bongcult-frame/windchest/four-registers-540.webp": {
+      "bytes": 122768,
+      "sha256": "53f45394db24c7b200c7e2aad11ba32c23ed85faaf7daa9e37f464727d96208c"
+    },
+    "bongcult-frame/windchest/four-registers.webp": {
+      "bytes": 414206,
+      "sha256": "b198187092ee5b7da0a952b27e7879639fc5d45db2c56b26a17b4b2ac545a2e0"
     },
     "bongcult-frame/windchest/keys-small.png": {
       "bytes": 2501,
@@ -153,8 +161,8 @@
       "sha256": "f711c2bc5d1c2aa4676b403aff092bfa59d855a6c65c585b601d89a375d8023a"
     },
     "index.html": {
-      "bytes": 13923,
-      "sha256": "50f880e93536b262471748f547df05db76db829b1b191315a0d3661cb4e6269a"
+      "bytes": 14414,
+      "sha256": "a98813c7b9371e79fbf354cb72e05967dc5caa1fa3b36c894ae0de0df22c6cd4"
     },
     "technical/index.html": {
       "bytes": 74424,
