@@ -225,12 +225,12 @@
       "sha256": "0300e8193b6967afd4bb2a0c6e3107210d8080c35d33bf6bd1e16925b9513743"
     },
     "bongdrums/index.html": {
-      "bytes": 8323,
-      "sha256": "890c9ced68ef877b1765e75292a44dac3d59e9cb43d7ee23d58aca55c68454d2"
+      "bytes": 9493,
+      "sha256": "b4c69607d4addf0ce85e8fcfa612bb4cacabbbc3622f37d6f7f29c5fce9fb31e"
     },
     "bongdrums/instrument.webp": {
-      "bytes": 65254,
-      "sha256": "5d9ebf6b58050cdd3f77224eb1a24b430ac2533f9cefa7dcfd65c3d14fc8017d"
+      "bytes": 58022,
+      "sha256": "64e4972d31536bb62b1488b557d1520d6870a209fb1b2feaae2bc71f2b6750f7"
     },
     "bongdrums/print-sources.json": {
       "bytes": 1425,
@@ -241,12 +241,12 @@
       "sha256": "2cab525420316deedd5737517e949574cb3c4d2fa1e4d317e7d5bee60d27d628"
     },
     "bongsynth/index.html": {
-      "bytes": 8528,
-      "sha256": "452800aef8f1b0ca6b3eef35b376559e339e1944340ee78c249f7011907c5b56"
+      "bytes": 8956,
+      "sha256": "a8dfb39cefc687547f9f3f07aecab4d8addcc3eb2714760b4915c268aebb8657"
     },
     "bongsynth/instrument.webp": {
-      "bytes": 26348,
-      "sha256": "203d7b1d25aa83ae6418772a305be09a24ea5c4d1824ba29fb150852d82a88ff"
+      "bytes": 53512,
+      "sha256": "76d20ade6a27eb21eee900f000582b2b465fa109b7461c41a89cdc5402136dc7"
     },
     "chapter-redirect.js": {
       "bytes": 460,

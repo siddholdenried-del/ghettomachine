@@ -30,18 +30,18 @@
       <p>Eleven pads. Six synthesis families. Every voice is generated on the hit, not read from a sample bank.</p>
       <div class="hero-links">
         <a class="primary" href="https://tools.bongcult.com/bongdrums/">Play BongDrums</a>
-        <a href="https://github.com/siddholdenried-del/bongdrums">Source (GPLv3)</a>
+        <a href="https://github.com/siddholdenried-del/bongdrums/tree/v0.4.4">Source (GPLv3)</a>
         <a href="/guide/">User Guide</a>
       </div>
     </div>
     <figure class="plate">
-      <img src="instrument.webp" alt="A historical photograph of Karl Glassmann with mallets at a set of four kettledrums." width="1020" height="672" fetchpriority="high">
-      <figcaption>Karl Glassmann at the kettledrums · <a href="https://archive.org/details/orchestraitsinst00sing">Esther Singleton, 1917</a></figcaption>
+      <img src="instrument.webp" alt="BongDrums browser sequencer showing eleven drum lanes, sixteen steps, A/B pattern controls, swing and lane mutes." width="1440" height="936" fetchpriority="high">
+      <figcaption>BongDrums v0.4.4 · Sequencer, Factory Electro pattern</figcaption>
     </figure>
   </header>
   <div class="article">
-    <nav class="toc desktop" aria-label="On this page"><p class="tag">Contents</p><ol><li><a href="#signal">Signal path</a></li><li><a href="#voices">Voice families</a></li><li><a href="#metal">Shared metal source</a></li><li><a href="#bus">Drum bus</a></li><li><a href="#budget">FM‑1 measurements</a></li></ol></nav>
-    <details class="toc mobile"><summary>On this page</summary><nav aria-label="On this page"><ol><li><a href="#signal">Signal path</a></li><li><a href="#voices">Voice families</a></li><li><a href="#metal">Shared metal source</a></li><li><a href="#bus">Drum bus</a></li><li><a href="#budget">FM‑1 measurements</a></li></ol></nav></details>
+    <nav class="toc desktop" aria-label="On this page"><p class="tag">Contents</p><ol><li><a href="#signal">Signal path</a></li><li><a href="#voices">Voice families</a></li><li><a href="#metal">Shared metal source</a></li><li><a href="#bus">Drum bus</a></li><li><a href="#budget">FM‑1 measurements</a></li><li><a href="#browser">In the browser</a></li></ol></nav>
+    <details class="toc mobile"><summary>On this page</summary><nav aria-label="On this page"><ol><li><a href="#signal">Signal path</a></li><li><a href="#voices">Voice families</a></li><li><a href="#metal">Shared metal source</a></li><li><a href="#bus">Drum bus</a></li><li><a href="#budget">FM‑1 measurements</a></li><li><a href="#browser">In the browser</a></li></ol></nav></details>
     <div class="sections">
       <section id="signal"><p class="tag">01 / Architecture</p><h2>From step to speaker</h2>
       <p>A pad press and a sequenced step hit the same voice code. Each strike takes the pad’s current settings and velocity. Edits shape the next strike; a preset change does not have to cut off a cymbal that’s already ringing.</p>
@@ -66,11 +66,16 @@
       <p>Results from the physical FM‑1 running development build V6, at 44.1 kHz and 256 frames: <strong>5.805 ms per callback</strong>. These are whole-instrument peaks with the full drum bus enabled, not time spent in the drum engine alone.</p>
       <dl class="bench"><div><dt>Factory groove</dt><dd><strong>3.375 ms</strong><span>58.1% of deadline</span></dd></div><div><dt>Factory rack + four sounding synth voices</dt><dd><strong>4.777 ms</strong><span>82.3% of deadline</span></dd></div><div><dt>Dense hits + four synth voices + rapid cymbal preset changes</dt><dd><strong>5.534 ms</strong><span>95.3% of deadline</span></dd></div></dl>
       <p>The scored runs had no missed deadlines or early drum-tail cuts. The last run hit the synth voice guard 17 times. That kept playback on time, but it wasn’t full synth polyphony throughout.</p>
-      <p class="fine">This page documents the V6 development build and its test conditions. It is not a firmware download or a claim that the public browser emulator runs this build.</p></section>
+      <p class="fine">These are historical tests of the V6 firmware development build, not measurements of the standalone browser instrument or the public GhettoMachine emulator.</p></section>
+      <section id="browser"><p class="tag">06 / Browser instrument · v0.4.4</p><h2>Play and edit a drum rack</h2>
+      <p><strong>SEQ</strong> gives you two 16-step patterns, A and B. Place regular or accented hits, mute lanes, dial in swing or play the computer pads. With playback and REC on, the pads write hits into the playing pattern.</p>
+      <p>In <strong>DRUM</strong>, pick a pad and audition its current model. The sound display keeps the model name visible beside its trace. <strong>LFO</strong> has two modulation slots, <strong>MIXER</strong> controls each pad’s level, pan and sends, and <strong>BUS</strong> has the output scope and dry/processed comparison. The menu imports and exports patterns and individual drum presets as text.</p>
+      <p class="fine">This is the standalone browser drum instrument. For the sampler, arrangement and other instrument tracks, open the <a href="/emu/">GhettoMachine emulator</a>.</p></section>
     </div>
   </div>
   <footer>
     <p><a href="/">GhettoMachine home</a> · <a href="/technical/">Technical tour</a></p>
+    <p>Previous cover image: Karl Glassmann at the kettledrums, <a href="https://archive.org/details/orchestraitsinst00sing">Esther Singleton, 1917</a>.</p>
     <p>Print field and trim: <a href="https://www.gutenberg.org/ebooks/54969">John Tyndall, <i>Sound</i> (1902), Figs. 77 and 80</a>.</p>
   </footer>
 </main>
