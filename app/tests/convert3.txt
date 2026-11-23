@@ -2,7 +2,7 @@
 #   app/build/host/ghettomachine_host app/tests/convert3.txt OUTDIR   (from the repository's top: the image's path is relative)
 # app/tests/fixtures/proj_03.img: made by fixtures/make_v2.txt with 0.3's build. T2: notes on steps 1 and 3, its FM at
 # 30, its part 12 steps long; T3: a note on step 2. projfmt: 2 0.3's file, 3 this one's; genN_0: the part's generator's
-# seed (0: never used)
+# seed (0: never used; OCT+ draws it at random since 0.5)
 expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 flash_load app/tests/fixtures/proj_03.img
 reboot
@@ -32,7 +32,7 @@ wait 30
 expect page 14
 tap OCT+
 wait 30
-expect gen2_0 2
+expect gen2_0 >1
 expect ilen2 12
 expect note2_1_0 >0
 expect linemark2 0
@@ -45,7 +45,7 @@ reboot
 wait 600
 expect projfmt 9
 expect snd2_27 30
-expect gen2_0 2
+expect gen2_0 >1
 expect linesame2 1
 expect nsteps3 1
 expect gen3_0 0
