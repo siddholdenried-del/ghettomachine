@@ -3293,7 +3293,9 @@ static void post_job(uint32_t which)      /* a block's tail (the second core's j
 
 /* the budgets kept (the audio interrupt, at a block's end, the second core idle): the block's times in ticks */
 #define BUD_US(pct) ((float)(pct) * (1.0e4f * (float)APP_BLOCK / 44100.0f))   /* a share of a block, us */
-#define GOV_MIN_VOICES 3
+#define GOV_MIN_VOICES 8                  /* the cap's floor: however dear a voice is measured, the budget allows 8 (3
+                                           * until the 0.5 CPU pass; 8 heavy voices checked on the FM-1) */
+#define GUARD_MIN_VOICES 3                /* the guard's own floor: a block over BUD_GUARD % is an emergency */
 static float gov_us(int stage, uint32_t ticks)
 {
 #ifdef PLAT_HOST
@@ -3387,8 +3389,8 @@ static void govern(uint32_t t_drums, uint32_t t_synth, uint32_t t_fxin, uint32_t
     }
     if (guard) {
         int v = syn_voices(-1);
-        if (v > GOV_MIN_VOICES) {
-            int to = v - 2 < GOV_MIN_VOICES ? GOV_MIN_VOICES : v - 2;
+        if (v > GUARD_MIN_VOICES) {
+            int to = v - 2 < GUARD_MIN_VOICES ? GUARD_MIN_VOICES : v - 2;
             syn_pool(to);                 /* (the two go; the pool as it was for the notes to come) */
             pool_apply();
             gov.caps += (uint32_t)(v - to);

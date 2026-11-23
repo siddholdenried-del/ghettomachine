@@ -1,5 +1,5 @@
 # A 256-frame half at 44.1 kHz has 5804.99 us. The soft drum target is 35%,
-# the synth target is 30%, and the shared returns (BongVerb, BongDelay) have 25%.
+# the synth target is 40%, and the shared returns (BongVerb, BongDelay) have 25%.
 # cpufakeN_US supplies deterministic stage times solely to the load governor.
 # Stages 0, 1, 2, 3 and 6 are drums, synth, the drum bus, returns and core 0 total.
 expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
@@ -34,22 +34,26 @@ key 9 down
 wait 100
 expect voices3 6
 expect govcap 16
-# the synth takes 3600 us a block with six voices: 600 a voice, so its 2322 us (BUD_SYNTH 40 %) buy three (the cap's
-# floor too), the others gone in 10 ms
+# the synth takes 3600 us a block with six voices: 600 a voice, so its 2322 us (BUD_SYNTH 40 %) buy three, but the cap
+# never goes below GOV_MIN_VOICES (8): the six keep sounding
 expect cpufake1_3600 1
 wait 100
-expect govcap 3
-expect govshed 3
-expect voices3 3
-# a new note takes a voice from the three (the cap holds)
+expect govcap 8
+expect govshed 0
+expect voices3 6
+# two more keys: eight, all sounding (the floor)
 key 11 down
+wait 20
+key 12 down
 wait 60
-expect voices3 3
-# cheaper again (200 us with three voices): the cap back up within half a second
+expect voices3 8
+expect govshed 0
+# cheaper again (200 us a block): the cap back up within half a second
 expect cpufake1_200 1
 wait 500
 expect govcap 16
 key 11 up
+key 12 up
 expect cpufake1_0 1
 key 0 up
 key 2 up
@@ -101,7 +105,7 @@ expect govfx 0
 expect cpufake2_0 1
 expect cpufake3_0 1
 # ---- the guard: the drums playing, six voices held, and a block above 90%: the voices down by two a block to the
-# floor of three. The drum guard shares its hat-first selection with the stage budget.
+# guard's own floor of three (an emergency: the budget's floor of eight does not hold it). The drum guard shares its hat-first selection with the stage budget.
 tap PLAY
 wait 600
 turn ALGO 2
