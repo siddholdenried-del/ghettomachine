@@ -10445,9 +10445,112 @@ static void draw_live(void)               /* the band's meters; the page too whe
     band();
 }
 
+/* The processor's last lines (speak): 1 the blocks late, the voices, the budgets and the second core; 2 the synth's
+ * parts; 3 OTHER's. Said one at a time SPEAK_GAP ms apart after the rest: the device's SysEx ring holds 384 bytes, and
+ * six lines at once (about 620) lost the last ones on the FM-1 (the simulator has no such limit) */
+#define SPEAK_GAP 25u
+static uint8_t speak_more;                /* the line due next (0: none) */
+static uint32_t speak_more_t;
+static void speak_line(int which, char *t)
+{
+    char u[12];
+    int i, b;
+    t[0] = 0;
+    if (which == 1) {
+        text_cat(t, "LATE ");
+        int_text((int32_t)plat_xruns(), u);
+        text_cat(t, u);
+        text_cat(t, ". VOICES ");
+        int_text(syn_voices(-1), u);
+        text_cat(t, u);
+        text_cat(t, " CAP ");
+        int_text(gov.cap, u);
+        text_cat(t, u);
+        text_cat(t, " POOL ");
+        int_text(pool_now, u);
+        text_cat(t, u);
+        text_cat(t, ". CUT ");
+        int_text((int32_t)gov.cuts, u);
+        text_cat(t, u);
+        text_cat(t, " SHED ");
+        int_text((int32_t)gov.caps, u);
+        text_cat(t, u);
+        text_cat(t, " FX OUT ");
+        int_text((int32_t)gov.sheds, u);
+        text_cat(t, u);
+        text_cat(t, " NOW ");
+        int_text(gov.fx_shed, u);
+        text_cat(t, u);
+        text_cat(t, " GUARD ");
+        int_text((int32_t)gov.guards, u);
+        text_cat(t, u);
+        text_cat(t, ". CORE2 ");
+        int_text(cpu2 && plat_cpu2_on(), u);
+        text_cat(t, u);
+        text_cat(t, " DRUMS THERE ");     /* the blocks it rendered the drums, %; its stack's depth, bytes */
+        int_text((int32_t)(d2.share + 0.5f), u);
+        text_cat(t, u);
+        text_cat(t, " STACK ");
+        int_text((int32_t)plat_cpu2_stack(), u);
+        text_cat(t, u);
+        text_cat(t, " KIT ");
+        text_cat(t, drums_kit_name(proj.kit));
+        ann_say(t, 0, 0);
+    } else if (which == 2) {             /* the synth's parts, us a block; what a voice is measured to cost */
+        text_cat(t, "SYNTH US PREP ");
+        int_text((int32_t)(sy_us[SY_PREP] + 0.5f), u);
+        text_cat(t, u);
+        text_cat(t, " VOICES ");
+        int_text((int32_t)(sy_us[SY_VOICES] + 0.5f), u);
+        text_cat(t, u);
+        text_cat(t, " MIX ");
+        int_text((int32_t)(sy_us[SY_MIX] + 0.5f), u);
+        text_cat(t, u);
+        text_cat(t, " A VOICE ");
+        int_text((int32_t)(gov.per_voice + 0.5f), u);
+        text_cat(t, u);
+        text_cat(t, " BASE ");
+        int_text((int32_t)(gov.syn_base + 0.5f), u);
+        text_cat(t, u);
+        text_cat(t, " SPLIT ");              /* the first core's share of the voices, %; its wait a synth block, us */
+        int_text((int32_t)(split_share + 0.5f), u);
+        text_cat(t, u);
+        text_cat(t, " WAIT ");
+        int_text((int32_t)(split_wait_us + 0.5f), u);
+        text_cat(t, u);
+        ann_say(t, 0, 0);
+    } else {
+        /* OTHER's parts, us a block: the mean and the worst of the last 10 s */
+        static const char *const ON[OT_NUM] = {"IN", "SEQ", "DRUM", "JOIN", "WAIT", "OUT", "LEFT"};
+        text_cat(t, "OTHER US");
+        for (i = 0; i < OT_NUM; i++) {
+            float m = 0.0f;
+            for (b = 0; b < CS_MXB; b++)
+                if (ot_mx[b][i] > m)
+                    m = ot_mx[b][i];
+            text_cat(t, i ? ". " : " ");
+            text_cat(t, ON[i]);
+            text_cat(t, " ");
+            int_text((int32_t)(ot_us[i] + 0.5f), u);
+            text_cat(t, u);
+            text_cat(t, " MAX ");
+            int_text((int32_t)(m + 0.5f), u);
+            text_cat(t, u);
+        }
+        ann_say(t, 0, 0);
+    }
+}
+
 static void speak(void)                   /* a screen reader that has just started listening hears the screen */
 {
     char t[200];
+    if (speak_more && !ann_on())
+        speak_more = 0;
+    if (speak_more && plat_ms() - speak_more_t >= SPEAK_GAP) {
+        speak_line(speak_more, t);
+        speak_more = (uint8_t)(speak_more < 3 ? speak_more + 1 : 0);
+        speak_more_t = plat_ms();
+    }
     if (ann_on() && ann_where()) {
         t[0] = 0;
         text_cat(t, APP_NAME ". ");
@@ -10514,89 +10617,8 @@ static void speak(void)                   /* a screen reader that has just start
                 text_cat(t, ". ");
             }
             ann_say(t, 0, 0);
-            t[0] = 0;
-            text_cat(t, "LATE ");
-            int_text((int32_t)plat_xruns(), u);
-            text_cat(t, u);
-            text_cat(t, ". VOICES ");
-            int_text(syn_voices(-1), u);
-            text_cat(t, u);
-            text_cat(t, " CAP ");
-            int_text(gov.cap, u);
-            text_cat(t, u);
-            text_cat(t, " POOL ");
-            int_text(pool_now, u);
-            text_cat(t, u);
-            text_cat(t, ". CUT ");
-            int_text((int32_t)gov.cuts, u);
-            text_cat(t, u);
-            text_cat(t, " SHED ");
-            int_text((int32_t)gov.caps, u);
-            text_cat(t, u);
-            text_cat(t, " FX OUT ");
-            int_text((int32_t)gov.sheds, u);
-            text_cat(t, u);
-            text_cat(t, " NOW ");
-            int_text(gov.fx_shed, u);
-            text_cat(t, u);
-            text_cat(t, " GUARD ");
-            int_text((int32_t)gov.guards, u);
-            text_cat(t, u);
-            text_cat(t, ". CORE2 ");
-            int_text(cpu2 && plat_cpu2_on(), u);
-            text_cat(t, u);
-            text_cat(t, " DRUMS THERE ");     /* the blocks it rendered the drums, %; its stack's depth, bytes */
-            int_text((int32_t)(d2.share + 0.5f), u);
-            text_cat(t, u);
-            text_cat(t, " STACK ");
-            int_text((int32_t)plat_cpu2_stack(), u);
-            text_cat(t, u);
-            text_cat(t, " KIT ");
-            text_cat(t, drums_kit_name(proj.kit));
-            ann_say(t, 0, 0);
-            t[0] = 0;                     /* the synth's parts, us a block; what a voice is measured to cost */
-            text_cat(t, "SYNTH US PREP ");
-            int_text((int32_t)(sy_us[SY_PREP] + 0.5f), u);
-            text_cat(t, u);
-            text_cat(t, " VOICES ");
-            int_text((int32_t)(sy_us[SY_VOICES] + 0.5f), u);
-            text_cat(t, u);
-            text_cat(t, " MIX ");
-            int_text((int32_t)(sy_us[SY_MIX] + 0.5f), u);
-            text_cat(t, u);
-            text_cat(t, " A VOICE ");
-            int_text((int32_t)(gov.per_voice + 0.5f), u);
-            text_cat(t, u);
-            text_cat(t, " BASE ");
-            int_text((int32_t)(gov.syn_base + 0.5f), u);
-            text_cat(t, u);
-            text_cat(t, " SPLIT ");              /* the first core's share of the voices, %; its wait a synth block, us */
-            int_text((int32_t)(split_share + 0.5f), u);
-            text_cat(t, u);
-            text_cat(t, " WAIT ");
-            int_text((int32_t)(split_wait_us + 0.5f), u);
-            text_cat(t, u);
-            ann_say(t, 0, 0);
-            {   /* OTHER's parts, us a block: the mean and the worst of the last 10 s */
-                static const char *const ON[OT_NUM] = {"IN", "SEQ", "DRUM", "JOIN", "WAIT", "OUT", "LEFT"};
-                t[0] = 0;
-                text_cat(t, "OTHER US");
-                for (i = 0; i < OT_NUM; i++) {
-                    float m = 0.0f;
-                    for (b = 0; b < CS_MXB; b++)
-                        if (ot_mx[b][i] > m)
-                            m = ot_mx[b][i];
-                    text_cat(t, i ? ". " : " ");
-                    text_cat(t, ON[i]);
-                    text_cat(t, " ");
-                    int_text((int32_t)(ot_us[i] + 0.5f), u);
-                    text_cat(t, u);
-                    text_cat(t, " MAX ");
-                    int_text((int32_t)(m + 0.5f), u);
-                    text_cat(t, u);
-                }
-                ann_say(t, 0, 0);
-            }
+            speak_more = 1;               /* the rest a moment later, a line at a time (speak_line) */
+            speak_more_t = plat_ms();
         }
     }
     ann_tick(plat_ms());
