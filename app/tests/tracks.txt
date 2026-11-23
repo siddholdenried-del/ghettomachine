@@ -261,22 +261,19 @@ expect page 13
 tap HOME
 wait 30
 expect page 5
-# T4's EDIT page: TYPE to SAMPLER (silent for now), back to POLY; LEVEL down 20; SEQ three times (STEPS,
-# ACID): back to the keys
+# T4's EDIT page: TYPE to POLY, and no further (the SAMPLER beyond it went in 0.5); LEVEL down 20; SEQ three times
+# (STEPS, ACID): back to the keys
 tap EDIT
 wait 30
 expect page 1
 turn K1 2
 wait 30
-expect type4 2
+expect type4 1
 key 7 down
 wait 40
-expect voices4 0
+expect voices4 1
 key 7 up
 wait 30
-turn K1 -1
-wait 30
-expect type4 1
 turn K2 -20
 wait 30
 expect level4 80

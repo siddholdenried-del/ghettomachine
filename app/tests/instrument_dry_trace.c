@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* Run against both the original 3D577AD6 synth and this branch. Stdout carries
  * the exact float master pair, sends, and all three stem pairs for every block.
- * Argument 0 selects all oscillators. 1..3 puts a packed loop on that track. */
+ * Argument 0 selects all oscillators (1..3 once put a sampled loop on that track: the sampler went in 0.5). */
 #include "synth.h"
 #include <assert.h>
 #include <stdio.h>
@@ -45,12 +45,7 @@ int main(int argc, char **argv)
         syn_sound(t, patch);
         syn_level(t, .50f + .1f * t);
         syn_mixer(t, 24 + t * 23, .13f * t, .23f * t);
-        syn_source(t, t == sampler);
-        if (t == sampler) {
-            syn_sample(t, packed, 2048, 22050);
-            syn_sample_shape(t, 10, 960, 1, 95, 60, 17);
-            assert(syn_sample_frames(t) == 2048);
-        }
+        (void)sampler;                    /* (the track that was a SAMPLER: the sampler went in 0.5) */
     }
     unsigned audible[SYN_TRACKS] = {0};
     double reverb_energy = 0., delay_energy = 0.;

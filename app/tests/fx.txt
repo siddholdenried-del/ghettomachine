@@ -115,7 +115,7 @@ wait 400
 peakreset
 wait 200
 expect peak_db_max -80
-# ---- sampling borrows the delay's line: out of the chain from REC + SEL until done (here, given up)
+# ---- T4, then the FX pages (the delay's line stays in the chain: the sampler that borrowed it went in 0.5)
 press SEL
 wait 20
 key 8 down
@@ -125,13 +125,6 @@ wait 20
 release SEL
 wait 30
 expect trk 4
-tap EDIT
-wait 30
-turn SELECT -4
-wait 30
-spin K1 1
-wait 30
-expect type4 2
 expect dlyon 1
 press REC
 wait 20
@@ -139,16 +132,11 @@ tap SEL
 wait 20
 release REC
 wait 30
-expect rstate 1
-expect dlyon 0
+expect dlyon 1
 tap FX
 wait 30
 expect page 10
 shot fx_paused.png
-tap SEL
-wait 60
-expect rstate 0
-expect dlyon 1
 # ---- FX > BongVerb: DECAY (62 its default, the Motion Plate preset's .49); COMP: on by default, 2:1 over -12 dB; RATIO up to 4:1 and back; MASTER
 turn SELECT -3
 wait 30

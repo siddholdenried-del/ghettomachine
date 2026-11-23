@@ -24,8 +24,8 @@ void app_splash(void);
 enum { OBJ_USER, OBJ_PANEL, OBJ_BLE, OBJ_NOBJ };   /* OBJ_USER: the user presets (app.c user_t) */
 #define APP_STORE_MAP {0xFC000u, 0xDC000u, 0xDE000u}
 
-/* the companion's files (fm1.toml companion = true): none yet (the samples come in phase 3); it also brings
- * plat_file_*, which keeps the project */
+/* the companion's files (fm1.toml companion = true): none of the app's own since the sampler went (0.5: the samples were
+ * its three); the hooks stay because they bring plat_file_*, which keeps the project */
 #define APP_FILES
 int app_file(uint32_t i, plat_file_info_t *f);
 int app_file_read(uint32_t i, uint32_t off, uint8_t *dst, uint32_t n);
@@ -33,7 +33,7 @@ int app_file_begin(uint32_t i, uint32_t size);
 int app_file_write(uint32_t i, uint32_t off, const uint8_t *src, uint32_t n);
 int app_file_commit(uint32_t i, uint32_t size, uint32_t crc);
 int app_file_delete(uint32_t i);
-int app_file_busy(void);                 /* 1: no file written now (playing, or sampling) */
+int app_file_busy(void);                 /* 1: no file written now (playing) */
 
 /* the contract: the platform calls these */
 void app_init(void);                     /* boot: the engines, then the saved project (or the default one) */

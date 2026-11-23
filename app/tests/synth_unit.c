@@ -360,28 +360,6 @@ int main(void)
         check(!bad && pk < 20.0f, "all of it at once: finite and bounded", pk);
     }
 
-    /* the SAMPLER through the SHAPER and the matrix */
-    {
-        static uint8_t smp[3 * 2000];
-        int k;
-        for (k = 0; k < 4000; k += 2) {   /* a 12-bit sine, two frames in three bytes */
-            int s0 = (int)(1800 * sin(k * 0.05)) & 0xFFF, s1 = (int)(1800 * sin((k + 1) * 0.05)) & 0xFFF;
-            smp[k / 2 * 3] = (uint8_t)s0;
-            smp[k / 2 * 3 + 1] = (uint8_t)((s0 >> 8) | (s1 & 15) << 4);
-            smp[k / 2 * 3 + 2] = (uint8_t)(s1 >> 4);
-        }
-        plain(v);
-        v[SP_SHAPE] = 100;
-        slot(v, 0, MS_LFO2, MD_SHAPE, 40);
-        syn_source(1, 1);
-        syn_sample(1, smp, 4000, 44100);
-        syn_sample_shape(1, 0, 1000, 1, 0, 60, 0);
-        render(v, 1, 60, 1.0f, 4096, 2048);
-        a = rms(bl, 4096);
-        check(a > 0.005 && a < 5.0, "a SAMPLER through the SHAPER", a);
-        syn_source(1, 0);
-    }
-
     /* the cost on the host: 16 voices, plain against FM + FOLD (a ratio only) */
     {
         float l[SYN_CTL], r[SYN_CTL], rv[SYN_CTL], dl[SYN_CTL];

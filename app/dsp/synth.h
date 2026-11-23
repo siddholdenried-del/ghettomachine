@@ -81,7 +81,7 @@ void syn_level(int trk, float level);     /* 0..1 */
  * the track's cap) */
 void syn_note_on(int trk, int note, float vel, int32_t gate, int mono);
 /* the same with a 303's marks (0.4: the sequencer's steps): SN_SLIDE, the track's note still held glides to this one
- * (MONO, POLY or SAMPLER, whatever LEGATO says; GLIDE's time, or 58 ms with GLIDE at 0), no new attack; SN_ACCENT,
+ * (MONO or POLY, whatever LEGATO says; GLIDE's time, or 58 ms with GLIDE at 0), no new attack; SN_ACCENT,
  * louder and a filter sweep */
 #define SN_SLIDE 1
 #define SN_ACCENT 2
@@ -95,23 +95,11 @@ void syn_pool(int n);                     /* the voices that may sound, 1..SYN_V
 int syn_voices(int trk);                  /* voices sounding (trk < 0: all) */
 int syn_pitch16(int trk);                 /* the track's newest voice's pitch now, 1/16 semitone; -1 none */
 
-/* SAMPLER tracks (PLAN.md, phase 3): the track's source is a sample instead of the oscillators, through the same drive,
- * filter, envelopes and pool. 12-bit, packed two in three bytes (s0 low 8 bits; s0 high 4 | s1 low 4 << 4; s1 high 8
- * bits), frames at rate Hz. The data stays the caller's (in place in the flash, or a recording in RAM) and must not
- * change while it is set: set 0 first. A new source or sample frees the track's voices; a note on a SAMPLER track with
- * no sample is silent */
-void syn_source(int trk, int sampler);
-void syn_sample(int trk, const uint8_t *packed, uint32_t frames, uint32_t rate);
-/* where the sample plays: start, end and the loop's start in thousandths of it (the loop start moved to the nearest
- * rising zero crossing); loop 0 once, 1 round from the loop start to the end; root the note that plays it at its own
- * pitch; tune -50..50 cents */
-void syn_sample_shape(int trk, int start, int end, int loop, int lstart, int root, int tune);
-uint32_t syn_sample_frames(int trk);
-
 /* modulation (PLAN.md, phase 4): a track's LFO, set once a block before syn_prepare. lfo -1..1, depth -1..1. CUTOFF moves
  * +-64 of the 128 cutoff steps (about 4 octaves), PITCH +-12 semitones, LEVEL dips by up to all of it, PWM and the rest
- * +-64 of 127, START (a SAMPLER) +-half the sample, as each note starts */
-enum { SM_CUTOFF, SM_PITCH, SM_LEVEL, SM_PWM, SM_RESO, SM_DETUNE, SM_MIX, SM_DRIVE, SM_NOISE, SM_SUB, SM_START, SM_NUM };
+ * +-64 of 127 */
+enum { SM_CUTOFF, SM_PITCH, SM_LEVEL, SM_PWM, SM_RESO, SM_DETUNE, SM_MIX, SM_DRIVE, SM_NOISE, SM_SUB, SM_NUM };   /* (10 was
+                                          * START, the sampler's, until 0.5: a saved one loads CUTOFF at depth 0) */
 void syn_mod(int trk, int dest, float lfo, float depth);
 int syn_get(int trk, int id);             /* a parameter as the voices use it now (a lock's value included) */
 int syn_probe(int trk, int what);         /* tests, the track's newest voice: 0 its pitch (1/16 semitone, the LFO's

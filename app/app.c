@@ -5,9 +5,8 @@
  * T1 is the drum track, X0X-style: two kits (909 / 808, PRESETS), 11 pads on the black keys, accents (SEQ held +
  * steps), per-pad editing (EDIT), per-step chance (a step held + SELECT) and locks (EDIT, a step held + a knob), and a
  * MUTE page (ENV) whose mutes belong to the pattern.
- * T2..T4 are instrument tracks. Each has a TYPE: MONO, POLY or SAMPLER. MONO and POLY play the synth (dsp/synth.h:
- * Felucca's ANALOG voice, 16 voices shared, on both cores); SAMPLER plays the track's sample through the same voice
- * (a bank in the flash: a WAV from the Mac, or a recording of the FM-1's own sound, REC held + SEL). A step holds a chord of up to 4 notes, a velocity, a gate
+ * T2..T4 are instrument tracks. Each has a TYPE: MONO or POLY, both playing the synth (dsp/synth.h: Felucca's ANALOG
+ * voice, 16 voices shared, on both cores; the SAMPLER type went in 0.5). A step holds a chord of up to 4 notes, a velocity, a gate
  * and a chance. The KEYS page plays them from all 27 keys; REC records them, live while playing (to the nearest
  * step) or step by step while stopped (a chord per step, the cursor moving on when the keys are let go).
  * A pattern holds all four tracks; each track's part has its own length and rate. ALGORITHM (or SEL held + pad keys
@@ -107,7 +106,7 @@ static int dpreset_id(int i) { return i; }
 enum { RATE_16, RATE_8, RATE_32, RATE_16T, RATE_8T, NRATES };
 static const char *const RATE_NAME[NRATES] = {"1/16", "1/8", "1/32", "1/16T", "1/8T"};
 static const float RATE_MUL[NRATES] = {1.0f, 2.0f, 0.5f, 2.0f / 3.0f, 4.0f / 3.0f};
-enum { TY_MONO, TY_POLY, TY_SAMPLER, NTYPES };
+enum { TY_MONO, TY_POLY, NTYPES };           /* (2 was SAMPLER until 0.5: a saved one loads POLY) */
 
 typedef struct {
     uint8_t step, pad;
@@ -168,7 +167,7 @@ typedef struct {                          /* an instrument track's settings */
     uint8_t edited;                       /* changed since */
     uint8_t rsv[3];
     int8_t snd[SP_NUM];                   /* the sound (dsp/synth.h SP_*) */
-    uint16_t s_start, s_end, s_lstart;    /* SAMPLER: where it plays, thousandths of the sample */
+    uint16_t s_start, s_end, s_lstart;    /* (s_*: the SAMPLER's until 0.5, unused: kept so saves keep their layout) */
     uint8_t s_loop;                       /* 0 once, 1 round its loop */
     uint8_t s_root;                       /* the note that plays it at its own pitch */
     int8_t s_tune;                        /* cents, -50..50 */
@@ -807,8 +806,6 @@ static void tracks_to_voices(void)        /* (a track, then an FX knob, at a tim
         uint32_t f = plat_lock();
         syn_sound(t, ts->snd);
         syn_level(t, (float)ts->level / 127.0f);
-        syn_source(t, ts->type == TY_SAMPLER);
-        syn_sample_shape(t, ts->s_start, ts->s_end, ts->s_loop, ts->s_lstart, ts->s_root, ts->s_tune);
         syn_mixer(t, proj.mix[t].pan, (float)proj.mix[t].rev / 127.0f, (float)proj.mix[t].dly / 127.0f);
         plat_unlock(f);
     }
@@ -819,15 +816,7 @@ static void tracks_to_voices(void)        /* (a track, then an FX knob, at a tim
     }
 }
 
-static void track_shape(int t)           /* a SAMPLER track's start, end, loop and pitch -> the synth */
-{
-    const track_t *ts = tset(t);
-    uint32_t f = plat_lock();
-    syn_sample_shape(t, ts->s_start, ts->s_end, ts->s_loop, ts->s_lstart, ts->s_root, ts->s_tune);
-    plat_unlock(f);
-}
-
-static uint32_t crc32_more(uint32_t c, const uint8_t *d, uint32_t n)
+static uint32_t crc32_more(uint32_t c, const uint8_t *d, uint32_t n)   /* (project_codec.h's check) */
 {
     uint32_t k;
     while (n--) {
@@ -837,7 +826,6 @@ static uint32_t crc32_more(uint32_t c, const uint8_t *d, uint32_t n)
     }
     return c;
 }
-static uint32_t crc32_of(const uint8_t *d, uint32_t n) { return ~crc32_more(0xFFFFFFFFu, d, n); }
 
 /* the render's time by stage (0.5, CPU): plat_ticks24 (24 a microsecond: one register read on the FM-1) around each,
  * kept as a running mean in microseconds per block: SETUP shows it, the tests read it (cpuN). DRUMS: the kits and their
@@ -980,8 +968,9 @@ static void project_check(void)           /* a loaded project's values kept in r
                 l->rsv[0] = 0;
             if (l->pad >= NPADS || (l->dest != LFO_OFF && l->dest >= NPOTS))
                 l->dest = LFO_OFF, l->pad = 0;
-        } else if (l->dest >= SM_NUM) {
+        } else if (l->dest >= SM_NUM) {   /* (START, the sampler's until 0.5, or a bad one: CUTOFF, still) */
             l->dest = 0;
+            l->depth = 0;
         }
     }
     for (t = 0; t < NTRK; t++) {
@@ -1038,8 +1027,8 @@ static void project_check(void)           /* a loaded project's values kept in r
             psound_t *q = &proj.psnd[i][t];
             int k;
             q->used &= 1u;
-            if (q->type >= NTYPES)
-                q->type = TY_MONO;
+            if (q->type >= NTYPES)        /* (a SAMPLER's, until 0.5: POLY, as the track's own) */
+                q->type = TY_POLY;
             q->level &= 127u;
             q->edited &= 1u;
             if (q->preset >= syn_presets() + NUSER)
@@ -1333,244 +1322,6 @@ static int project_save(void)             /* main loop, stopped (each erase stop
     return 0;
 }
 
-/* ------------------------------------------------------------ the sample bank --- */
-/* The instrument tracks' samples, in place in the data area after the project's file: 0xA7000..0xDBFFF, 53 sectors of
- * 4 KiB (the panel's store objects sit above). A sample takes whole sectors from its record's head (bank_rec_t, 32
- * bytes, written last: a power cut leaves no half sample), then the sample's file (smp_head_t and the 12-bit frames),
- * which the computer reads and replaces (the companion's files: tools/fm1_sample.py). A track's newest whole record is
- * its sample; a new one is written to free sectors before the old one's head is erased, when there is room for both.
- * Main loop, stopped (an erase stops the sound) */
-#define BANK_LO 0xA7000u
-#define BANK_HI 0xDC000u
-#define BANK_REC 32u
-#define REC_MAGIC 0x314B4253u             /* "SBK1" */
-#define SMP_MAGIC 0x31323153u             /* "S121": a sample file's head */
-typedef struct {
-    uint32_t magic, seq;
-    uint8_t trk, rsv[3];
-    uint32_t size, crc;                   /* the file after the record: its bytes and CRC-32 */
-    uint32_t rsv2[2];
-    uint32_t hcrc;                        /* CRC-32 of the 28 bytes before */
-} bank_rec_t;
-_Static_assert(sizeof(bank_rec_t) == BANK_REC, "a bank record is 32 bytes");
-typedef struct {
-    uint32_t magic, frames, rate;         /* rate 44100 or 22050 */
-    uint8_t root, rsv[3];
-} smp_head_t;
-#define SMP_HEAD ((uint32_t)sizeof(smp_head_t))
-static inline uint32_t s12_bytes(uint32_t frames) { return (frames * 3u + 1u) / 2u; }
-
-static struct {
-    uint32_t at[NTRK], size[NTRK];        /* a track's record (0: none) and its file's bytes */
-    uint32_t seq;                         /* the newest record's */
-    int8_t wtrk;                          /* a write under way: its track, -1 none */
-    uint32_t wat, wsize, wend;            /* its record, its file's bytes, erased up to */
-} bank;
-static const uint8_t *smp_data[NTRK];     /* what each track plays (the flash's, or a recording in RAM) */
-static uint32_t smp_frames[NTRK], smp_rate[NTRK];
-
-static uint32_t bank_sectors(uint32_t size) { return (BANK_REC + size + 4095u) / 4096u; }
-
-static const bank_rec_t *bank_rec(uint32_t at)   /* a whole record's head at at, or 0 */
-{
-    const bank_rec_t *r = (const bank_rec_t *)plat_data(at);
-    if (!r || r->magic != REC_MAGIC || r->trk < 1 || r->trk >= NTRK || r->size < SMP_HEAD ||
-        r->size > BANK_HI - at - BANK_REC || crc32_of((const uint8_t *)r, 28u) != r->hcrc)
-        return 0;
-    return r;
-}
-
-static int bank_used(uint32_t at, int except)   /* a track's sample (not track except's) is in the sector at at */
-{
-    int t;
-    for (t = 1; t < NTRK; t++)
-        if (t != except && bank.at[t] && at >= bank.at[t] && at < bank.at[t] + bank_sectors(bank.size[t]) * 4096u)
-            return 1;
-    return 0;
-}
-
-/* the first n free sectors in a row (0: none); longest: the longest run there is */
-static uint32_t bank_run(uint32_t n, int except, uint32_t *longest)
-{
-    uint32_t at, run = 0, start = 0, best = 0;
-    for (at = BANK_LO; at < BANK_HI; at += 4096u) {
-        if (bank_used(at, except)) {
-            run = 0;
-            continue;
-        }
-        if (!run)
-            start = at;
-        if (++run > best)
-            best = run;
-        if (n && run >= n)
-            break;
-    }
-    if (longest)
-        *longest = best;
-    return n && run >= n ? start : 0;
-}
-
-static int smp_ok(const smp_head_t *h, uint32_t size)
-{
-    return h && h->magic == SMP_MAGIC && h->frames >= 2u && (h->rate == 44100u || h->rate == 22050u) &&
-           size == SMP_HEAD + s12_bytes(h->frames);
-}
-
-static void use_sample(int t, const uint8_t *d, uint32_t frames, uint32_t rate)   /* what the track plays */
-{
-    uint32_t f = plat_lock();
-    syn_sample(t, d, frames, rate);
-    plat_unlock(f);
-    smp_data[t] = d && frames >= 2u ? d : 0;
-    smp_frames[t] = smp_data[t] ? frames : 0;
-    smp_rate[t] = smp_data[t] ? rate : 0;
-}
-
-static void bank_use(int t)               /* the track plays its sample in the flash (or nothing) */
-{
-    const smp_head_t *h = bank.at[t] ? (const smp_head_t *)plat_data(bank.at[t] + BANK_REC) : 0;
-    if (h && smp_ok(h, bank.size[t]))
-        use_sample(t, (const uint8_t *)h + SMP_HEAD, h->frames, h->rate);
-    else
-        use_sample(t, 0, 0, 0);
-}
-
-static void bank_scan(void)               /* at the start: each track's newest whole sample */
-{
-    uint32_t at, seq[NTRK] = {0};
-    int t;
-    for (t = 0; t < NTRK; t++)
-        bank.at[t] = bank.size[t] = 0;
-    bank.seq = 0;
-    bank.wtrk = -1;
-    for (at = BANK_LO; at < BANK_HI; at += 4096u) {
-        const bank_rec_t *r = bank_rec(at);
-        if (!r)
-            continue;
-        if ((int32_t)(r->seq - bank.seq) > 0)
-            bank.seq = r->seq;
-        if (bank.at[r->trk] && (int32_t)(r->seq - seq[r->trk]) <= 0)
-            continue;
-        if (crc32_of((const uint8_t *)r + BANK_REC, r->size) != r->crc)
-            continue;
-        bank.at[r->trk] = at;
-        bank.size[r->trk] = r->size;
-        seq[r->trk] = r->seq;
-    }
-    for (t = 1; t < NTRK; t++)
-        bank_use(t);
-}
-
-static int bank_erase_heads(int t, uint32_t keep)   /* every record of the track's but keep: its head erased */
-{
-    uint32_t at;
-    int r = 0;
-    for (at = BANK_LO; at < BANK_HI; at += 4096u) {
-        const bank_rec_t *h = at == keep ? 0 : bank_rec(at);
-        if (h && h->trk == t && plat_data_erase(at))
-            r = -1;
-    }
-    return r;
-}
-
-static int bank_kill(int t)               /* the track's sample gone */
-{
-    if (smp_data[t] && bank.at[t] && smp_data[t] == plat_data(bank.at[t] + BANK_REC + SMP_HEAD))
-        use_sample(t, 0, 0, 0);           /* (nothing reads what is about to be erased) */
-    bank.at[t] = bank.size[t] = 0;
-    return bank_erase_heads(t, 0);
-}
-
-static uint32_t bank_room(int t)          /* the biggest file the track can take now (its own sample's room too) */
-{
-    uint32_t longest;
-    bank_run(0, t, &longest);
-    return longest ? longest * 4096u - BANK_REC : 0;
-}
-
-/* where n sectors go: the smallest free run that takes them (except: a track whose sectors count as free), at the end of
- * it away from the track's old sample, so that the old one's sectors, freed after, join the space left; 0 none */
-static uint32_t bank_place(uint32_t n, int except, int t)
-{
-    uint32_t at, run = 0, start = 0, best = 0, best_len = 0;
-    for (at = BANK_LO; at <= BANK_HI; at += 4096u) {
-        if (at < BANK_HI && !bank_used(at, except)) {
-            if (!run)
-                start = at;
-            run++;
-            continue;
-        }
-        if (run >= n && (!best_len || run < best_len)) {
-            best = start;
-            best_len = run;
-        }
-        run = 0;
-    }
-    if (!best_len)
-        return 0;
-    if (bank.at[t] && bank.at[t] < best)  /* the old one below: the new one at the top of the run */
-        best += (best_len - n) * 4096u;
-    return best;
-}
-
-static int bank_begin(int t, uint32_t size)
-{
-    uint32_t n = bank_sectors(size), at;
-    bank.wtrk = -1;
-    if (size < SMP_HEAD || n > (BANK_HI - BANK_LO) / 4096u)
-        return -1;
-    at = bank_place(n, -1, t);            /* beside the old one, kept until the new one is whole */
-    if (!at && bank.at[t] && (at = bank_place(n, t, t)) != 0)
-        bank_kill(t);                     /* no room for both: the old one goes first */
-    if (!at || plat_data_erase(at))
-        return -1;
-    bank.wtrk = (int8_t)t;
-    bank.wat = at;
-    bank.wsize = size;
-    bank.wend = at + 4096u;
-    return 0;
-}
-
-static int bank_write(int t, uint32_t off, const void *src, uint32_t n)
-{
-    uint32_t at = bank.wat + BANK_REC + off;
-    if (bank.wtrk != t || off > bank.wsize || n > bank.wsize - off)
-        return -1;
-    while (bank.wend < at + n) {          /* each sector erased as the data reaches it */
-        if (plat_data_erase(bank.wend))
-            return -1;
-        bank.wend += 4096u;
-    }
-    return n ? plat_data_write(at, src, n) : 0;
-}
-
-static int bank_commit(int t, uint32_t size, uint32_t crc)   /* checked in the flash, then its head: current */
-{
-    bank_rec_t r;
-    const uint8_t *d = plat_data(bank.wat + BANK_REC);
-    uint32_t k;
-    if (bank.wtrk != t || size != bank.wsize || !d || crc32_of(d, size) != crc)
-        return -1;
-    for (k = 0; k < sizeof r; k++)
-        ((uint8_t *)&r)[k] = 0;
-    r.magic = REC_MAGIC;
-    r.seq = ++bank.seq;
-    r.trk = (uint8_t)t;
-    r.size = size;
-    r.crc = crc;
-    r.hcrc = crc32_of((const uint8_t *)&r, 28u);
-    bank.wtrk = -1;
-    if (plat_data_write(bank.wat, &r, sizeof r) || !bank_rec(bank.wat))
-        return -1;
-    if (smp_data[t] && bank.at[t] && smp_data[t] == plat_data(bank.at[t] + BANK_REC + SMP_HEAD))
-        use_sample(t, 0, 0, 0);           /* the old one is about to go */
-    bank_erase_heads(t, bank.wat);
-    bank.at[t] = bank.wat;
-    bank.size[t] = size;
-    bank_use(t);
-    return 0;
-}
-
 /* ------------------------------------------------------------- user presets --- */
 /* sounds for T2..T4 and kits for the drums, saved by hand (SAVE held + PRESETS, let go), kept in a store object of their
  * own (OBJ_USER, A / B: a power cut keeps the old one) apart from any project */
@@ -1773,7 +1524,6 @@ static void psnd_load(int t, int p)       /* pattern p's sound into track t and 
         const track_t *ts = tset(t);
         syn_sound(t, ts->snd);
         syn_level(t, (float)ts->level / 127.0f);
-        syn_source(t, ts->type == TY_SAMPLER);
     }
 }
 
@@ -1825,7 +1575,7 @@ static const char *const DIV_NAME[NDIV] = {"4 BARS", "2 BARS", "1 BAR", "1/2", "
 static const float DIV_BEATS[NDIV] = {16.0f, 8.0f, 4.0f, 2.0f, 1.5f, 1.0f, 0.75f, 2.0f / 3.0f, 0.5f, 1.0f / 3.0f,
                                       0.25f, 1.0f / 6.0f, 0.125f};
 static const char *const LDEST_NAME[SM_NUM] = {"CUTOFF", "PITCH", "LEVEL", "PWM", "RESO", "DETUNE", "MIX", "DRIVE",
-                                               "NOISE", "SUB", "START"};
+                                               "NOISE", "SUB"};
 static float LFO_HZ[128];                 /* the free rates: 0.05 Hz .. 30 Hz */
 static struct {
     float ph, out;                        /* where in its cycle; its value now, -1..1 */
@@ -3049,56 +2799,10 @@ static void synth_add(float *l, float *r, float *rv, float *dl, uint32_t n, uint
     }
 }
 
-/* a recording of the FM-1's own sound for a SAMPLER track (REC held + SEL): in RAM (its file: a head, then the frames),
- * armed until the first sound over -40 dB, then up to REC_FRAMES (2 s at 44.1 kHz, 4 s at 22.05 kHz: every two frames
- * one); the track plays it from here until it is stored in the bank, at once when stopped, else at the stop */
-#define REC_FRAMES 88200u
-enum { RS_IDLE, RS_ARMED, RS_REC, RS_DONE };
-#define REC_BYTES (SMP_HEAD + (REC_FRAMES * 3u + 1u) / 2u + 4u)
-/* one buffer, two uses: a recording, or else (the FX's) the delay's line, 1.5 s of int16: the delay leaves the chain
- * while sampling has it (from REC + SEL until the recording is in the bank) */
-static int16_t shared_buf[(REC_BYTES + 1u) / 2u] PLAT_POOL;
-#define rec_buf ((uint8_t *)shared_buf)
-#define DLY_LEN ((int)((REC_BYTES + 1u) / 2u))
-static struct {
-    volatile uint8_t state;               /* RS_* */
-    uint8_t trk;                          /* the track recording, or whose recording rec_buf holds */
-    uint8_t half;                         /* 22.05 kHz */
-    uint8_t pending;                      /* rec_buf holds a recording not in the bank yet */
-    uint8_t odd;
-    float first;                          /* 22.05 kHz: the first of a pair */
-    volatile uint32_t pos;                /* frames recorded */
-    uint32_t cancels;                     /* sampling given up by a TYPE change (the tests) */
-} rec;
-
-static void rec_frame(float m)            /* audio interrupt: a frame into rec_buf, packed as it goes */
-{
-    uint8_t *b;
-    int32_t v;
-    if (rec.half) {
-        if (!rec.odd) {
-            rec.first = m;
-            rec.odd = 1;
-            return;
-        }
-        m = 0.5f * (rec.first + m);
-        rec.odd = 0;
-    }
-    b = rec_buf + SMP_HEAD + (rec.pos >> 1) * 3u;
-    v = (int32_t)(m * 2047.0f);
-    if (v > 2047) v = 2047; else if (v < -2048) v = -2048;
-    v &= 0xFFF;
-    if (rec.pos & 1u) {
-        b[1] = (uint8_t)((b[1] & 0x0Fu) | (v & 0x0F) << 4);
-        b[2] = (uint8_t)(v >> 4);
-    } else {
-        b[0] = (uint8_t)v;
-        b[1] = (uint8_t)(v >> 8);
-        b[2] = 0;
-    }
-    if (++rec.pos >= REC_FRAMES)
-        rec.state = RS_DONE;
-}
+/* the delay's line, lent to STUTTER and TAPE STOP while they play: int16, 1.5 s and a little (it was also the sampler's
+ * recording buffer until 0.5: the same size, so the effects are as they were) */
+#define DLY_LEN 66160
+static int16_t shared_buf[DLY_LEN] PLAT_POOL;
 
 /* the render's buses: the dry mix and the reverb and delay sends of a block. Two sets (0.5, the second CPU pass): the
  * first core renders a block into one while the second finishes the block before in the other, in place (post_job:
@@ -3245,14 +2949,6 @@ static void post_job(uint32_t which)      /* a block's tail (the second core's j
         fx_process(l, r, b->rev, b->dly, l, r, (int)n);   /* the reverb and the delay (in place) */
         j->t_fx = plat_ticks24() - t0;
     }
-    if (rec.state == RS_ARMED || rec.state == RS_REC)   /* sampling: the mix as it sounds, before the master */
-        for (i = 0; i < n && (rec.state == RS_ARMED || rec.state == RS_REC); i++) {
-            float m = 0.5f * (l[i] + r[i]);
-            if (rec.state == RS_ARMED && (m > 0.01f || m < -0.01f))
-                rec.state = RS_REC;       /* the first sound over -40 dB starts it */
-            if (rec.state == RS_REC)
-                rec_frame(m > 1.0f ? 1.0f : m < -1.0f ? -1.0f : m);
-        }
     {
         CS_MARK(t0);
         PLAT_FAR(fx_master)(l, r, (int)n, j->gain);   /* compressor, filter, MASTER (gliding), limiter (RAM) */
@@ -3900,7 +3596,6 @@ void app_init(void)
     project_load();
     color_reset(&drum_color_rt);
     drum_color_quiet = 0;
-    bank_scan();
     seq_reset_tracks();
     sq.queued = -1;
 }
@@ -4000,7 +3695,7 @@ static const char *const V3_BUS_LABEL[] = {"SATURATOR", "COMPRESSOR", "TRANSIENT
 static const char *const V3_MODE_LABEL[] = {"STOCK", "DRY", "BUS"};
 #define NGENPAGE 3                        /* the 303 generator's (SEQ after STEPS, T2..T4): ACID, NOTES, LINE (SELECT) */
 static const char *const TRK_NAME[NTRK] = {"DRUMS", "T2", "T3", "T4"};
-static const char *const TYPE_NAME[NTYPES] = {"MONO", "POLY", "SAMPLER"};
+static const char *const TYPE_NAME[NTYPES] = {"MONO", "POLY"};
 /* an instrument track's EDIT pages and ENV pages: the four knobs' parameters (dsp/synth.h SP_*, or the track's own) */
 #define NEPAGE 8                          /* (the synth update's three after MORE: 0.2's pages kept their places) */
 #define K_TYPE (-1)
@@ -4019,25 +3714,6 @@ static const int8_t EPAGE_P[NEPAGE][4] = {
 #define EP_OSC2 5
 #define EP_SHAPER 6
 #define EP_MACRO 7
-/* a SAMPLER track's: the sample's pages in place of OSC and TONE */
-#define K_START (-3)
-#define K_END (-4)
-#define K_LOOP (-5)
-#define K_LSTART (-6)
-#define K_ROOT (-7)
-#define K_TUNE (-8)
-#define K_QUAL (-9)
-#define NSPAGE 7
-static const char *const SPAGE_NAME[NSPAGE] = {"VOICE", "SAMPLE", "PITCH", "FILTER", "MORE", "SHAPER", "MACRO"};
-static const int8_t SPAGE_P[NSPAGE][4] = {
-    {K_TYPE, K_LEVEL, SP_VOICES, SP_GLIDE},
-    {K_START, K_END, K_LOOP, K_LSTART},
-    {K_ROOT, K_TUNE, SP_DRIVE, K_QUAL},
-    {SP_CUT, SP_RES, SP_FENV, SP_FTYPE},
-    {SP_KTR, SP_VEL, SP_SPREAD, SP_LEGATO},
-    {SP_SHTYPE, SP_SHAPE, SP_BIAS, SP_SHPOS},
-    {SP_M1, SP_M2, SP_M3, SP_M4},
-};
 #define NENVPAGE 3
 static const char *const ENVPAGE_NAME[NENVPAGE] = {"AMP ENV", "FILTER ENV", "MOD ENV"};
 static const int8_t ENVPAGE_P[NENVPAGE][4] = {
@@ -4748,10 +4424,6 @@ static void note_down(int key)            /* a key on the KEYS (or EDIT) page of
     int tr = ui.trk, note, vel;
     const track_t *ts = tset(tr);
     uint32_t f;
-    if (ts->type == TY_SAMPLER && !smp_frames[tr]) {
-        app_say("NO SAMPLE", "HOLD REC, PRESS SEL");
-        return;
-    }
     int cn[4], nc, i;
     note = KEY_NOTE0 + key + 12 * ts->oct;
     vel = touch_vel((uint32_t)key);
@@ -5108,97 +4780,10 @@ static void ilock_turn(int id, int32_t e)   /* a step held, a sound knob on EDIT
     app_say(d->name, t);
 }
 
-static int inst_epages(int tr) { return tset(tr)->type == TY_SAMPLER ? NSPAGE : NEPAGE; }
+static int inst_epages(int tr) { (void)tr; return NEPAGE; }
 static int epage_of(int tr) { return ui.epage < inst_epages(tr) ? ui.epage : 0; }
-static const int8_t *epage_p(int tr) { return tset(tr)->type == TY_SAMPLER ? SPAGE_P[epage_of(tr)] : EPAGE_P[epage_of(tr)]; }
-static const char *epage_name(int tr)
-{
-    return tset(tr)->type == TY_SAMPLER ? SPAGE_NAME[epage_of(tr)] : EPAGE_NAME[epage_of(tr)];
-}
-
-static void seconds_text(uint32_t ms, char *t)   /* 1.23 S */
-{
-    char u[4];
-    int_text((int32_t)(ms / 1000u), t);
-    text_cat(t, ".");
-    two_digits((int)(ms % 1000u / 10u), u);
-    text_cat(t, u);
-    text_cat(t, " S");
-}
-
-static const char *smp_label(int id)
-{
-    switch (id) {
-    case K_START: return "START";
-    case K_END: return "END";
-    case K_LOOP: return "LOOP";
-    case K_LSTART: return "LOOP START";
-    case K_ROOT: return "ROOT";
-    case K_TUNE: return "TUNE";
-    default: return "RECORD AT";
-    }
-}
-
-static int smp_value(int tr, int id, int *max)   /* a SAMPLER knob's value and its top */
-{
-    const track_t *ts = tset(tr);
-    *max = 1000;
-    switch (id) {
-    case K_START: return ts->s_start;
-    case K_END: return ts->s_end;
-    case K_LSTART: return ts->s_lstart;
-    case K_LOOP: *max = 1; return ts->s_loop;
-    case K_ROOT: *max = 127; return ts->s_root;
-    case K_TUNE: *max = 100; return ts->s_tune + 50;
-    default: *max = 1; return ts->s_q;
-    }
-}
-
-static void smp_text(int tr, int id, char *t)
-{
-    const track_t *ts = tset(tr);
-    int max, v = smp_value(tr, id, &max);
-    t[0] = 0;
-    if (id == K_START || id == K_END || id == K_LSTART) {
-        if (smp_frames[tr] && smp_rate[tr]) {   /* as a time in the sample */
-            seconds_text(smp_frames[tr] * (uint32_t)v / smp_rate[tr], t);   /* (at most 132300 x 1000) */
-        } else {
-            int_text(v / 10, t);
-            text_cat(t, "%");
-        }
-    } else if (id == K_LOOP) {
-        text_cat(t, v ? "ON" : "OFF");
-    } else if (id == K_ROOT) {
-        note_text(v, t);
-    } else if (id == K_TUNE) {
-        if (ts->s_tune > 0)
-            text_cat(t, "+");
-        int_text(ts->s_tune, t + (ts->s_tune > 0));
-        text_cat(t, " CT");
-    } else {
-        text_cat(t, v ? "22 KHZ" : "44 KHZ");
-    }
-}
-
-static void smp_turn(int id, int32_t e)   /* a SAMPLER knob (positions move 0.5 % a detent) */
-{
-    int tr = ui.trk;
-    track_t *ts = tset(tr);
-    char t[16];
-    switch (id) {
-    case K_START: ts->s_start = (uint16_t)clamp(ts->s_start + e * 5, 0, 1000); break;
-    case K_END: ts->s_end = (uint16_t)clamp(ts->s_end + e * 5, 0, 1000); break;
-    case K_LSTART: ts->s_lstart = (uint16_t)clamp(ts->s_lstart + e * 5, 0, 1000); break;
-    case K_LOOP: ts->s_loop = (uint8_t)clamp(ts->s_loop + e, 0, 1); break;
-    case K_ROOT: ts->s_root = (uint8_t)clamp(ts->s_root + e, 0, 127); break;
-    case K_TUNE: ts->s_tune = (int8_t)clamp(ts->s_tune + e, -50, 50); break;
-    default: ts->s_q = (uint8_t)clamp(ts->s_q + e, 0, 1); break;
-    }
-    track_shape(tr);
-    dirty = 1;
-    smp_text(tr, id, t);
-    app_say(smp_label(id), t);
-}
+static const int8_t *epage_p(int tr) { return EPAGE_P[epage_of(tr)]; }
+static const char *epage_name(int tr) { return EPAGE_NAME[epage_of(tr)]; }
 
 static int snd_max(int tr, int id)        /* on a MONO track VOICES is the unison stack: 4 at most */
 {
@@ -5313,7 +4898,6 @@ static void preset_load(int tr, int i, const char *bank)  /* one selected sound,
     ts->type = (uint8_t)(mono ? TY_MONO : TY_POLY);
     f = plat_lock();
     syn_release(tr, 0);
-    syn_source(tr, 0);
     syn_sound(tr, ts->snd);
     plat_unlock(f);
     dirty = 1;
@@ -5482,22 +5066,11 @@ static void iedit_knob(int k, int32_t e)  /* an instrument track's EDIT pages: V
             f = plat_lock();
             ts->type = (uint8_t)ty;
             syn_release(tr, 0);
-            syn_source(tr, ty == TY_SAMPLER);
-            /* a track that stops being a SAMPLER stops sampling: armed or recording, given up (nothing kept). Else
-             * it stayed armed with no sampler to show it, and the next sound was recorded and stored (found on the
-             * FM-1, 23 Nov) */
-            if (ty != TY_SAMPLER && rec.trk == tr && (rec.state == RS_ARMED || rec.state == RS_REC || rec.state == RS_DONE)) {
-                rec.state = RS_IDLE;
-                rec.pos = 0;
-                rec.cancels++;
-            }
             plat_unlock(f);
             dirty = 1;
         }
         app_say("TYPE", TYPE_NAME[ts->type]);
-    } else if (id != K_LEVEL) {
-        smp_turn(id, e);
-    } else {
+    } else {                              /* K_LEVEL */
         ts->level = (uint8_t)clamp(ts->level + e, 0, 127);
         f = plat_lock();
         syn_level(tr, (float)ts->level / 127.0f);
@@ -5519,106 +5092,6 @@ static void octave(int up)
     else
         int_text(ts->oct, t);
     app_say("OCTAVE", t);
-}
-
-/* ---------------------------------------------------------------- sampling --- */
-static void rec_arm(void)                 /* REC held + SEL on a SAMPLER track: the next sound is recorded */
-{
-    int t = ui.trk;
-    const track_t *ts = tset(t);
-    uint32_t f;
-    if (t == TR_DRUM || ts->type != TY_SAMPLER) {
-        app_say("SAMPLING", "ON A SAMPLER TRACK");
-        return;
-    }
-    if (rec.pending && rec.trk != t) {    /* (only while playing: a stop stores it) */
-        app_say("STOP FIRST", "TO KEEP THE LAST ONE");
-        return;
-    }
-    if (rec.pending) {                    /* this track's own, not stored: its sample in the flash again */
-        rec.pending = 0;
-        bank_use(t);
-    }
-    f = plat_lock();
-    fx_delay_line(0);                     /* the delay's line is the recording's now */
-    rec.trk = (uint8_t)t;
-    rec.half = ts->s_q;
-    rec.pos = 0;
-    rec.odd = 0;
-    rec.state = RS_ARMED;
-    plat_unlock(f);
-    app_say("SAMPLING", "PLAY A SOUND");
-}
-
-static void rec_stop(void)                /* SEL while sampling: done (or given up while still waiting) */
-{
-    uint32_t f = plat_lock();
-    rec.state = rec.pos >= 2u ? RS_DONE : RS_IDLE;
-    plat_unlock(f);
-    if (rec.state == RS_IDLE)
-        app_say("SAMPLING", "CANCELLED");
-}
-
-static void rec_store(void)               /* the recording into the bank (main loop, stopped) */
-{
-    smp_head_t *h = (smp_head_t *)(void *)rec_buf;
-    int t = rec.trk, trim = 0;
-    uint32_t size, room = bank_room(t), off, n;
-    if (!rec.pending)
-        return;
-    if (room < SMP_HEAD + s12_bytes(h->frames)) {   /* no room for all of it: as much as fits */
-        uint32_t fr = room > SMP_HEAD ? (room - SMP_HEAD) * 2u / 3u : 0;
-        if (fr < 2u) {                    /* none: the recording goes (the track's stored sample, if any, again) */
-            rec.pending = 0;
-            bank_use(t);
-            app_say("BANK FULL", "NOT KEPT");
-            return;
-        }
-        h->frames = fr;
-        trim = 1;
-    }
-    size = SMP_HEAD + s12_bytes(h->frames);
-    if (bank_begin(t, size) != 0)
-        goto fail;
-    for (off = 0; off < size; off += n) {
-        n = size - off < 4096u ? size - off : 4096u;
-        if (bank_write(t, off, rec_buf + off, n) != 0)
-            goto fail;
-    }
-    if (bank_commit(t, size, crc32_of(rec_buf, size)) != 0)
-        goto fail;
-    rec.pending = 0;                      /* (bank_commit: it plays from the flash now) */
-    app_say(trim ? "STORED, CUT" : "SAMPLE STORED", TRK_NAME[t]);
-    return;
-fail:
-    rec.pending = 0;
-    bank_use(t);
-    app_say("STORE FAILED", TRK_NAME[t]);
-}
-
-static void rec_done(void)                /* main loop: a recording finished */
-{
-    smp_head_t *h = (smp_head_t *)(void *)rec_buf;
-    int t = rec.trk;
-    track_t *ts = tset(t);
-    char s[16];
-    h->magic = SMP_MAGIC;
-    h->frames = rec.pos;
-    h->rate = rec.half ? 22050u : 44100u;
-    h->root = 0;
-    h->rsv[0] = h->rsv[1] = h->rsv[2] = 0;
-    rec.state = RS_IDLE;
-    ts->s_start = 0;                      /* a new sample: all of it */
-    ts->s_end = 1000;
-    ts->s_lstart = 0;
-    track_shape(t);
-    use_sample(t, rec_buf + SMP_HEAD, h->frames, h->rate);
-    rec.pending = 1;
-    dirty = 1;
-    seconds_text(h->frames * 1000u / h->rate, s);
-    app_say("SAMPLED", s);
-    if (!sq.playing)
-        rec_store();
 }
 
 /* ------------------------------------------------------------- LFO and ARP --- */
@@ -6157,12 +5630,8 @@ static int edit_pat(void) { return clip_of(ui.trk); }
 static void pf_press(int i)               /* a perform key down (HOME): its effect while held */
 {
     uint32_t f;
-    if ((i == PF_STUT || i == PF_TAPE) && (rec.state != RS_IDLE || rec.pending)) {
-        app_say(PF_NAME[i], "NOT WHILE SAMPLING");
-        return;
-    }
     f = plat_lock();
-    if (i == PF_STUT || i == PF_TAPE)     /* the delay's memory, lent (as for sampling) */
+    if (i == PF_STUT || i == PF_TAPE)     /* the delay's memory, lent */
         fx_delay_line(0);
     if (i == PF_FILT)
         fx_set(FXP_FILTER, perf.filt);
@@ -6340,7 +5809,6 @@ static void reload_sound(void)            /* SAVE + OCT-: the track's sound (the
         ts->edited = q.used ? q.edited : t.edited;
         syn_sound(tr, ts->snd);
         syn_level(tr, (float)ts->level / 127.0f);
-        syn_source(tr, ts->type == TY_SAMPLER);
         plat_unlock(f);
     }
     dirty = 1;
@@ -7118,7 +6586,7 @@ static void knob(int k, int32_t e)        /* KNOB 1..4 (k 0..3) on the page show
     int inst = ui.trk != TR_DRUM;
     ui.knob_k = (int8_t)k;
     ui.knob_t = plat_ms();
-    if ((ui.btn >> B_REC & 1u) && rec.state == RS_IDLE) {
+    if (ui.btn >> B_REC & 1u) {
         ui.rec_used = ui.rec_shown = 1;
         rec_knob(k, e);
         ui.redraw = 1;
@@ -7285,16 +6753,8 @@ static void input(void)
         ui.save_used = 0;
         ui.save_slot = -1;
     }
-    if (pressed >> B_SEL & 1u) {          /* SEL: stops sampling; REC held + SEL samples; held + pad keys 1-4: tracks */
+    if (pressed >> B_SEL & 1u)            /* SEL: held + pad keys 1-4: tracks */
         ui.sel_used = 0;
-        if (rec.state == RS_ARMED || rec.state == RS_REC) {
-            ui.sel_used = 1;
-            rec_stop();
-        } else if (btn >> B_REC & 1u) {
-            ui.sel_used = ui.rec_used = 1;
-            rec_arm();
-        }
-    }
     if (pressed >> B_SEQ & 1u) {
         ui.seq_prev = ui.page;
         ui.seq_used = 0;
@@ -7323,7 +6783,7 @@ static void input(void)
                 pf_press(PF_TAPE);
             else
                 tap_tempo();
-        } else if ((btn >> B_REC & 1u) && rec.state == RS_IDLE) {   /* REC held: OCT- QUANTIZE, OCT+ LEGATO */
+        } else if (btn >> B_REC & 1u) {   /* REC held: OCT- QUANTIZE, OCT+ LEGATO */
             ui.rec_used = ui.rec_shown = 1;
             if (up)
                 legato();
@@ -7410,7 +6870,7 @@ static void input(void)
         ui.page = (uint8_t)(ui.page == PG_HOME ? PG_SONG : ui.page == PG_SONG ? PG_SETUP
                             : ui.page == PG_SETUP ? home_page(ui.trk) : PG_HOME);
     if (pressed >> B_GLO & 1u) {          /* the mixer: LEVEL, PAN, REVERB, DELAY; the master bus's pages; then back */
-        if ((btn >> B_REC & 1u) && rec.state == RS_IDLE) {   /* REC + GLO: the track's part erased, to record again */
+        if (btn >> B_REC & 1u) {          /* REC + GLO: the track's part erased, to record again */
             ui.rec_used = ui.rec_shown = 1;
             part_erase();
             ui.redraw = 1;
@@ -7440,8 +6900,6 @@ static void input(void)
     if (pressed >> B_PLAY & 1u) {
         if (sq.playing) {
             seq_stop();
-            if (rec.pending)              /* a recording made while playing goes into the bank now */
-                rec_store();
             if (ui.save_pending) {
                 ui.save_pending = 0;
                 do_save();
@@ -7832,12 +7290,6 @@ static void lights(void)
         b |= LED_PLAY_GREEN;
     if (ui.rec)
         b |= 1u << B_REC;
-    if (rec.state == RS_ARMED || rec.state == RS_REC) {   /* sampling: SEL and REC blink (fast while recording) */
-        if (plat_ms() / (rec.state == RS_REC ? 80u : 250u) & 1u)
-            b |= 1u << B_SEL | 1u << B_REC;
-        else
-            b &= ~(1u << B_REC);
-    }
     if (dirty)
         b |= 1u << B_SAVE;
     b |= ui.btn;
@@ -7945,7 +7397,7 @@ static void theme(uint16_t col)          /* the page: the canvas, drawn on in th
 
 static int rec_page(void)                 /* REC held a moment (or used as a modifier): recording's page */
 {
-    return ui.rec_shown && (ui.btn >> B_REC & 1u) && rec.state == RS_IDLE;
+    return ui.rec_shown && (ui.btn >> B_REC & 1u);
 }
 
 static uint16_t sec_col(void)             /* the section's colour */
@@ -8339,7 +7791,7 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
     case KD_ENV: {
         const track_t *ts = tset(tr);
         int id = kind == KD_ENV ? ENVPAGE_P[page % NENVPAGE][k]
-                                : (ts->type == TY_SAMPLER ? SPAGE_P[page % NSPAGE][k] : EPAGE_P[page % NEPAGE][k]);
+                                : EPAGE_P[page % NEPAGE][k];
         if (id >= 0 && ui.held_step >= 0) {
             const ipart_t *ip = ipart(tr);
             int j = ilock_find(ip, ui.held_step, id), mn = syn_param(id)->min;
@@ -8352,10 +7804,6 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
         } else if (id == K_LEVEL) {
             int_text(ts->level, t);
             card_put(c, "LEVEL", t, ts->level, 0, 127, -1);
-        } else if (id < 0) {
-            v = smp_value(tr, id, &max);
-            smp_text(tr, id, t);
-            card_put(c, smp_label(id), t, v, 0, max, id == K_TUNE ? max / 2 : -1);
         } else {
             int mn = syn_param(id)->min;
             v = snd_value(tr, id);
@@ -8581,72 +8029,13 @@ static void page_map(int kind, int npg, int cur, const char *const *names, int y
 }
 
 /* ---- what a track is playing */
-static void sample_status(int tr, char *t)   /* a SAMPLER track: its sample, or what sampling is doing */
-{
-    char u[16];
-    t[0] = 0;
-    if (rec.trk == tr && rec.state == RS_ARMED) {
-        text_cat(t, "WAITING FOR SOUND");
-    } else if (rec.trk == tr && rec.state == RS_REC) {
-        text_cat(t, "RECORDING ");
-        seconds_text(rec.pos * 1000u / (rec.half ? 22050u : 44100u), u);
-        text_cat(t, u);
-    } else if (!smp_frames[tr]) {
-        text_cat(t, "EMPTY: REC + SEL");
-    } else {
-        seconds_text(smp_frames[tr] * 1000u / smp_rate[tr], t);
-        text_cat(t, smp_rate[tr] == 22050u ? "  22K" : "  44K");
-        if (rec.pending && rec.trk == tr)
-            text_cat(t, "  NOT STORED");
-    }
-}
-
 static void sound_name(int tr, char *t)   /* the track's sound: the preset it started from (* if changed), or the sample */
 {
     const track_t *ts = tset(tr);
     t[0] = 0;
-    if (ts->type == TY_SAMPLER) {
-        sample_status(tr, t);
-        return;
-    }
     preset_name(ts->preset, t);
     if (ts->edited)
         text_cat(t, " *");
-}
-
-static void draw_wave(int tr, int x0, int y0, int w, int h)   /* the sample: what plays lit, its start, end, loop */
-{
-    const track_t *ts = tset(tr);
-    const uint8_t *d = smp_data[tr];
-    uint32_t n = smp_frames[tr], c;
-    int mid = y0 + h / 2, xs = x0 + ts->s_start * (w - 1) / 1000, xe = x0 + ts->s_end * (w - 1) / 1000;
-    if (!d || n < 2u)
-        return;
-    cv_rect(x0, mid, w, 1, C_GRID);
-    for (c = 0; c < (uint32_t)w; c++) {   /* the loudest of 8 frames in each column */
-        uint32_t a = c * n / (uint32_t)w, b = (c + 1u) * n / (uint32_t)w, k, step = (b - a) / 8u + 1u;
-        int pk = 0, x = x0 + (int)c;
-        for (k = a; k < b; k += step) {
-            const uint8_t *p = d + (k >> 1) * 3u;
-            int v = (k & 1u) ? (p[1] >> 4 | p[2] << 4) : (p[0] | (p[1] & 0x0F) << 8);
-            if (v & 0x800)
-                v -= 4096;
-            if (v < 0)
-                v = -v;
-            if (v > pk)
-                pk = v;
-        }
-        pk = pk * (h / 2) / 2048;
-        if (pk)
-            cv_rect(x, mid - pk, 1, 2 * pk, x >= xs && x <= xe ? TH_FG : C_GRID);
-    }
-    cv_rect(xs, y0, 2, h, TH_HI);
-    cv_rect(xe - 1, y0, 2, h, TH_HI);
-    if (ts->s_loop) {
-        int xl = x0 + ts->s_lstart * (w - 1) / 1000, y;
-        for (y = y0; y < y0 + h; y += 5)
-            cv_rect(xl, y, 2, 3, TH_HI);
-    }
 }
 
 /* ---- page pictures */
@@ -8926,17 +8315,6 @@ static void pic_matrix(int tr)            /* MATRIX: its six slots, the one on t
     }
 }
 
-static void pic_wave(int tr)              /* a SAMPLER track's sample, its start, end and loop */
-{
-    char t[24];
-    rrect(4, 4, 232, 124, 6, C_PANEL);
-    if (!smp_frames[tr]) {
-        sample_status(tr, t);
-        text_c(120, 58, &FONT_B, t, C_TXT2);
-        return;
-    }
-    draw_wave(tr, 10, 10, 220, 112);
-}
 
 static void voices_meter(int tr, int x, int y, int cell)   /* the 16 voices: this track's, the others', free */
 {
@@ -9230,9 +8608,7 @@ static void page_keys(void)               /* an instrument track's KEYS page: wh
     {
         char ctx[32];
         ctx[0] = 0;
-        if (ts->type == TY_SAMPLER && (!smp_frames[tr] || (rec.trk == tr && rec.state != RS_IDLE))) {
-            sample_status(tr, ctx);
-        } else if (ui.rec && sq.playing) {
+        if (ui.rec && sq.playing) {
             text_cat(ctx, "RECORDING");
         } else if (ui.rec) {
             text_cat(ctx, "STEP REC ");
@@ -9524,7 +8900,7 @@ static void page_dedit(void)              /* the drums' EDIT page: the pad, its 
 
 static void page_iedit(int env)           /* an instrument track's EDIT (or ENV) page */
 {
-    int tr = ui.trk, page = env ? ui.envpage % NENVPAGE : ui.epage, smp = tset(tr)->type == TY_SAMPLER;
+    int tr = ui.trk, page = env ? ui.envpage % NENVPAGE : ui.epage;
     uint16_t col = TRK_RGB[tr];
     char t[32];
     if (!env && ui.epage >= inst_epages(tr))
@@ -9539,7 +8915,7 @@ static void page_iedit(int env)           /* an instrument track's EDIT (or ENV)
     } else {
         sound_name(tr, t);
     }
-    band_set(col, TRK_NAME[tr], env ? ENVPAGE_NAME[page] : (smp ? SPAGE_NAME[page] : EPAGE_NAME[page]), t,
+    band_set(col, TRK_NAME[tr], env ? ENVPAGE_NAME[page] : EPAGE_NAME[page], t,
              env ? NENVPAGE : inst_epages(tr), page);
     if (env) {
         pic_env(tr, page);
@@ -9561,20 +8937,18 @@ static void page_iedit(int env)           /* an instrument track's EDIT (or ENV)
             if (h > 0)
                 rrect(208, 118 - h, 14, h, 3, TH_FG);
         }
-    } else if (smp && page == 1) {
-        pic_wave(tr);
-    } else if (!smp && page == 1) {
+    } else if (page == 1) {
         pic_osc(tr);
     } else if (page == 3) {
         pic_filter(tr);
-    } else if (!smp && page == EP_OSC2) {
+    } else if (page == EP_OSC2) {
         pic_osc2(tr);
-    } else if (page == (smp ? 5 : EP_SHAPER)) {
+    } else if (page == EP_SHAPER) {
         pic_shaper(tr);
-    } else if (page == (smp ? 6 : EP_MACRO)) {
+    } else if (page == EP_MACRO) {
         pic_macro(tr);
     } else {
-        page_map(KD_INST, inst_epages(tr), page, smp ? SPAGE_NAME : EPAGE_NAME, 8, 112);
+        page_map(KD_INST, inst_epages(tr), page, EPAGE_NAME, 8, 112);
     }
     cards_of(env ? KD_ENV : KD_INST, page);
 }
@@ -10434,8 +9808,6 @@ static void draw(void)
 static int page_moves(void)               /* a page whose picture moves by itself: its meters, a flash, a dot */
 {
     int inst = ui.trk != TR_DRUM;
-    if (rec.state == RS_ARMED || rec.state == RS_REC)
-        return 1;
     if (rec_page())
         return 0;
     switch (ui.page) {
@@ -10757,7 +10129,7 @@ void app_frame(void)
         sq.ext_stop = 0;
         seq_stop();
     }
-    if ((ui.btn >> B_REC & 1u) && !ui.rec_shown && rec.state == RS_IDLE && now - ui.rec_t >= 300u) {
+    if ((ui.btn >> B_REC & 1u) && !ui.rec_shown && now - ui.rec_t >= 300u) {
         ui.rec_shown = 1;                 /* REC held: its page */
         ui.redraw = 1;
     }
@@ -10776,12 +10148,11 @@ void app_frame(void)
         ui.redraw = 1;
     }
     shed();
-    {   /* the delay's line back once sampling, STUTTER and TAPE STOP are done with it: the keys up, and the last block
+    {   /* the delay's line back once STUTTER and TAPE STOP are done with it: the keys up, and the last block
          * that had them through its tail (perf.on: the block rendering; pf_was: the tail's, a block later). Zeroed
          * here, outside the lock (it took 1.5 ms with the audio held off, a quarter of a block: a glitch as the live
          * sound came back) */
-        int free = rec.state == RS_IDLE && !rec.pending &&
-                   !((perf.want | perf.on | pf_was) & (1u << PF_STUT | 1u << PF_TAPE));
+        int free = !((perf.want | perf.on | pf_was) & (1u << PF_STUT | 1u << PF_TAPE));
         if (free != fx_delay_on()) {
             uint32_t f;
             if (free)
@@ -10791,8 +10162,6 @@ void app_frame(void)
             plat_unlock(f);
         }
     }
-    if (rec.state == RS_DONE)
-        rec_done();
     {   /* the master bus's meters: measured only while a page shows them */
         int meters = ui.page == PG_MST && (ui.mstpage == 0 || ui.mstpage == 6);
         if (meters != fx_meter_shown) {
@@ -10829,78 +10198,14 @@ void app_frame(void)
 }
 
 /* ------------------------------------------------------------ companion --- */
-/* three files: T2..T4's samples, as the bank keeps them (tools/fm1_sample.py sends a WAV as one). A write is the bank's:
- * free sectors, then the head; a sample that came makes its track a SAMPLER, all of it playing */
-static const char *const SMP_NAME[NINST] = {"sample-t2", "sample-t3", "sample-t4"};
-int app_file(uint32_t i, plat_file_info_t *f)
-{
-    int t = (int)i + 1;
-    if (i >= NINST)
-        return -1;
-    f->name = SMP_NAME[i];
-    f->kind = PLAT_FK_SAMPLE;
-    f->flags = PLAT_FF_READ | PLAT_FF_WRITE | PLAT_FF_DELETE;
-    f->size = bank.at[t] ? bank.size[t] : 0u;
-    f->room = bank_room(t);
-    return 0;
-}
-int app_file_read(uint32_t i, uint32_t off, uint8_t *dst, uint32_t n)
-{
-    int t = (int)i + 1;
-    const uint8_t *p;
-    if (i >= NINST || !bank.at[t] || off > bank.size[t] || n > bank.size[t] - off ||
-        !(p = plat_data(bank.at[t] + BANK_REC)))
-        return -1;
-    while (n--)
-        *dst++ = p[off++];
-    return 0;
-}
-int app_file_begin(uint32_t i, uint32_t size)
-{
-    return i < NINST ? bank_begin((int)i + 1, size) : -1;
-}
-int app_file_write(uint32_t i, uint32_t off, const uint8_t *src, uint32_t n)
-{
-    return i < NINST ? bank_write((int)i + 1, off, src, n) : -1;
-}
-int app_file_commit(uint32_t i, uint32_t size, uint32_t crc)
-{
-    int t = (int)i + 1;
-    track_t *ts;
-    if (i >= NINST || bank_commit(t, size, crc) != 0)
-        return -1;
-    if (!smp_frames[t]) {                 /* written whole, but not a sample */
-        bank_kill(t);
-        app_say("NOT A SAMPLE", TRK_NAME[t]);
-        return 0;
-    }
-    if (rec.pending && rec.trk == t)      /* the computer's wins over a recording not stored */
-        rec.pending = 0;
-    ts = tset(t);
-    if (ts->type != TY_SAMPLER) {
-        uint32_t f = plat_lock();
-        ts->type = TY_SAMPLER;
-        syn_release(t, 0);
-        syn_source(t, 1);
-        plat_unlock(f);
-    }
-    ts->s_start = 0;
-    ts->s_end = 1000;
-    ts->s_lstart = 0;
-    track_shape(t);
-    dirty = 1;
-    app_say("SAMPLE IN", TRK_NAME[t]);
-    return 0;
-}
-int app_file_delete(uint32_t i)
-{
-    if (i >= NINST)
-        return -1;
-    if (rec.pending && rec.trk == (int)i + 1)
-        rec.pending = 0;
-    return bank_kill((int)i + 1);
-}
-int app_file_busy(void) { return sq.playing || rec.state != RS_IDLE; }
+/* the companion's files: none (the samples went with the sampler, 0.5; the hooks keep plat_file_*, the project's) */
+int app_file(uint32_t i, plat_file_info_t *f) { (void)i; (void)f; return -1; }
+int app_file_read(uint32_t i, uint32_t off, uint8_t *dst, uint32_t n) { (void)i; (void)off; (void)dst; (void)n; return -1; }
+int app_file_begin(uint32_t i, uint32_t size) { (void)i; (void)size; return -1; }
+int app_file_write(uint32_t i, uint32_t off, const uint8_t *src, uint32_t n) { (void)i; (void)off; (void)src; (void)n; return -1; }
+int app_file_commit(uint32_t i, uint32_t size, uint32_t crc) { (void)i; (void)size; (void)crc; return -1; }
+int app_file_delete(uint32_t i) { (void)i; return -1; }
+int app_file_busy(void) { return sq.playing; }
 
 #ifdef PLAT_HOST
 static const nstep_t *expect_step(const char *what, int skip)   /* "XXXN_S...": track N (2..4), step S (1-based) */
@@ -11126,11 +10431,6 @@ int app_expect(const char *what, int *got)
         *got = 1;
     } else if (!strcmp(what, "synsplit")) {   /* the share now, of 256 */
         *got = split_q8;
-    } else if (!strcmp(what, "rstate_t")) {   /* sampling: its state (0 idle 1 armed 2 recording 3 done), and the track
-                                               * x 10 */
-        *got = (int)rec.state + 10 * (int)rec.trk;
-    } else if (!strcmp(what, "reccancels")) {   /* sampling given up by a track's TYPE change */
-        *got = (int)rec.cancels;
     } else if (!strcmp(what, "fxasleep")) {   /* the returns asleep: bit 0 BongVerb, bit 1 BongDelay */
         *got = fx_returns_asleep();
     } else if (!strncmp(what, "fxsleep", 7) && what[7] >= '1' && what[7] < '1' + NTRK && !what[8]) {
@@ -11297,37 +10597,6 @@ int app_expect(const char *what, int *got)
         if (tr < 1 || tr >= NTRK)
             return 0;
         *got = ipart(tr)->nlk;
-    } else if (!strcmp(what, "rstate"))     /* sampling: 0 idle, 1 armed, 2 recording, 3 done */
-        *got = rec.state;
-    else if (!strcmp(what, "rpos"))
-        *got = (int)rec.pos;
-    else if (!strcmp(what, "rpending"))
-        *got = rec.pending;
-    else if (!strcmp(what, "bseq"))
-        *got = (int)bank.seq;
-    else if (!strncmp(what, "sframes", 7) || !strncmp(what, "srate", 5) || !strncmp(what, "bsize", 5) ||
-             !strncmp(what, "bat", 3)) {   /* sframesN, srateN: what track N plays; bsizeN, batN: its bank record */
-        int tr = atoi(what + (what[1] == 'f' ? 7 : what[1] == 'r' || what[1] == 's' ? 5 : 3)) - 1;
-        if (tr < 1 || tr >= NTRK)
-            return 0;
-        *got = what[1] == 'f' ? (int)smp_frames[tr] : what[1] == 'r' ? (int)smp_rate[tr]
-             : what[1] == 's' ? (int)bank.size[tr] : (int)(bank.at[tr] ? bank.at[tr] - BANK_LO : -1);
-    } else if (!strncmp(what, "sshape", 6)) {   /* sshapeN_K: K 0 start, 1 end, 2 loop, 3 loop start, 4 root, 5 tune, 6 rate */
-        int tr = atoi(what + 6) - 1;
-        const char *u = strchr(what, '_');
-        const track_t *ts;
-        if (tr < 1 || tr >= NTRK || !u)
-            return 0;
-        ts = tset(tr);
-        switch (atoi(u + 1)) {
-        case 0: *got = ts->s_start; break;
-        case 1: *got = ts->s_end; break;
-        case 2: *got = ts->s_loop; break;
-        case 3: *got = ts->s_lstart; break;
-        case 4: *got = ts->s_root; break;
-        case 5: *got = ts->s_tune; break;
-        default: *got = ts->s_q; break;
-        }
     }
     else if (!strncmp(what, "pitch", 5))  /* pitchN: track N's newest voice, 1/16 semitone (-1: none) */
         *got = syn_pitch16(atoi(what + 5) - 1);

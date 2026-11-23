@@ -3,7 +3,7 @@
 GhettoMachine, part of the BongWare firmware line engineered by BongTech, turns the M-VAVE FM-1 into a four-track groovebox:
 
 - **Drums:** an 808 or a 909 kit, or a Custom kit mixing the two pad by pad.
-- **T2, T3, T4:** instrument tracks. Each is a MONO synth, a POLY synth or a SAMPLER.
+- **T2, T3, T4:** instrument tracks. Each is a MONO synth or a POLY synth.
 - **One sequencer** of up to 128 steps a track, 16 patterns, and a song chain.
 - **An LFO for every clip** (each track's part of each pattern has its own), an arpeggiator and one optional insert effect on T2–T4, and per-step locks.
 - **A mixer**, a reverb, a tempo delay, and **a master bus with a mastering chain**: EQ, compressor, tape saturation,
@@ -45,8 +45,8 @@ the package over USB-MIDI and the FM-1's loader writes only the 4 KiB sectors th
 cd third_party/fm1-base/tools && ../../../.venv/bin/python fm1_install.py ../../../app/build/ghettomachine.fwsc --yes
 ```
 
-**Tap SAVE first:** an install restarts the FM-1, and the saved project is what comes back. The project and the
-samples are kept; only the firmware is written, never the boot code. A project and user presets saved by 0.2, 0.3 or
+**Tap SAVE first:** an install restarts the FM-1, and the saved project is what comes back. The project is
+kept; only the firmware is written, never the boot code. A project and user presets saved by 0.2, 0.3 or
 0.4 load into 0.5 (see "What is kept").
 
 The first install over M-VAVE's own firmware went through the ESP32-S3 adapter (backup, dry run, write), and that
@@ -61,7 +61,7 @@ route still works for getting M-VAVE's firmware back.
 | **SELECT** | Turns the page within a page, moves a cursor, or sets a held step's chance. |
 | **K1–K4** | The four knobs of the page on screen. |
 | **PLAY** | Starts and stops. |
-| **REC** | Tap: recording on or off (turn a knob while it's on and playing: the knob is recorded). Hold it: the metronome, count-in and quantize (below). Hold it and press SEL: sampling. |
+| **REC** | Tap: recording on or off (turn a knob while it's on and playing: the knob is recorded). Hold it: the metronome, count-in and quantize (below). |
 | **SEQ** | The steps. On T2–T4, press again for the 303 generator (ACID), again for the keys. |
 | **EDIT, ENV, LFO, ARP, FX, GLO** | Their pages. Press again for the next page; after the last, back. |
 | **HOME** | The scene grid, for playing live. Again: the song, then SETUP, then back to the track. |
@@ -88,7 +88,7 @@ monospace face. Three parts, top to bottom:
     the top.
   - **Turn a knob or press a button and the band shows the change large** for a moment: "RESO 76".
 - **The page:** a picture of what you're editing. The steps, the filter's curve, the envelope's shape, the
-  oscillator's wave, the sample, the LFO with a dot where it is now, the arpeggio's order, the EQ's curve, the
+  oscillator's wave, the LFO with a dot where it is now, the arpeggio's order, the EQ's curve, the
   compressor's and the tape's curves, the stereo width. On the other pages, every knob of the sound in rows, the row
   the knobs are on now lit. Meters move live: each track's level on HOME and in the mixer, the pads lighting as they
   sound, the voices in use, the compressor's and the limiter's reduction, the loudness.
@@ -172,7 +172,7 @@ silence as Color does.
 On T2–T4, press **SEQ** twice: STEPS, then **ACID**. It writes the track's part (in this pattern) as a TB-303-style
 line: one note a step, each one **HALF** (a 303's short note), **WHOLE** (held to just before the next note, over any
 rests: a 303's tie) or a **SLIDE** into the next, some of them **accented**. Every change makes the line again at once,
-also while it plays. It works with **any sound**: MONO, POLY or SAMPLER, any preset.
+also while it plays. It works with **any sound**: MONO or POLY, any preset.
 
 - **OCT+ NEW:** a new line. **OCT− MUTATE:** a few steps change (about one in eight); the rest stay.
 - **The ACID page:** **K1 DENSITY** (how many steps play), **K2 WHOLE** (how many notes are held whole instead of
@@ -207,7 +207,7 @@ On STEPS an accented note has a white bar over it and a slide a mark at its end.
 
 ### Sounds
 
-- **EDIT, page VOICE:** **TYPE** (MONO, POLY, SAMPLER), **LEVEL**, **VOICES** (POLY: up to 8; MONO: UNISON 1–4),
+- **EDIT, page VOICE:** **TYPE** (MONO, POLY), **LEVEL**, **VOICES** (POLY: up to 8; MONO: UNISON 1–4),
   **GLIDE** (MONO).
 - **OSC:** WAVE (saw, square, triangle, sine, PWM, sync, sub), DETUNE, MIX, INTERVAL (OSC 2's, ±24 semitones).
 - **TONE:** SUB, NOISE, PWM, DRIVE.
@@ -237,7 +237,7 @@ On STEPS an accented note has a white bar over it and a slide a mark at its end.
 - **The shaper:** **FOLD** wraps loud peaks back (a sine folder: West Coast tones, bright and hollow), **CLIP** cuts
   them square, **RECT** flips the bottom half up (an octave up, buzzy), **CRUSH** takes bits away and holds samples (lo-fi).
   **BIAS** shifts the wave before it, for even harmonics. Before the filter, the filter tames it; after it, the shaper
-  works on the filtered sound (CRUSH is the classic there). It works on SAMPLER tracks too.
+  works on the filtered sound (CRUSH is the classic there).
 - WAVE 2, FM and RING work with WAVE saw to PWM; SYNC and SUB are pairs of their own.
 
 ### Modulation: MOD ENV, LFO 2, the matrix and the macros
@@ -277,24 +277,11 @@ On STEPS an accented note has a white bar over it and a slide a mark at its end.
   keeps the kit's model assignments and every pad's knobs.
 - Your presets are kept apart from projects, the moment you save them.
 
-### The sampler (TYPE = SAMPLER)
+### The sampler is gone (0.5)
 
-- **Recording the FM-1 itself:** on a SAMPLER track, hold **REC** and press **SEL**. SEL and REC blink, and recording
-  starts at the first sound: the beat, another track, anything. It stops at 2 s, or when you press SEL. There's no
-  audio input; it records the FM-1's own mix, with reverb but not delay.
-- **From the Mac:**
-
-  ```
-  python3 -I app/tools/fm1_sample.py send loop.wav --track 3
-  ```
-
-  This works with the FM-1 stopped and any WAV. `--rate 22050` stores twice as much, a little darker. `get out.wav
-  --track 3` copies it back; `rm --track 3` empties it.
-- **EDIT > SAMPLE:** START, END, LOOP and LOOP START, with the waveform. **PITCH:** ROOT (the key that plays it as
-  recorded, C4 to start with), TUNE, DRIVE, and RECORD AT 44 or 22 kHz. FILTER and ENV as the synth's.
-- **Space:** all three tracks share about 3.3 s at 44 kHz, or 6.6 s at 22 kHz. A sample is kept as soon as it's
-  recorded (or, while playing, when you stop). When space is short a new one is cut to fit (STORED, CUT); with none at
-  all it says BANK FULL.
+The SAMPLER track type was taken out in 0.5 (it wasn't being used). A saved project with a SAMPLER track loads it as
+**POLY** with its own synth sound, and an LFO that moved a sample's START moves nothing (CUTOFF at depth 0). Samples
+already in the FM-1's flash are left where they are, unused; nothing erases them. REC + SEL no longer does anything.
 
 ## Chord mode
 
@@ -307,7 +294,7 @@ Press **ARP** twice (page 2) on T2–T4:
 - **K3 INVERT:** ROOT, 1ST, 2ND, 3RD: the lowest notes move up an octave, for smoother changes between chords.
 - Chords are recorded as chords (a step holds up to 4 notes), live or step by step, and go through the arpeggiator
   if it's on: one key, an arpeggiated chord.
-- They need a **POLY** (or SAMPLER) track; a MONO track plays one note at a time.
+- They need a **POLY** track; a MONO track plays one note at a time.
 - Chord mode is for the FM-1's own keys; notes coming in over MIDI play as they are.
 
 ## Recording: hold REC
@@ -316,7 +303,7 @@ Hold **REC** for a moment and the screen turns red: recording's page. A quick ta
 and off.
 
 - **K1 CLICK:** the metronome. **OFF**; **ON** (a click on every beat while playing); **REC** (only while recording).
-  The bar's first beat is higher. The click is in your headphones and speaker, under MASTER, but never in a sample or
+  The bar's first beat is higher. The click is in your headphones and speaker, under MASTER, but never in
   the master bus's meters.
 - **K2 COUNT-IN:** **OFF**, **1 BAR** or **2 BARS**. With recording on, PLAY counts in first, clicking each beat, with
   the beats left large on the screen (4, 3, 2, 1). Then the pattern starts. PLAY during the count-in cancels it. A note
@@ -354,7 +341,7 @@ Turning a knob without recording on, or stopped, only changes the sound.
   - Page 1: SHAPE, RATE (free, or with SYNC from 4 bars to 1/32), DEPTH, DEST.
   - Page 2: SYNC, RETRIG (FREE, NOTE, BAR), FADE IN, PHASE.
   - LFO 1 is the track's (one for all its notes, and it can follow the tempo); it's also a source in the matrix.
-  - On T2–T4, DEST is cutoff, pitch, level, PWM, resonance, detune, mix, drive, noise, sub, or a sampler's START.
+  - On T2–T4, DEST is cutoff, pitch, level, PWM, resonance, detune, mix, drive, noise or sub.
   - **On the drums,** pick a pad, then turn DEST to pick one of its knobs. The LFO moves that knob at each of the pad's
     hits: S&H on the hat's decay makes every hat different.
 - **ARP** (T2–T4):
@@ -377,7 +364,6 @@ Turning a knob without recording on, or stopped, only changes the sound.
   - FILTER: a DJ filter (left of centre low-pass, right high-pass) and its resonance, for sweeping the whole mix.
   - Projects saved before BongFX keep decay, delay time, feedback (as regen), tone and both levels. The old reverb tone
     becomes damp (reversed); pre-delay, mode and drive take their defaults.
-- **The delay pauses while you sample.** It shares its memory with the recording, and comes back once the sample is kept.
 
 ### The master bus
 
@@ -494,8 +480,7 @@ Hold one and it works; let go and the sound is as it was. **K1 while you hold it
 | **11 CRUSH** | Fewer bits and a lower rate on the output. | how much |
 | **OCT+ TAPE STOP** | The output slows to a halt. | |
 
-STUTTER and TAPE STOP borrow the delay's memory, so the delay's tail is gone while they're held, and they don't work
-while sampling.
+STUTTER and TAPE STOP borrow the delay's memory, so the delay's tail is gone while they're held.
 
 ## The song
 
@@ -533,7 +518,6 @@ Press HOME on the SONG page.
 | What | Where | When |
 | --- | --- | --- |
 | The project: patterns, song, sounds (each pattern's too), mixer, FX, the master bus, LFOs, arps, follow actions, SETUP | a file with two copies, so a power cut while saving keeps the old one | when you tap SAVE (while playing: at the stop) |
-| Samples | a bank of their own | as soon as they're recorded or sent |
 | User presets and kits | a store of their own | as soon as you save one |
 
 **From 0.4:** the same format; 0.4 and 0.5 read each other's projects.
@@ -575,7 +559,7 @@ the sound saved with the pattern it's on.
   2.5 times the 909; it and the 707 were cut on 21 Nov.) The third pass (21 Nov,
   after the FM-1 still went late as patterns started and switched): the FM-1's two cores split each block's work. The
   first renders block N (the sequencer, the drums, the synth's voices, the inserts and Color) while the second finishes
-  block N - 1 (the reverb and the delay, a sample being recorded, the master bus, STUTTER, TAPE STOP and CRUSH, the
+  block N - 1 (the reverb and the delay, the master bus, STUTTER, TAPE STOP and CRUSH, the
   metronome); before, the second core only took half the synth's voices. So everything is heard a block (5.8 ms) later
   than before, the USB stems with it; the sound is otherwise bit for bit the same. Loading a kit's knobs (a user kit, a
   pattern switch with SOUNDS PER PATTERN, RELOAD, a project) holds the audio off for one pad at a time, not for all
@@ -621,7 +605,6 @@ the sound saved with the pattern it's on.
 - No per-track EQ or compression, no multiband compression on the master; no locks on LFO 1 or arpeggiator settings
   (LFO 2's and the matrix's amounts lock); the arpeggio isn't recorded, only what you play.
 - The matrix can't move another slot's amount, and LFO 2 doesn't follow the tempo (LFO 1 does, and is a source).
-- Samples: no reverse, slicing or ping-pong loops yet.
 - Projects from earlier builds (before 0.2) start fresh. A project saved by 0.2 loads converted, with no follow
   actions and sounds per pattern off if it was saved before the performance update.
 - MIDI clock is timed to the audio block it arrives in, so following, the FM-1 sits about 3 ms behind the clock on

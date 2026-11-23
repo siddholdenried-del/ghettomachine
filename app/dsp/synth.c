@@ -335,7 +335,6 @@ typedef struct {
     float aenv, fenv;                     /* 0..1 */
     float pc, pt;                         /* the pitch now and where it goes, 1/16 semitone */
     float vel;                            /* the velocity's gain */
-    float pos, sinc;                      /* SAMPLER: the read position (frames) and its step a sample */
     int32_t p16;                          /* the pitch this block (syn_probe) */
     float gl, gr;                         /* pan gains (both 1: the centre) */
     int32_t amp;                          /* the amplitude a block ago, Q15 */
@@ -364,13 +363,6 @@ static struct {
     int8_t v[SP_NUM];
     float level;
     uint8_t stack[8], nstack;             /* MONO: the keys held, the newest last */
-    /* SAMPLER */
-    uint8_t sampler, loop, root;
-    const uint8_t *smp;
-    uint32_t frames;
-    float srate, tunef;                   /* the sample's rate / 44100; the tune as a factor */
-    int16_t pm[3];                        /* start, end, loop start, thousandths */
-    uint32_t s0, s1, sl;                  /* the same in frames */
     /* the LFO */
     uint8_t mdest;
     float mlfo, mdepth;
@@ -433,7 +425,7 @@ static void push(int t)                   /* the track's sound -> the engine's p
 /* the LFO on the engine's own parameters: the track's values, moved, for this block */
 static void push_mod(int t)
 {
-    static const int8_t P_OF[SM_NUM] = {-1, -1, -1, -1, P_E5, P_E1, P_E2, P_E6, P_E3, P_SUB, -1};
+    static const int8_t P_OF[SM_NUM] = {-1, -1, -1, -1, P_E5, P_E1, P_E2, P_E6, P_E3, P_SUB};
     int d = tk[t].mdest, k;
     push(t);
     if (d < 0 || d >= SM_NUM || (k = P_OF[d]) < 0)
@@ -505,12 +497,6 @@ void syn_init(void)
         tk[t].level = 0.8f;
         mix[t].pl = mix[t].pr = 1.0f;
         mix[t].rs = mix[t].ds = 0.0f;
-        tk[t].sampler = 0;
-        tk[t].smp = 0;
-        tk[t].frames = 0;
-        tk[t].srate = tk[t].tunef = 1.0f;
-        tk[t].root = 60;
-        tk[t].pm[1] = 1000;
         xm_scan(t);
         push(t);
     }
@@ -549,164 +535,12 @@ void syn_set(int t, int id, int v)
     push(t);
 }
 
-/* ------------------------------------------------------------- SAMPLER source --- */
-GM_INLINE int32_t s12_q15(const uint8_t *d, uint32_t i)   /* frame i, Q15 */
-{
-    const uint8_t *b = d + (i >> 1) * 3u;
-    int32_t v = (i & 1u) ? (int32_t)(b[1] >> 4) | (int32_t)b[2] << 4 : (int32_t)b[0] | (int32_t)(b[1] & 0x0Fu) << 8;
-    if (v & 0x800)
-        v -= 4096;
-    return v * 16;                        /* (a negative << is undefined in C) */
-}
-
-static uint32_t zero_near(const uint8_t *d, uint32_t at, uint32_t lo, uint32_t hi)   /* a rising zero crossing */
-{
-    uint32_t k;
-    for (k = 0; k < 256u; k++) {
-        if (at + k + 1u < hi && s12_q15(d, at + k) <= 0 && s12_q15(d, at + k + 1u) > 0)
-            return at + k + 1u;
-        if (at >= lo + k + 1u && s12_q15(d, at - k - 1u) <= 0 && s12_q15(d, at - k) > 0)
-            return at - k;
-    }
-    return at;
-}
-
-static void shape(int t)                  /* the thousandths -> frames */
-{
-    uint32_t n = tk[t].frames, s0, s1, sl;
-    if (n < 2u) {
-        tk[t].s0 = tk[t].s1 = tk[t].sl = 0;
-        return;
-    }
-    s0 = (uint32_t)tk[t].pm[0] * n / 1000u;
-    s1 = (uint32_t)tk[t].pm[1] * n / 1000u;
-    if (s1 > n)
-        s1 = n;
-    if (s0 + 2u > s1)                     /* at least two frames, start before end */
-        s0 = s1 >= 2u ? s1 - 2u : 0;
-    if (s0 + 2u > s1)
-        s1 = s0 + 2u;
-    sl = (uint32_t)tk[t].pm[2] * n / 1000u;
-    if (sl < s0)
-        sl = s0;
-    if (sl + 2u > s1)
-        sl = s1 - 2u;
-    if (tk[t].smp)
-        sl = zero_near(tk[t].smp, sl, s0, s1 - 1u);
-    tk[t].s0 = s0;
-    tk[t].s1 = s1;
-    tk[t].sl = sl;
-}
-
-static void free_track(int t)             /* the track's voices, gone at once (its source changed) */
-{
-    int i;
-    for (i = 0; i < NVOICE; i++)
-        if (vx[i].trk == t) {
-            vx[i].trk = 0;
-            vx[i].astage = vx[i].fstage = vx[i].mstage = 0;
-            vv[i].active = 0;
-        }
-    tk[t].nstack = 0;
-}
-
-void syn_source(int t, int sampler)
-{
-    if (t < 1 || t >= SYN_TRACKS || tk[t].sampler == (sampler != 0))
-        return;
-    free_track(t);
-    tk[t].sampler = (uint8_t)(sampler != 0);
-}
-
-void syn_sample(int t, const uint8_t *packed, uint32_t frames, uint32_t rate)
-{
-    if (t < 1 || t >= SYN_TRACKS)
-        return;
-    free_track(t);
-    tk[t].smp = frames >= 2u ? packed : 0;
-    tk[t].frames = tk[t].smp ? frames : 0;
-    tk[t].srate = (float)(rate ? rate : 44100u) / 44100.0f;
-    shape(t);
-}
-
-void syn_sample_shape(int t, int start, int end, int loop, int lstart, int root, int tune)
-{
-    if (t < 1 || t >= SYN_TRACKS)
-        return;
-    tk[t].pm[0] = (int16_t)clamp(start, 0, 1000);
-    tk[t].pm[1] = (int16_t)clamp(end, 0, 1000);
-    tk[t].pm[2] = (int16_t)clamp(lstart, 0, 1000);
-    tk[t].loop = (uint8_t)(loop != 0);
-    tk[t].root = (uint8_t)clamp(root, 0, 127);
-    tk[t].tunef = 1.0f + (float)clamp(tune, -50, 50) * 0.000578f;   /* 2^(c / 1200), near enough for +-50 cents */
-    shape(t);
-}
-
-uint32_t syn_sample_frames(int t) { return t >= 1 && t < SYN_TRACKS ? tk[t].frames : 0; }
-
-/* a SAMPLER voice's block: the sample read at its step, linearly between frames, round its loop or ending at its end,
- * then the drive and the filter as ANALOG's, and the amplitude */
-GM_RAM static void sample_render(int t, int i, const track_t *tp, int32_t *out, uint32_t n)
-{
-    voice_t *v = &vv[i];
-    vx_t *x = &vx[i];
-    const int16_t *p = tp->p;
-    const uint8_t *d = tk[t].smp;
-    float pos = x->pos, inc = x->sinc, end = (float)tk[t].s1, lst = (float)tk[t].sl;
-    uint32_t last = tk[t].frames - 1u, k, ft = (uint32_t)p[P_FTYPE];
-    int loop = tk[t].loop && tk[t].s1 > tk[t].sl + 16u;
-    int32_t cut = (p[P_E4] << 8) + x->m.cutoff + (p[P_E7] * (v->pitch16 - 60 * 16) >> 4);
-    int32_t ic1 = v->s[0], ic2 = v->s[1], drv = p[P_E6], drive = 32768 + p[P_E6] * 512, fk = ANALOG_K(p[P_E5]);
-    tsvf_t flt;
-    shp_t sh;
-    uint32_t shp = p[P_SHA] ? 1u + (uint32_t)(p[P_SHPOS] != 0) : 0u;   /* the SHAPER: 0 off, 1 PRE, 2 POST */
-    if (!d)
-        return;
-    if (shp)
-        shp_begin(&sh, p, v, x->m.inc);
-    tsvf_coef(&flt, cut, p[P_E5]);
-    for (k = 0; k < n; k++) {
-        int32_t a, b, s, y;
-        uint32_t ip;
-        if (pos >= end) {
-            if (!loop) {                  /* once through: the voice is done (freed at the next block) */
-                x->astage = x->fstage = x->mstage = 3;
-                x->aenv = 0.0f;
-                break;
-            }
-            pos = lst + (pos - end);
-            if (pos >= end)
-                pos = lst;
-        }
-        ip = (uint32_t)pos;
-        a = s12_q15(d, ip);
-        b = s12_q15(d, ip < last ? ip + 1u : ip);
-        s = a + (int32_t)((float)(b - a) * (pos - (float)ip));
-        pos += inc;
-        if (shp == 1u)
-            s = shp_run(&sh, s);
-        if (drv)
-            s = softclip(((s >> 2) * (drive >> 2)) >> 11);
-        y = soft_knee(analog_tap(&flt, fk, s >> 1, &ic1, &ic2, ft), 16000);
-        if (shp == 2u)
-            y = clamp(shp_run(&sh, y), -32767, 32767);
-        out[k] += voice_amp(y * 2, &x->m, k) * 2;
-    }
-    x->pos = pos;
-    v->s[0] = ic1;
-    v->s[1] = ic2;
-    if (shp)
-        shp_end(&sh, v);
-}
-
 GM_INLINE void render_voice(int i, int32_t *out)
 {
     int t = vx[i].trk;
     const track_t *tp = vx[i].usep ? &vx[i].pv : &trk[t];   /* the matrix moved some of its parameters: its own */
-    if (tk[t].sampler)
-        sample_render(t, i, tp, out, SYN_CTL);
-    else                                  /* (ENG_ANALOG.render, called directly: RAM code calls no pointer) */
-        analog_render((track_t *)tp, &vv[i], out, SYN_CTL, &vx[i].m);
+    analog_render((track_t *)tp, &vv[i], out, SYN_CTL, &vx[i].m);   /* (ENG_ANALOG.render, called directly: RAM code
+                                                                     * calls no pointer) */
 }
 
 void syn_mixer(int t, int pan, float rev, float dly)
@@ -813,11 +647,6 @@ static void voice_start(int i, int t, int note, float vel, int32_t gate, int uni
         v->ph[2] = ph2;
         v->s[0] = s0;
         v->s[1] = s1;
-    }
-    x->pos = (float)tk[t].s0;             /* SAMPLER: from its start (the LFO's START moves it) */
-    if (tk[t].mdest == SM_START && tk[t].mdepth != 0.0f && tk[t].s1 > tk[t].s0 + 2u) {
-        float p = x->pos + tk[t].mlfo * tk[t].mdepth * 0.5f * (float)(tk[t].s1 - tk[t].s0);
-        x->pos = p < 0.0f ? 0.0f : p > (float)(tk[t].s1 - 2u) ? (float)(tk[t].s1 - 2u) : p;
     }
     x->trk = (uint8_t)t;
     x->choke = 0;
@@ -960,7 +789,7 @@ void syn_note_on(int t, int note, float vel, int32_t gate, int mono) { syn_note_
 
 void syn_note_on_f(int t, int note, float vel, int32_t gate, int mono, int flags)
 {
-    if (t < 1 || t >= SYN_TRACKS || note < 1 || note > 127 || (tk[t].sampler && !tk[t].smp))
+    if (t < 1 || t >= SYN_TRACKS || note < 1 || note > 127)
         return;
     nflags = flags;
     if ((flags & SN_SLIDE) && slide_to(t, note, gate, mono)) {
@@ -1213,9 +1042,6 @@ void syn_prepare(void)
             inc += (uint32_t)((int32_t)(inc >> 12) * mfine);
         v->pitch16 = v->pitch_cur = p16;
         x->m.inc = inc;
-        if (tk[t].sampler)                /* the sample's step: the note over its root, its rate, the tune, unison */
-            x->sinc = (float)pitch_inc((uint32_t)p16) / (float)pitch_inc((uint32_t)tk[t].root * 16u) * tk[t].srate *
-                      tk[t].tunef * (1.0f + (float)mfine * (1.0f / 4096.0f));
         x->m.pitch16 = p16;
         x->m.fine = mfine;
         a = x->aenv * x->vel * tk[t].level * UNI_GAIN[x->nuni <= 4 ? x->nuni : 4];

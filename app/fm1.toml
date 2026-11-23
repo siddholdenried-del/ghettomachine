@@ -14,7 +14,7 @@ ble = false                    # no radio: the firmware is GPL-3.0, so JieLi's b
 ram_code_allow = ["fx_master"]   # Master EQ, tape, stereo and meters are called in flash.
 cpu2 = true                    # the second core renders half the synth voices
 cpu2_fallback = true           # one core (8 voices) after a failure of it, instead of a restart
-companion = true              # the project file (plat_file_*); the samples over USB later (tools/fm1_sample.py)
+companion = true              # the project file (plat_file_*); no files of the app's own (the sampler went in 0.5)
 usb_audio_channels = 10        # USB audio in: the master on 1-2, then each track alone (the stems: drums 3-4, T2 5-6, T3 7-8, T4 9-10)
 # the site and firmware.json
 tagline = "a 4-track groovebox for the FM-1: an 808 / 909 drum track and three instrument tracks"
@@ -22,7 +22,7 @@ repo = "https://github.com/siddholdenried-del/ghettomachine"
 licence = "GPL-3.0-only"
 credits = "Built on fm1-base and felucca-bsp (MPL-2.0); the synth voice from Felucca-Engines by Leo Kuroshita, Hügelton Instruments (MIT); the 909 and 808 engines from X0X by Charles Vestal (GPL-3.0), after 9W9 and 8W8 by athousanddetails; the 909 cymbals from ER-99 by Matthew Cieplak (GPL-3.0); the reverb, delay and master from X0X (GPL-3.0), after 9W9; the logo in Sedgwick Ave Display by The Sedgwick Ave Project Authors (SIL OFL 1.1)."
 author = ""
-description = "An 808 / 909 drum track with per-pad editing and per-pattern mutes, and three instrument tracks (mono, poly or sampler)."
+description = "An 808 / 909 drum track with per-pad editing and per-pattern mutes, and three instrument tracks (mono or poly synths)."
 tags = ["drum-machine", "groovebox"]
 install = ""
 site = "https://ghettomachine.bongcult.com"
