@@ -6,6 +6,7 @@
 # 46 + 3 (slot - 1): the slot's SOURCE (0 OFF 3 MOD ENV 9 MACRO 1), +1 DEST (0 PITCH 3 CUTOFF), +2 AMOUNT.
 # probeN_W: the newest voice, 0 its pitch (1/16 st), 1 its cutoff, 2 MOD ENV x1000, 3 LFO 2 x1000, 100 + ID: that
 # parameter as the voice plays it. T2 starts as SQR BASS (MONO; key 7 plays C3: pitch 768)
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 master 4096
 turn ALGO 1

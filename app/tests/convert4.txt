@@ -1,4 +1,5 @@
 # Format-3 fixture made by running convert3.txt then flash_dump with the 49bb2e8 host executable.
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 flash_load app/tests/fixtures/proj_04.img
 reboot
 wait 600

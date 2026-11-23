@@ -2,6 +2,7 @@
 # the synth target is 30%, and drum Color plus shared returns have 25%.
 # cpufakeN_US supplies deterministic stage times solely to the load governor.
 # Stages 0, 1, 2, 3 and 6 are drums, synth, drum Color, returns and core 0 total.
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 master 4096
 expect govcap 16

@@ -1,6 +1,7 @@
 # Load a real v5 project, change one drum's source and its own level, enable
 # drum Color, then save and reload into v8. The discontinued 606 kit becomes
 # the 808. Its historic T2 insert is retained as opaque project data.
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 flash_load app/tests/fixtures/proj_v5.img
 reboot
 wait 600

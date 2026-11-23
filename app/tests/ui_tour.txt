@@ -1,5 +1,6 @@
 # GhettoMachine 0.2's screens, every page, with fx_demo.txt's groove playing so the meters move: a picture each, to OUTDIR.
 #   app/build/host/ghettomachine_host app/tests/ui_tour.txt OUTDIR
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 # T2: REC while stopped, on the KEYS page: a note a step; SELECT skips a step (a rest)
 turn ALGO 1

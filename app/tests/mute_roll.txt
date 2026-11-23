@@ -1,4 +1,5 @@
 # Track mute cancels an already-running ROLL snapshot; unmute waits for fresh playback input.
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 tap HOME
 wait 10

@@ -1,4 +1,5 @@
 # UI-driven hard mute: no lingering dry/stem output, stale/retriggered notes, or loss of another track.
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 tap HOME
 wait 20

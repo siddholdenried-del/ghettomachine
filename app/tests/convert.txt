@@ -4,6 +4,7 @@
 # proj_perf.img: the performance update's whole file. Both made by fixtures/make_v1.txt with the format-1 build.
 # projfmt: the saved file's format (1 0.2's, 2 0.3's, 3 0.4's: this one's); sndN_ID: 8 CUTOFF 9 RESO; the update's: 26 WAVE 2,
 # 27 FM, 31 SHAPER AMOUNT, 39 MOD ENV DECAY (60), 43 LFO 2 RATE (91), 46.. the matrix; presetN: USER 1 is 24 now (15)
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 flash_load app/tests/fixtures/proj_02.img
 reboot
 wait 600

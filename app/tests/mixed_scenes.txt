@@ -1,4 +1,5 @@
 # Two unslotted mixed maps sharing one base preset survive scene switching and project reload.
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 tap HOME
 wait 30

@@ -1,5 +1,6 @@
 # BongTech GhettoMachine's boot screen (app_splash, the logo from tools/gen_logo.py): drawn, and its picture
 #   app/build/host/ghettomachine_host app/tests/splash.txt OUTDIR   (from the repository's top)
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 expect splash 1
 shot splash.png

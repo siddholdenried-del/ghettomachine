@@ -3,6 +3,7 @@
 # pattern keeps its own, through a switch stopped or playing, a save and a restart, and a pattern copied takes its
 # LFOs along.  tools/build.py ../../app --host, then  app/build/host/ghettomachine_host app/tests/cliplfo.txt OUTDIR
 # lsetN_K: track N's LFO now: K 1 its rate, 7 its destination, 8 its depth
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 flash_load app/tests/fixtures/proj_v7.img
 reboot
 wait 600

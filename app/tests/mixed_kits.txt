@@ -1,4 +1,5 @@
 # End-to-end panel model selection and project/user-slot persistence.
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 expect kit 0
 expect model0 0

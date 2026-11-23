@@ -3,6 +3,7 @@
 # app/tests/fixtures/proj_03.img: made by fixtures/make_v2.txt with 0.3's build. T2: notes on steps 1 and 3, its FM at
 # 30, its part 12 steps long; T3: a note on step 2. projfmt: 2 0.3's file, 3 this one's; genN_0: the part's generator's
 # seed (0: never used)
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 flash_load app/tests/fixtures/proj_03.img
 reboot
 wait 600

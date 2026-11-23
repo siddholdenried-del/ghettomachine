@@ -1,4 +1,5 @@
 # Exercise eight undo and redo levels, a full stack swap, and branch discard.
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 expect hits0 4
 key 2 down

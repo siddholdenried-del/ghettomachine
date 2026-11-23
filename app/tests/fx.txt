@@ -4,6 +4,7 @@
 # delay 2, 19..20 FILTER: filter reso; on the master bus (tests/master.txt has the rest): 12..15 COMP: threshold ratio
 # attack release, 16..18 COMP 2: makeup mix pump, 21 the limiter's switch, 37 its GAIN);
 # pkl / pkr: each side's peak since the last look, dB x 10; gr: the compressor's reduction now, dB x 10
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 # MASTER full: what the master bus puts out (0.2: the volume comes after it)
 master 4096

@@ -3,6 +3,7 @@
 # (short-term -31.7 LUFS against the 909's -19.5).  tools/build.py ../../app --host, then
 #   app/build/host/ghettomachine_host app/tests/kit808.txt OUTDIR
 # lufs: the master bus's short-term loudness (3 s), LUFS x 10, measured while a master bus page shows its meters
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 master 4096
 press SEL

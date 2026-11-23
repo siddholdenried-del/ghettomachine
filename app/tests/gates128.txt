@@ -1,4 +1,5 @@
 # A full 128-step note in the real step-editor, and fine edits after a fast turn.
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 turn ALGO 1
 wait 30

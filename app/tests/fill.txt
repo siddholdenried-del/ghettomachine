@@ -3,6 +3,7 @@
 # fill's part had got to: after a fill of another length, the drums came back out of step.)
 #   tools/build.py ../../app --host, then  app/build/host/ghettomachine_host app/tests/fill.txt OUTDIR
 # step: the drum part's step now (0: its first); at 120 BPM a step is 125 ms, pattern 1's 16 steps 2 s
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 master 4096
 expect len 16

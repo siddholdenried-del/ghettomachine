@@ -1,4 +1,5 @@
 # Four-note chord stamps and editable notes through the real grid controls.
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 turn ALGO 3
 wait 40
 tap ARP

@@ -1,5 +1,6 @@
 # Factory expansion must skip the reserved user range on a fresh project,
 # but it must not reassign those IDs. A fresh user slot still gets ID 24.
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 turn ALGO 1
 wait 50

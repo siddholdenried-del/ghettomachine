@@ -1,4 +1,5 @@
 # Host simulator: double/halve through physical controls, eighth step bank, and save/reboot.
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 expect len 16
 press SEQ

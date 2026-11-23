@@ -2,6 +2,7 @@
 #   app/build/host/ghettomachine_host app/tests/sampler.txt OUTDIR
 # sshapeN_K: 0 start, 1 end (thousandths), 2 loop, 3 loop start, 4 root, 5 tune, 6 the next recording's rate (1: 22 kHz)
 # the sound to sample: the bass drum over MIDI (channel 10, note 36)
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 expect bseq 0
 expect sframes3 0

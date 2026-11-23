@@ -5,6 +5,7 @@
 # release, 40 the chain preset, 41 BYPASS); mpre / medit: the preset, a knob of it moved since; stageN: the chain's stage
 # N (0 EQ 1 COMP 2 TAPE 3 STEREO 4 LIMIT) at work; eqdbHZ: the EQ's curve at HZ, dB x 10; inpk / outpk: the bus's peak in
 # / out since the last look, dB x 10; lgr: the limiter's reduction, dB x 10; lufs: short-term loudness x 10; corr x 100
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 master 4096
 # ---- the defaults: CLEAN, the compressor and the limiter at work, the rest flat

@@ -2,6 +2,7 @@
 #   app/build/host/ghettomachine_host app/tests/release.txt OUTDIR
 # presetN: 0..23 the original factory sounds, 24..39 USER 1..16, 40.. the expansion; dpreset: 0 909, 1 808, 2.. USER KIT 1..8; usndS / ukitS: slot S used
 # songeS_K: entry S, K 0 its pattern (1-based), 1 its bars; spos: the entry playing (0: none); scur: the SONG page's cursor
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 # ---- a user sound: T2's SQR BASS with its CUTOFF up 20, saved as USER 1 (hold SAVE, turn PRESETS, let go)
 turn ALGO 1

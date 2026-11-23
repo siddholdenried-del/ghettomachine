@@ -2,6 +2,7 @@
 # preset in turn, 4 s (2 bars) each: BYPASS, CLEAN, GLUE, PUNCH, WARM, WIDE, LOUD, LO-FI. MASTER full. 32 s to
 # master_demo.wav; the CHAIN page shows its meters throughout.
 #   app/build/host/ghettomachine_host app/tests/master_demo.txt OUTDIR
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 # T2: REC while stopped, on the KEYS page: a note a step; SELECT skips a step (a rest)
 turn ALGO 1

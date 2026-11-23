@@ -3,6 +3,7 @@
 # step pages are as they were.  tools/build.py ../../app --host, then
 #   app/build/host/ghettomachine_host app/tests/beats.txt OUTDIR   (OUTDIR must exist: beats.png is the drums' grid)
 # wlit / wdim: the white keys lit / glowing, a bit a key (white 1: 1, white 5: 16, white 9: 256, white 13: 4096)
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 expect trk 1
 expect page 0

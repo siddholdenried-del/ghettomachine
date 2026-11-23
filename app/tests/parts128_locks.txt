@@ -1,4 +1,5 @@
 # Doubling carries chance, knob locks and accents; halving removes them; undo restores them.
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 tap EDIT
 wait 30

@@ -1,5 +1,6 @@
 # Bank jumps are on instrument tracks, never change presets for another track.
 # These tests use fixtures only, not any real device/user data.
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 turn ALGO 1
 wait 50

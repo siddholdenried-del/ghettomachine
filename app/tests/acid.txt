@@ -5,6 +5,7 @@
 # 7 accent 8 octave 9 whole. naccN / nslideN / nwholeN / noffscaleN: the part's accents, slides, WHOLE notes, notes off
 # its scale; iaccN_S / islideN_S: a step's marks; linemarkN / linesameN: its steps remembered / as remembered; ilenN
 # its length; probeN_8: the newest voice accented; voicesN: its voices sounding
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 master 4096
 turn ALGO 1

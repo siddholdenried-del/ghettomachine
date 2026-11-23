@@ -1,5 +1,6 @@
 # Drum Color sleeps after its input and output settle, then wakes on a real drum hit.
 # Stage times use the host clock and the governor receives its separate fixture costs.
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 master 4096
 # Synth notes still render on their own USB stems with all three local FX chains absent.

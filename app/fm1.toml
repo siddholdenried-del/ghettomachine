@@ -3,7 +3,8 @@ name = "GHETTOMACHINE"         # the build's file names (lower case): build/ghet
 id_prefix = "FM-1_8"           # package identity: dev builds FM-1_800 (three digits, as M-UPGRADE and the Unbricker read it)
 usb_manufacturer = "BongTech"
 usb_product = "GhettoMachine FM-1"   # (at most 31 characters; "FM-1" in it: fm1-base's tools find it by that)
-o2 = ["dsp/drums.c", "dsp/drum909.c", "dsp/drum808.c", "dsp/synth.c", "dsp/color.c", "dsp/fx.c", "dsp/fxbus.c", "dsp/master.c", "dsp/mbus.c", "dsp/uimath.c"]   # the engines at -O2, each its own unit
+o2 = ["dsp/drums.c", "dsp/drum909.c", "dsp/drum808.c", "dsp/synth.c", "dsp/color.c", "dsp/fx.c", "dsp/fxbus.c", "dsp/master.c", "dsp/mbus.c", "dsp/uimath.c",
+      "v3/kit.c", "v3/kit_math.c", "v3/shells.c", "v3/metal.c", "v3/perc.c", "v3/drum_bus.c", "v3/macro.c", "v3/presets.c", "v3/trial.c"]   # the engines at -O2, each its own unit
 gen = ["tools/gen_drum_samples.py {gen}/x0x_drum_samples.h",   # the 909 cymbals (mu-law) and the pot tables
        "tools/gen_engine_tables.py {gen}/fe_tables.h",          # Felucca-Engines' tables (the synth voice)
        "tools/gen_logo.py {gen}/logo.h",                        # the boot screen's logo (Sedgwick Ave Display, OFL)

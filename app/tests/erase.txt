@@ -4,6 +4,7 @@
 #   app/build/host/ghettomachine_host app/tests/erase.txt OUTDIR   (OUTDIR must exist: erase_rec.png is the REC page)
 # hitsN: pad N's steps (0 BD, 1 SD, 7 CH); accS: step S accented; nlk / inlkN: the drum part's / track N's locks;
 # nstepsN: track N's steps with notes; synN_ID: the synth's value now (18: AMP ATTACK); mute: the drum part's pad mutes
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 master 4096
 # ---- DRUMS, stopped, pattern 1 (the default beat), LENGTH 32, OH muted, a lock on BD's step 1

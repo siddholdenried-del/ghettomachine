@@ -1,5 +1,6 @@
 # A released v5 project loads its retired 606 kit on the 808. Its saved T2
 # insert settings are compatibility data. Drum Color remains a live effect.
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 flash_load app/tests/fixtures/proj_v5.img
 reboot
 wait 600

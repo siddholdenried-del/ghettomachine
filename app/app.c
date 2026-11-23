@@ -27,6 +27,28 @@
 #include "mono_font.h"                  /* tools/gen_mono.py: FONT_MS, FONT_MB (IBM Plex Mono) */
 #include <stddef.h>
 
+#include "v3/trial.h"
+#include "v3/presets.h"
+#include "v3_metrics.h"
+
+static volatile uint8_t v3_mode = 1;
+static void v3_set_mode(unsigned mode)
+{
+    if (mode > 2 || v3_mode == mode) return;
+    if (!mode || !v3_mode) trial_quiet();
+    if (mode && !v3_mode)                 /* (the stock kits stop where they are: not to ring on when they come back) */
+        for (int r = 0; r < DRUMS_NPADS; r++)
+            drums_cut_pad(r);
+    v3_mode = (uint8_t)mode;
+    trial_metrics_reset();
+}
+
+static const char *trial_pad_name(int kit, int pad)
+{
+    static const char *const names[] = {"BD","SD","CP","LT","MT","HT","CH","OH","CY","P1","P2"};
+    return v3_mode && (unsigned)pad < 11u ? names[pad] : drums_pad_name(kit, pad);
+}
+
 #define NPADS DRUMS_NPADS
 #define NPAT 16
 #define NSTEPS 128
@@ -410,6 +432,7 @@ static void sync_drum_mutes(void)
     for (pad = 0; cut && pad < NPADS; pad++)
         if (cut >> pad & 1u) {
             drums_cut_mapped(proj.kit, proj.model, pad);
+            trial_cut((unsigned)pad + 1u);   /* (the DrumEngine's pad too) */
             pad_hit[pad] = 0.0f;
         }
 }
@@ -441,9 +464,12 @@ static void pad_fire(int pad, float vel)
 {
     if (pad < 0 || pad >= NPADS || drum_lane_muted(pad))
         return;
-    if (!drums_has_pad(drum_model(pad), pad))
-        return;
-    drums_trigger_mapped(proj.kit, proj.model, pad, vel);
+    if (v3_mode)
+        trial_hit((unsigned)pad + 1u, vel);
+    else {
+        if (!drums_has_pad(drum_model(pad), pad)) return;
+        drums_trigger_mapped(proj.kit, proj.model, pad, vel);
+    }
     gov.pad_at[pad] = gov.clock;
     if (vel > pad_hit[pad])
         pad_hit[pad] = vel;
@@ -2676,6 +2702,17 @@ static void midi_in(void)                 /* audio interrupt */
     int port;
     while (plat_midi_in(&pkt, &port)) {
         uint32_t st = (pkt >> 8) & 0xFFu, d1 = (pkt >> 16) & 0x7Fu, d2 = pkt >> 24 & 0x7Fu, ch = st & 0x0Fu;
+        if (ch == 15u && st == 0xBFu && d1 >= 110u && d1 <= 119u) {
+            if (d1 == 110u) v3_set_mode(d2);
+            else if (d1 == 111u) { if (d2 == 1u) trial_metrics_reset(); }
+            else if (d1 <= 115u) trial_patch((int)d1 - 111, (int)d2);
+            else trial_macro(d1 - 116u, d2);
+            continue;
+        }
+        if (ch == 15u && st == 0x9Fu && d1 >= 36u && d1 <= 46u) {
+            if (v3_mode && d2) pad_fire((int)(d1 - 36u), (float)d2 / 127.0f);
+            continue;
+        }
         if (st >= 0xF8u) {                /* real time: MIDI CLOCK followed (SETUP) */
             if ((proj.recq >> 2 & 3u) != 2u)
                 continue;
@@ -3271,14 +3308,14 @@ static void govern(uint32_t t_drums, uint32_t t_synth, uint32_t t_fxin, uint32_t
     {   /* One release per block even when both the drum stage and the total run over. */
         float m = 0.5f * (d + gov.d_prev);
         gov.d_prev = d;
-        if (m > BUD_US(BUD_DRUMS) || guard)
+        if (!v3_mode && (m > BUD_US(BUD_DRUMS) || guard))
             govern_drum_tail();
     }
     {   /* Keep the shared returns running. Drum Color can restart from silence when the combined cost falls. */
         gov.fx_mean += (fx - gov.fx_mean) * 0.25f;
         if (gov.fx_wait) {
             gov.fx_wait--;
-        } else if (gov.fx_mean > BUD_US(BUD_FX) && !gov.fx_shed &&
+        } else if (!v3_mode && gov.fx_mean > BUD_US(BUD_FX) && !gov.fx_shed &&
                    color_active(&proj.color[TR_DRUM]) && !track_is_muted(TR_DRUM)) {
             gov.fx_shed = 1;
             gov.fx_wait = 8;
@@ -3331,9 +3368,22 @@ static struct {
     uint32_t blocks;                      /* ... and how many so far */
 } d2;
 
+static uint32_t v3_voice_ticks, v3_bus_ticks;   /* this block's DrumEngine voices and bus (the board's telemetry) */
+
 static void drum_chunk(uint32_t done, uint32_t chunk)   /* either core: a chunk's drums into the mix's buses */
 {
     uint32_t i;
+    if (v3_mode) {                        /* the DrumEngine: no drum Color (its bus has SAT, COMP, TRANS, LIMIT) */
+        unsigned vt = 0, bt = 0;
+        trial_render(buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, chunk, v3_mode, &vt, &bt);
+        v3_voice_ticks += vt;
+        v3_bus_ticks += bt;
+        dr_t[plat_core() & 1u] += vt;
+        fxin_t[plat_core() & 1u] += bt;
+        if (track_is_muted(TR_DRUM))
+            for (i = done; i < done + chunk; ++i)
+                buf_l[i] = buf_r[i] = bus_rev[i] = bus_dly[i] = 0.f;
+    } else {
     CS_MARK(cs_d0);
     drums_render(proj.kit, buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, (int)chunk);
     dr_t[plat_core() & 1u] += plat_ticks24() - cs_d0;
@@ -3348,6 +3398,7 @@ static void drum_chunk(uint32_t done, uint32_t chunk)   /* either core: a chunk'
                                   fxs_peak(bus_rev + done, bus_dly + done, chunk) < FXS_LEVEL, chunk);
         }
         fxin_t[plat_core() & 1u] += plat_ticks24() - cs_c0;
+    }
     }
     drum_mix(buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, chunk);
     if (STEMS && stems_on)                /* (the mix holds the drums alone until the synth comes in) */
@@ -3416,6 +3467,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     for (i = 0; i < CS_NUM; i++)
         cs_t[i] = 0;
     dr_t[0] = dr_t[1] = 0;
+    v3_voice_ticks = v3_bus_ticks = 0;
     syn_here = 0;
     syn_work = 0;
     d2.due = 0;
@@ -3709,6 +3761,9 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         }
         govern(cs_t[CS_DRUMS], cs_t[CS_SYNTH], cs_t[CS_FXIN], cs_t[CS_FX], cs_t[CS_TOTAL]);   /* the budgets, for the
                                                                                              * next block */
+        trial_metrics_block(v3_mode ? v3_voice_ticks : cs_t[CS_DRUMS],
+                            v3_mode ? v3_bus_ticks : cs_t[CS_FXIN],
+                            plat_ticks24() - cs_start, (unsigned)syn_voices(-1), v3_mode);
     }
 }
 
@@ -3720,6 +3775,8 @@ void app_panic(void)
 
 void app_init(void)
 {
+    trial_init();
+    trial_metrics_reset();
 #ifdef PLAT_HOST
     {   /* GM_DRUMS2=1 or 2 in the environment: the drums' place for the whole run (every suite again that way) */
         const char *e = getenv("GM_DRUMS2");
@@ -3836,9 +3893,11 @@ static void undo_step(int redo)
 
 /* ------------------------------------------------------------------------ UI --- */
 enum { PG_SEQ, PG_EDIT, PG_MUTE, PG_HOME, PG_KIT, PG_KEYS, PG_ENV, PG_LFO, PG_ARP, PG_MIX, PG_FX, PG_SONG, PG_MST, PG_SETUP,
-       PG_GEN, PG_PICK, PG_COLOR = 17 };
+       PG_GEN, PG_PICK, PG_COLOR = 17, PG_V3_BUS };
 static const char *const PAGE_NAME[] = {"STEPS", "EDIT", "MUTE", "PATTERNS", "KIT", "KEYS", "ENV", "LFO", "ARP", "MIXER",
-                                        "FX", "SONG", "MASTER", "SETUP", "ACID", "PICK NOTES", "", "COLOR"};
+                                        "FX", "SONG", "MASTER", "SETUP", "ACID", "PICK NOTES", "", "COLOR", "DrumEngine BUS"};
+static const char *const V3_BUS_LABEL[] = {"SATURATOR", "COMPRESSOR", "TRANSIENT", "LIMITER"};
+static const char *const V3_MODE_LABEL[] = {"STOCK", "DRY", "BUS"};
 #define NGENPAGE 3                        /* the 303 generator's (SEQ after STEPS, T2..T4): ACID, NOTES, LINE (SELECT) */
 static const char *const TRK_NAME[NTRK] = {"DRUMS", "T2", "T3", "T4"};
 static const char *const TYPE_NAME[NTYPES] = {"MONO", "POLY", "SAMPLER"};
@@ -4073,7 +4132,7 @@ static void drum_model_turn(int pad, int32_t e)
         dirty = 1;
         ui.epage = (uint8_t)(drum_epages() - 1);
     }
-    app_say(drums_pad_name(which, pad), drums_model_name(which));
+    app_say(trial_pad_name(which, pad), drums_model_name(which));
 }
 
 static void param_text(const x0x_param_t *p, int v, char *t)
@@ -4312,7 +4371,7 @@ static void mute_toggle(int pad)
     muted = (int)(p->mute >> pad & 1u);
     sync_drum_mutes();
     plat_unlock(f);
-    app_say(drums_pad_name(drum_model(pad), pad), muted ? "MUTED" : "ON");
+    app_say(trial_pad_name(drum_model(pad), pad), muted ? "MUTED" : "ON");
 }
 
 /* ------------------------------------------------------ the instrument tracks --- */
@@ -5549,7 +5608,7 @@ static void lfo_text(int tr, int page, int k, char *t)
         } else if (l->dest == LFO_OFF || (l->rsv[0] && l->rsv[0] != drum_model(l->pad) + 1) || !drums_param(drum_model(l->pad), l->pad, l->dest)) {
             text_cat(t, "OFF");
         } else {
-            text_cat(t, drums_pad_name(drum_model(l->pad), l->pad));
+            text_cat(t, trial_pad_name(drum_model(l->pad), l->pad));
             text_cat(t, " ");
             text_cat(t, drums_param(drum_model(l->pad), l->pad, l->dest)->name);
         }
@@ -6806,6 +6865,133 @@ static void color_knob(int k, int32_t e)
     app_say(COLOR_LABEL[id], id == COL_ON ? (v ? "ON" : "BYPASS") : t);
 }
 
+static void v3_bus_percent(int k, int raw, char *text)
+{
+    if (k == 2) {
+        int d = raw - 64;
+        if (d > 0) *text++ = '+';
+        int_text(d >= 0 ? (d * 100 + 31) / 63 : -((-d * 100 + 32) / 64), text);
+    } else {
+        int_text((raw * 100 + 63) / 127, text);
+    }
+    text_cat(text, "%");
+}
+
+static void v3_bus_knob(int k, int32_t delta)
+{
+    char text[12];
+    uint32_t f = plat_lock();
+    int raw = clamp((int)trial_macro_value(k) + delta, 0, 127);
+    trial_macro(k, raw);
+    plat_unlock(f);
+    v3_bus_percent(k, raw, text);
+    app_say(V3_BUS_LABEL[k], text);
+}
+
+static void v3_bus_mode(int delta, int toggle)
+{
+    uint32_t f = plat_lock();
+    unsigned mode = toggle ? (v3_mode == 2 ? 1 : 2) : (unsigned)clamp((int)v3_mode + delta, 0, 2);
+    v3_set_mode(mode);
+    plat_unlock(f);
+    app_say("DrumEngine", V3_MODE_LABEL[mode]);
+}
+
+static int v6_voice_page(void)
+{
+    return v3_mode && ui.trk == TR_DRUM && ui.page == PG_EDIT && ui.pad < NPADS;
+}
+
+static const char *v6_voice_name(void)
+{
+    static const char *const names[] = {"KICK","SNARE","CLAP","LOW TOM","MID TOM","HIGH TOM",
+                                        "CLOSED HAT","OPEN HAT","CYMBAL","PERC 1","PERC 2"};
+    return names[ui.pad];
+}
+
+static const char *v6_recipe_name(int pad, int recipe)
+{
+    return recipe < 0 ? "CUSTOM" : kit_preset_name(pad, recipe);
+}
+
+static int v6_pages(void) { return (kit_param_count(ui.pad+1)+3)/4; }
+
+static void v6_page_text(char *text)
+{
+    char digit[] = "PAGE 1/1";
+    digit[5] += (char)ui.epage;
+    digit[7] += (char)(v6_pages()-1);
+    text[0] = 0;
+    text_cat(text, digit);
+}
+
+/* Use the same settled frequency as the voice, regardless of its recipe name. */
+static void v6_append_tom_pitch(char *text, const char *separator, int pad, const KitPatch *patch)
+{
+    if (pad < 4 || pad > 6) return;
+    float hz = kit_tom_pitch_hz(pad, kit_tom_controls(patch,pad));
+    int tenths = (int)(hz*10.f + .5f);
+    char digits[12], suffix[] = ".0 Hz";
+    int_text(tenths/10,digits);
+    suffix[1] += (char)(tenths%10);
+    text_cat(text,separator);
+    text_cat(text,digits);
+    text_cat(text,suffix);
+}
+
+static void v6_value_text(int pad, int param, int tick, char *text)
+{
+    const KitParamSpec *spec = kit_param_spec(pad, param);
+    const char *option = kit_param_option(pad, param, tick);
+    text[0] = 0;
+    if (option) {
+        text_cat(text, option);
+        return;
+    }
+    if (spec->decimals == 1) {
+        if (tick < 0) { *text++ = '-'; tick = -tick; }
+        int_text(tick/10, text);
+        char fraction[] = ".0";
+        fraction[1] += (char)(tick%10);
+        text_cat(text, fraction);
+    } else int_text(tick, text);
+    if (spec->unit[0] && spec->unit[0] != '%') text_cat(text, " ");
+    text_cat(text, spec->unit);
+}
+
+static void v6_voice_turn(int knob_index, int delta)
+{
+    int pad = ui.pad+1;
+    int fine = (ui.btn >> B_SEL) & 1u;
+    if (fine) ui.sel_used = 1;
+    if (knob_index < 0) {
+        trial_recipe_turn(pad, delta);
+        KitPatch current;
+        char name[32] = "";
+        trial_snapshot(pad, &current);
+        text_cat(name,v6_recipe_name(pad, kit_preset_match(&current,pad)));
+        v6_append_tom_pitch(name," / ",pad,&current);
+        app_say(v6_voice_name(),name);
+        return;
+    }
+    int param = 4*ui.epage + knob_index;
+    const KitParamSpec *spec = kit_param_spec(pad, param);
+    if (!spec) return;
+    if (ui.held_step >= 0) {
+        app_say("HIT EDIT", "RELEASE STEP");
+        return;
+    }
+    trial_parameter_turn(pad, param, delta, fine);
+    KitPatch current;
+    char text[24];
+    trial_snapshot(pad, &current);
+    if (kit_param_editable(&current, pad, param))
+        v6_value_text(pad, param, kit_param_get(&current, pad, param), text);
+    else { text[0] = 0; text_cat(text,"FIXED BY MODEL"); }
+    if (param <= 1) v6_append_tom_pitch(text," / ",pad,&current);
+    app_say(spec->label, text);
+}
+
 static void knob(int k, int32_t e)        /* KNOB 1..4 (k 0..3) on the page shown */
 {
     int inst = ui.trk != TR_DRUM;
@@ -6833,7 +7019,9 @@ static void knob(int k, int32_t e)        /* KNOB 1..4 (k 0..3) on the page show
         ui.redraw = 1;
         return;
     }
-    if (!inst && ui.page == PG_EDIT && drum_model_page()) {
+    if (v6_voice_page()) {
+        v6_voice_turn(k,e);
+    } else if (!inst && ui.page == PG_EDIT && drum_model_page()) {
         if (k == 0) {
             if (ui.held_step >= 0)
                 app_say("NOT LOCKABLE", "");
@@ -6862,6 +7050,8 @@ static void knob(int k, int32_t e)        /* KNOB 1..4 (k 0..3) on the page show
         song_knob(k, e);
     } else if (ui.page == PG_MIX) {
         mix_knob(k, e);
+    } else if (ui.page == PG_V3_BUS) {
+        v3_bus_knob(k, e);
     } else if (ui.page == PG_COLOR) {
         color_knob(k,e);
     } else if (ui.page == PG_FX) {
@@ -7058,6 +7248,10 @@ static void input(void)
     if ((released >> B_EDIT & 1u) && !ui.edit_used) {   /* EDIT tapped: its page, or its next page (or back) */
         if (ui.page != PG_EDIT) {
             ui.page = PG_EDIT;
+            if (!inst && v3_mode) ui.epage=0;
+        } else if (v6_voice_page()) {
+            if (ui.epage+1 < v6_pages()) ++ui.epage;
+            else { ui.page=PG_SEQ; ui.epage=0; }
         } else if (inst) {                /* the next page; after the last, the keys */
             if (ui.epage + 1 < inst_epages(ui.trk)) {
                 ui.epage++;
@@ -7204,7 +7398,12 @@ static void input(void)
     if (pressed >> B_FX & 1u) {           /* the FX: REVERB, DELAY, DELAY 2, FILTER, then back */
         if ((btn >> B_SEL & 1u) && inst)
             ui.sel_used = 1;
-        if (ui.page == PG_COLOR) {
+        if (!inst && (btn >> B_SEL & 1u)) {
+            ui.sel_used = 1;
+            page_button(PG_V3_BUS);
+        } else if (ui.page == PG_V3_BUS) {
+            v3_bus_mode(0, 1);
+        } else if (ui.page == PG_COLOR) {
             ui.page = (uint8_t)home_page(ui.trk);
         } else if (ui.page != PG_FX) {
             ui.page = PG_FX;
@@ -7337,7 +7536,14 @@ static void input(void)
         track_pick(ui.trk + e);
     inst = ui.trk != TR_DRUM;
     if ((e = plat_enc(EN_SELECT)) != 0 && ui.page != PG_PICK) { /* SELECT: a held step's chance, the cursor, or the page within the page */
-        if (ui.page == PG_COLOR) {
+        if (ui.page == PG_V3_BUS) {
+            v3_bus_mode(e, 0);
+        } else if (v6_voice_page()) {
+            if (ui.held_step >= 0) {
+                if (ui.btn >> B_SEL & 1u) ui.sel_used = 1;
+                held_chance(e);
+            } else v6_voice_turn(-1,e);
+        } else if (ui.page == PG_COLOR) {
             ui.color_page = (uint8_t)clamp(ui.color_page+e,0,1);
         } else if (ui.page == PG_SETUP) {   /* SETUP: SELECT turns to the CPU by stage and back */
             char t[16];
@@ -7499,7 +7705,7 @@ static void lights(void)
     }
     if (ui.page != PG_KEYS)
         b |= 1u << (ui.page == PG_SEQ || ui.page == PG_GEN || ui.page == PG_PICK ? B_SEQ : ui.page == PG_EDIT ? B_EDIT : ui.page == PG_MUTE || ui.page == PG_ENV ? B_ENV
-                    : ui.page == PG_LFO ? B_LFO : ui.page == PG_ARP ? B_ARP : ui.page == PG_FX || ui.page == PG_COLOR ? B_FX
+                    : ui.page == PG_LFO ? B_LFO : ui.page == PG_ARP ? B_ARP : ui.page == PG_FX || ui.page == PG_COLOR || ui.page == PG_V3_BUS ? B_FX
                     : ui.page == PG_HOME || ui.page == PG_SONG || ui.page == PG_SETUP ? B_HOME : B_GLO);
     if (sq.playing)
         b |= LED_PLAY_GREEN;
@@ -7627,7 +7833,7 @@ static uint16_t sec_col(void)             /* the section's colour */
         return C_RECCOL;
     switch (ui.page) {
     case PG_HOME: case PG_SONG: case PG_MIX: case PG_SETUP: return C_CREAM;
-    case PG_FX: return C_FXCOL;
+    case PG_FX: case PG_V3_BUS: return C_FXCOL;
     case PG_MST: return C_MSTCOL;
     default: return trk_rgb(ui.trk);
     }
@@ -8668,7 +8874,7 @@ static void page_steps(void)              /* the drums' grid: 11 pads and the ac
     char t[24], hint[28];
     steps_text(t);
     hint[0] = 0;
-    text_cat(hint, drums_pad_name(drum_model(ui.pad), ui.pad));
+    text_cat(hint, trial_pad_name(drum_model(ui.pad), ui.pad));
     text_cat(hint, drum_lane_muted(ui.pad) ? " MUTED / ENV+PAD" : " / MUTE: ENV+PAD");
     kit_band(t, hint, npages(), ui.spage);
     hits_take();
@@ -8682,7 +8888,7 @@ static void page_steps(void)              /* the drums' grid: 11 pads and the ac
         }
         if (row < NPADS && hit[row] > 0.05f)   /* the pad sounding: its name lights */
             rrect(1, y + 1, 22, 9, 2, mix565(sel ? C_VIOLET : C_BODY, C_WHITE2, (int)(hit[row] * 230.0f)));
-        cv_text(3, y - 2, &FONT_XS, row < NPADS ? drums_pad_name(drum_model(row), row) : "AC",
+        cv_text(3, y - 2, &FONT_XS, row < NPADS ? trial_pad_name(drum_model(row), row) : "AC",
                 muted ? TH_RED : sel || (row < NPADS && hit[row] > 0.4f) ? C_INK : C_TXT2);
         for (k = 0; k < 16; k++) {
             int s = ui.spage * 16 + k, x = 27 + k * 13;
@@ -9005,6 +9211,132 @@ static void page_pick(void)
         cards[i].on = 0;                 /* the player is tapping musical keys, not adjusting knobs */
 }
 
+/* The hit editor owns the entire 240px screen. Each scanout is at most 104
+ * rows and reuses the stock canvas. A resting editor requires no LCD blits. */
+static int v6_last_view[10];
+
+static void v6_cell(const KitPatch *patch, int pad, int k, int x, int w)
+{
+    int param = ui.epage*4+k;
+    const KitParamSpec *spec = kit_param_spec(pad,param);
+    int tick = kit_param_get(patch,pad,param);
+    int enabled = kit_param_editable(patch,pad,param);
+    const char *option = kit_param_option(pad,param,tick);
+    char key[] = "K1", label[24], value[24];
+    key[1] += (char)k;
+    /* The top-left abbreviation always names the physical knob. The full
+     * shared parameter name fits beside it, including PITCH DROP AMOUNT. */
+    cv_text(x+8,7,&FONT_XS,key,enabled ? C_FXCOL : C_MUTED);
+    fit(&FONT_XS,spec->label,w-34,label);
+    upper(label);
+    cv_text(x+29,7,&FONT_XS,label,C_MUTED);
+    if (!enabled) {
+        cv_text(x+8,28,&FONT_M,"FIXED",C_MUTED);
+        text_r(x+w-8,35,&FONT_S,"BY MODEL",C_MUTED);
+        return;
+    }
+    v6_value_text(pad,param,tick,value);
+    if (option) {
+        upper(value);
+        const felucca_font_t *face = text_w(&FONT_L,value)<=w-16 ? &FONT_L :
+                                      text_w(&FONT_M,value)<=w-16 ? &FONT_M : &FONT_B;
+        cv_text(x+8,27,face,value,C_BONE);
+        return;
+    }
+    /* Place case-sensitive engineering units beside the large digits. */
+    for (int j=0; value[j]; ++j) if (value[j]==' ' || value[j]=='%') {
+        value[j]=0;
+        break;
+    }
+    int units_w = text_w(&FONT_B,spec->unit);
+    const felucca_font_t *face = text_w(&FONT_L,value)+units_w+4<=w-16 ? &FONT_L : &FONT_M;
+    int end = cv_text(x+8,23,face,value,C_BONE);
+    cv_text(end+3,face==&FONT_L ? 37 : 31,&FONT_B,spec->unit,C_MUTED);
+    int range_w = w-20;
+    int thumb = x+9 + (tick-spec->min_tick)*(range_w-3)/(spec->max_tick-spec->min_tick);
+    cv_rect(x+9,63,range_w,1,C_RULE);
+    cv_rect(thumb,60,3,6,C_FXCOL);
+}
+
+static void v6_single_range(const KitPatch *patch, int pad, int param)
+{
+    const KitParamSpec *spec = kit_param_spec(pad,param);
+    char low[20],high[20],coarse[20],fine[20];
+    v6_value_text(pad,param,spec->min_tick,low);
+    v6_value_text(pad,param,spec->max_tick,high);
+    v6_value_text(pad,param,spec->coarse_step,coarse);
+    v6_value_text(pad,param,spec->fine_step,fine);
+    cv_text(9,3,&FONT_XS,low,C_MUTED);
+    text_r(230,3,&FONT_XS,high,C_MUTED);
+    cv_text(9,38,&FONT_XS,"COARSE",C_MUTED);
+    cv_text(53,34,&FONT_B,coarse,C_BONE);
+    cv_text(133,38,&FONT_XS,"FINE",C_MUTED);
+    cv_text(163,34,&FONT_B,fine,C_BONE);
+    (void)patch;
+}
+
+static void v6_draw_editor(void)
+{
+    int pad = ui.pad+1, total = kit_param_count(pad);
+    if (ui.epage >= v6_pages()) ui.epage = 0;
+    int first = 4*ui.epage, count = total-first;
+    if (count>4) count=4;
+    KitPatch current;
+    trial_snapshot(pad,&current);
+    int recipe = kit_preset_match(&current,pad), fine = (ui.btn >> B_SEL)&1u;
+    int view[10] = {pad,ui.epage,recipe,fine};
+    for (int j=0;j<total;++j) view[4+j] = kit_param_get(&current,pad,j);
+    int changed = 0;
+    for (int j=0;j<10;++j) if (view[j]!=v6_last_view[j]) {
+        v6_last_view[j]=view[j]; changed=1;
+    }
+    if (!changed) return;
+
+    /* Header: physical pad and page, then selected sound with optional tom Hz. */
+    char identify[24]="",num[8],page[16],name[24],frequency[16]="";
+    text_cat(identify,v6_voice_name());
+    int_text(pad,num);
+    v6_page_text(page);
+    cv_begin(240,64,C_CANVAS);
+    cv_text(8,4,&FONT_MS,num,C_FXCOL);
+    cv_text(pad>9 ? 31 : 22,3,&FONT_B,identify,C_FXCOL);
+    text_r(232,4,&FONT_MS,page,C_MUTED);
+    v6_append_tom_pitch(frequency,"",pad,&current);
+    int available = 224;
+    if (frequency[0]) {
+        text_r(232,32,&FONT_MB,frequency,C_FXCOL);
+        available -= text_w(&FONT_MB,frequency)+8;
+    }
+    fit(&FONT_B,v6_recipe_name(pad,recipe),224,name);
+    upper(name);
+    cv_text(8,22,text_w(&FONT_L,name)<=available ? &FONT_L : &FONT_M,name,C_BONE);
+    cv_rect(0,63,240,1,C_RULE);
+    cv_blit(0,0);
+
+    for (int row=0; row<2; ++row) {
+        cv_begin(240,72,C_FIELD);
+        if (count==1) {
+            if (!row) v6_cell(&current,pad,0,0,240);
+            else v6_single_range(&current,pad,first);
+        } else if (count==2 || (count==3 && !row)) {
+            v6_cell(&current,pad,row,0,240);
+        } else {
+            int left = count==3 ? 1 : row*2;
+            v6_cell(&current,pad,left,0,120);
+            cv_rect(119,0,1,72,C_DUSK);
+            v6_cell(&current,pad,left+1,120,120);
+        }
+        if (!row && count>1) cv_rect(0,71,240,1,C_DUSK);
+        cv_blit(0,64+row*72);
+    }
+    cv_begin(240,32,C_CANVAS);
+    cv_rect(0,0,240,1,C_RULE);
+    cv_text(8,9,&FONT_XS,"SELECT PRESET",C_BONE);
+    text_c(123,9,&FONT_XS,fine ? "FINE ON" : "HOLD SEL FINE",fine ? C_FXCOL : C_MUTED);
+    text_r(232,9,&FONT_XS,ui.epage+1<v6_pages() ? "EDIT MORE" : "EDIT STEPS",C_BONE);
+    cv_blit(0,208);
+}
+
 static void page_dedit(void)              /* the drums' EDIT page: the pad, its steps and hits, all its knobs */
 {
     int idx[NPOTS], n = edit_params(drum_model(ui.pad), ui.pad, idx), np = (n + 3) / 4, k, hs = ui.held_step;
@@ -9017,7 +9349,7 @@ static void page_dedit(void)              /* the drums' EDIT page: the pad, its 
     if (drum_model_page()) {
         kit_band("DRUM MODEL", "K1: CHANGE", drum_epages(), ui.epage);
         const int model = drum_model(ui.pad);
-        cv_text(7, 75, &FONT_B, model >= KIT_NUM ? drums_model_name(model) : drums_pad_name(model, ui.pad), TH_FG);
+        cv_text(7, 75, &FONT_B, model >= KIT_NUM ? drums_model_name(model) : trial_pad_name(model, ui.pad), TH_FG);
         cv_text(7, 94, &FONT_S, "SAVE + PRESETS: STORE KIT", TH_FG);
         cards_of(KD_MODEL, 0);
         return;
@@ -9030,7 +9362,7 @@ static void page_dedit(void)              /* the drums' EDIT page: the pad, its 
     }
     t[0] = 0;
     text_cat(t, "EDIT ");
-    text_cat(t, drums_pad_name(drum_model(ui.pad), ui.pad));
+    text_cat(t, trial_pad_name(drum_model(ui.pad), ui.pad));
     u[0] = 0;
     if (hs >= 0) {
         int c = lock_find(pat, hs, ui.pad, LK_PROB);
@@ -9051,7 +9383,7 @@ static void page_dedit(void)              /* the drums' EDIT page: the pad, its 
     {   /* the pad: its name, lit as it sounds */
         float h = hit[ui.pad];
         rrect(4, 2, 66, 40, 6, h > 0.05f ? mix565(C_TILE, C_WHITE2, (int)(h * 230.0f)) : C_TILE);
-        text_c(37, 6, &FONT_L, drums_pad_name(drum_model(ui.pad), ui.pad), h > 0.5f ? C_INK : kc);
+        text_c(37, 6, &FONT_L, trial_pad_name(drum_model(ui.pad), ui.pad), h > 0.5f ? C_INK : kc);
         text_c(37, 28, &FONT_XS, drums_kit_name(drum_model(ui.pad)), h > 0.5f ? C_INK : kc);
     }
     for (k = 0; k < 16; k++) {            /* its steps on this page */
@@ -9282,7 +9614,7 @@ static void page_mute(void)               /* the drums' pads: on or muted in thi
         int x = 3 + (k % 4) * 59, y = 2 + (k / 4) * 44, muted = (int)(p->mute >> k & 1u);
         uint16_t bg = muted ? C_PANEL : hit[k] > 0.05f ? mix565(C_TILE, C_WHITE2, (int)(hit[k] * 200.0f)) : C_TILE;
         rrect(x, y, 56, 40, 6, bg);
-        cv_text(x + 7, y + 3, &FONT_B, drums_pad_name(drum_model(k), k), muted ? C_TXT2 : hit[k] > 0.5f ? C_INK : C_TILET);
+        cv_text(x + 7, y + 3, &FONT_B, trial_pad_name(drum_model(k), k), muted ? C_TXT2 : hit[k] > 0.5f ? C_INK : C_TILET);
         cv_text(x + 7, y + 21, &FONT_S, muted ? "MUTE" : "ON", muted ? TH_RED : C_TILET2);
         if (k == ui.pad)
             rrect(x + 36, y + 6, 12, 12, 6, kc);
@@ -9878,6 +10210,36 @@ static void page_rec(void)                /* REC held: the metronome, the count-
     cards_of(KD_REC, 0);
 }
 
+static void page_v3_bus(void)
+{
+    static const char *const short_label[] = {"SAT", "COMP", "TRANS", "LIMIT"};
+    int raw[4], mode;
+    uint32_t f = plat_lock();
+    mode = v3_mode;
+    for (int k = 0; k < 4; ++k) raw[k] = (int)trial_macro_value(k);
+    plat_unlock(f);
+
+    band_set(C_FXCOL, "BUS", "DrumEngine", "DRUM BUS", 0, 0);
+    cv_text(7, 8, &FONT_XS, "SELECT", C_MUTED);
+    for (int i = 0; i < 3; ++i) {
+        int x = 51 + i * 62;
+        cv_rect(x, 4, 58, 24, i == mode ? C_FXCOL : C_FIELD);
+        text_c(x + 29, 7, &FONT_S, V3_MODE_LABEL[i], i == mode ? C_INK : C_MUTED);
+    }
+    for (int k = 0; k < 4; ++k) {
+        char text[12], num[] = "K1";
+        int x = 4 + (k % 2) * 117, y = 36 + (k / 2) * 31;
+        num[1] += (char)k;
+        cv_rect(x, y, 114, 27, C_PANEL);
+        cv_text(x + 5, y + 6, &FONT_XS, num, C_MUTED);
+        cv_text(x + 23, y + 5, &FONT_S, V3_BUS_LABEL[k], C_BONE);
+        v3_bus_percent(k, raw[k], text);
+        card_put(&cards[k], short_label[k], text, raw[k], 0, 127, k == 2 ? 64 : -1);
+    }
+    cv_text(7, 106, &FONT_XS, "FX: DRY/BUS", C_BONE);
+    text_r(233, 106, &FONT_XS, "SEL + FX: EXIT", C_BONE);
+}
+
 static void page_color(void)
 {
     int i;
@@ -9916,6 +10278,7 @@ static void page(void)
     case PG_LFO: page_lfo(); break;
     case PG_MIX: page_mix(); break;
     case PG_FX: page_fx(); break;
+    case PG_V3_BUS: page_v3_bus(); break;
     case PG_COLOR: page_color(); break;
     case PG_MST: page_mst(); break;
     case PG_ARP: page_arp(); break;
@@ -9937,6 +10300,8 @@ static void page(void)
 
 static void draw(void)
 {
+    if (v6_voice_page() && !rec_page()) { v6_draw_editor(); return; }
+    v6_last_view[0]=0;
     theme(sec_col());
     cv_begin(240, BODY_H, C_BODY);
     page();
@@ -9965,6 +10330,8 @@ static int page_moves(void)               /* a page whose picture moves by itsel
 
 static void draw_live(void)               /* the band's meters; the page too where it moves; a meter card */
 {
+    if (v6_voice_page() && !rec_page()) { v6_draw_editor(); return; }
+    v6_last_view[0]=0;
     theme(sec_col());
     if (page_moves()) {
         cv_begin(240, BODY_H, C_BODY);
@@ -9987,9 +10354,35 @@ static void speak(void)                   /* a screen reader that has just start
         text_cat(t, PAGE_NAME[ui.page]);
         if (ui.trk == TR_DRUM) {
             text_cat(t, ". PAD ");
-            text_cat(t, drums_pad_name(drum_model(ui.pad), ui.pad));
+            text_cat(t, trial_pad_name(drum_model(ui.pad), ui.pad));
+        }
+        if (v6_voice_page()) {
+            char page[16];
+            int pad = ui.pad+1;
+            KitPatch current;
+            trial_snapshot(pad, &current);
+            v6_page_text(page);
+            text_cat(t,". V6 VOICE ");
+            text_cat(t,v6_voice_name());
+            text_cat(t," ");
+            text_cat(t,v6_recipe_name(pad,kit_preset_match(&current,pad)));
+            text_cat(t," ");
+            text_cat(t,page);
+            v6_append_tom_pitch(t," PITCH ",pad,&current);
+            for (int k=0; k<4; ++k) {
+                int param = 4*ui.epage+k;
+                if (!kit_param_spec(pad,param)) break;
+                char key[] = " K1 ", text[24];
+                key[2] += (char)k;
+                text_cat(t,key);
+                if (kit_param_editable(&current,pad,param)) {
+                    v6_value_text(pad,param,kit_param_get(&current,pad,param),text);
+                    text_cat(t,text);
+                } else text_cat(t,"FIXED");
+            }
         }
         ann_say(t, 0, ANN_NOW);
+        trial_metrics_speak(v3_mode);
         {   /* and the processor (0.5: read remotely while someone plays, tools/fm1_remote.py screen): each stage's
              * share of a block, its mean and its worst block of the last 10 s; the blocks late; the voices
              * sounding, the budget's cap and the pool; what the budgets gave up (drum sounds cut, voices shed,
@@ -10587,6 +10980,14 @@ int app_expect(const char *what, int *got)
                 v[k] = v[k] * 10 + (*q - '0');
         }
         *got = drums2_pick((float)v[0], (float)v[1], (float)v[2], (float)v[3], v[4]);
+    } else if (!strncmp(what, "demode_", 7) && what[7] >= '0' && what[7] <= '2' && !what[8]) {
+        /* demode_N: the drums' engine: 0 the stock 808 / 909 (STOCK), 1 the DrumEngine dry, 2 through its bus */
+        uint32_t f = plat_lock();
+        v3_set_mode((unsigned)(what[7] - '0'));
+        plat_unlock(f);
+        *got = 1;
+    } else if (!strcmp(what, "demode")) { /* the drums' engine now (demode_N) */
+        *got = v3_mode;
     } else if (!strcmp(what, "govcap")) { /* the budgets: the synth's voices allowed */
         *got = gov.cap;
     } else if (!strcmp(what, "govcuts")) {   /* drum sounds cut so far */

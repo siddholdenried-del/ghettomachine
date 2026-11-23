@@ -5,6 +5,7 @@
 #   tools/build.py ../../app --host, then  app/build/host/ghettomachine_host app/tests/drums2.txt OUTDIR
 # drums2pick_D_P_V_C_N: the choice for the drums' time D, the tail's P, the voices' V, the synth's ticks and mix C
 # (us a block), from place N; drums2: the blocks the second core has rendered the drums; drums2set_N: 0 chosen, 1 there
+expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 master 4096
 # ---- the choice: there with both heavy (22 % drums, 30 % voices); not with the synth lighter, the drums lighter or no
