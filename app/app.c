@@ -7240,7 +7240,8 @@ static void input(void)
     }
 
     /* encoders */
-    if ((e = plat_enc(EN_PRESET)) != 0) { /* PRESETS: the kit, or the track's sound; SAVE held: where to save it */
+    if ((e = plat_enc(EN_PRESET)) != 0) { /* PRESETS: the presets wherever you are: the track's sound; on the drums the
+                                           * kit, or in a drum's editor that drum's preset; SAVE held: where to save it */
         if (ui.btn >> B_SAVE & 1u) {
             ui.save_used = 1;
             save_target(e);
@@ -7249,6 +7250,8 @@ static void input(void)
             preset_bank_turn(e);
         } else if (inst) {
             preset_turn(e);
+        } else if (v6_voice_page() && ui.held_step < 0) {
+            v6_voice_turn(-1, e);
         } else {
             kit_turn(e);
         }
@@ -7256,14 +7259,15 @@ static void input(void)
     if ((e = plat_enc(EN_ALGO)) != 0)     /* ALGORITHM: the track */
         track_pick(ui.trk + e);
     inst = ui.trk != TR_DRUM;
-    if ((e = plat_enc(EN_SELECT)) != 0 && ui.page != PG_PICK) { /* SELECT: a held step's chance, the cursor, or the page within the page */
+    if ((e = plat_enc(EN_SELECT)) != 0 && ui.page != PG_PICK) { /* SELECT: the editor's pages (every editor's), a held
+                                           * step's chance, the cursor */
         if (ui.page == PG_V3_BUS) {
             v3_bus_mode(e, 0);
-        } else if (v6_voice_page()) {
+        } else if (v6_voice_page()) {     /* a drum's editor: its pages (its preset: PRESETS) */
             if (ui.held_step >= 0) {
                 if (ui.btn >> B_SEL & 1u) ui.sel_used = 1;
                 held_chance(e);
-            } else v6_voice_turn(-1,e);
+            } else ui.epage = (uint8_t)clamp(ui.epage + e, 0, v6_pages() - 1);
         } else if (ui.page == PG_COLOR) {
             ui.color_page = (uint8_t)clamp(ui.color_page+e,0,1);
         } else if (ui.page == PG_SETUP) {   /* SETUP: SELECT turns to the CPU by stage and back */
@@ -8978,9 +8982,9 @@ static void v6_draw_editor(void)
     }
     cv_begin(240,32,C_CANVAS);
     cv_rect(0,0,240,1,C_RULE);
-    cv_text(8,9,&FONT_XS,"SELECT PRESET",C_BONE);
-    text_c(123,9,&FONT_XS,fine ? "FINE ON" : "HOLD SEL FINE",fine ? C_FXCOL : C_MUTED);
-    text_r(232,9,&FONT_XS,ui.epage+1<v6_pages() ? "EDIT MORE" : "EDIT STEPS",C_BONE);
+    cv_text(8,9,&FONT_XS,"SELECT PAGE",C_BONE);
+    text_c(116,9,&FONT_XS,"PRESETS SOUND",C_BONE);
+    text_r(232,9,&FONT_XS,fine ? "FINE ON" : "SEL FINE",fine ? C_FXCOL : C_MUTED);
     cv_blit(0,208);
 }
 

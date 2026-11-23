@@ -57,8 +57,8 @@ route still works for getting M-VAVE's firmware back.
 | Control | What it does |
 | --- | --- |
 | **ALGORITHM** | Picks the track: DRUMS, T2, T3, T4. Or hold **SEL** and press pad keys 1–4. |
-| **PRESETS** | The drums' kit (909, 808, your kits), or an instrument track's sound. |
-| **SELECT** | Turns the page within a page, moves a cursor, or sets a held step's chance. |
+| **PRESETS** | Presets, wherever you are: an instrument track's sound; on the drums the kit (909, 808, your kits), or, in a drum's editor (EDIT with a pad picked), that drum's own presets. |
+| **SELECT** | Turns the pages of every editor (the synth's EDIT, ENV, LFO, FX, the master bus, a drum's editor...), moves a cursor, or sets a held step's chance. |
 | **K1–K4** | The four knobs of the page on screen. |
 | **PLAY** | Starts and stops. |
 | **REC** | Tap: recording on or off (turn a knob while it's on and playing: the knob is recorded). Hold it: the metronome, count-in and quantize (below). |
