@@ -34,9 +34,9 @@ key 9 down
 wait 100
 expect voices3 6
 expect govcap 16
-# the synth takes 3000 us a block with six voices: 500 a voice, so its 1741 us buy three (the cap's floor too), the
-# others gone in 10 ms
-expect cpufake1_3000 1
+# the synth takes 3600 us a block with six voices: 600 a voice, so its 2322 us (BUD_SYNTH 40 %) buy three (the cap's
+# floor too), the others gone in 10 ms
+expect cpufake1_3600 1
 wait 100
 expect govcap 3
 expect govshed 3

@@ -446,7 +446,9 @@ static void sync_drum_mutes(void)
  * until there is room again. The reverb, delay and master bus continue to run. */
 #define BUD_DRUMS 35                      /* (25 while the drums always took the first core's time; 35 since they
                                            * go to the second core when both they and the synth are heavy: drum_job) */
-#define BUD_SYNTH 30
+#define BUD_SYNTH 40                      /* (30 until 0.5's CPU pass: a voice about 250 us of work a block, half of it
+                                           * on each core, so 30 bought 6; 40 buys 8 at that cost, more when cheaper,
+                                           * fewer when dearer. BUD_GUARD still sheds when core 0 runs hot) */
 #define BUD_FX 25
 #define BUD_GUARD 90                      /* one eligible drum tail and up to two synth voices when core 0 runs hot */
 static struct {
