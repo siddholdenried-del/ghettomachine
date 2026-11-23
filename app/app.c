@@ -7005,6 +7005,19 @@ static const char *v6_recipe_name(int pad, int recipe)
 
 static int v6_pages(void) { return (kit_param_count(ui.pad+1)+3)/4; }
 
+/* The knobs' order on a voice's pages (slot 0 = page 1's K1): its sound's controls first, then its choices (MODEL,
+ * PROFILE, MODE), so K1 always turns a sound and never steps through what the voice's presets (SELECT) choose between
+ * (the cymbal's MODE is CRASH, RIDE, RISER, NOISE DROP: its presets' own names). -1: no such slot */
+static int v6_param(int pad, int slot)
+{
+    int total = kit_param_count(pad), n = 0;
+    for (int choice = 0; choice < 2; ++choice)
+        for (int i = 0; i < total; ++i)
+            if ((kit_param_option(pad, i, 0) != 0) == choice && n++ == slot)
+                return i;
+    return -1;
+}
+
 static void v6_page_text(char *text)
 {
     char digit[] = "PAGE 1/1";
@@ -7063,7 +7076,7 @@ static void v6_voice_turn(int knob_index, int delta)
         app_say(v6_voice_name(),name);
         return;
     }
-    int param = 4*ui.epage + knob_index;
+    int param = v6_param(pad, 4*ui.epage + knob_index);
     const KitParamSpec *spec = kit_param_spec(pad, param);
     if (!spec) return;
     if (ui.held_step >= 0) {
@@ -9302,11 +9315,11 @@ static void page_pick(void)
 
 /* The hit editor owns the entire 240px screen. Each scanout is at most 104
  * rows and reuses the stock canvas. A resting editor requires no LCD blits. */
-static int v6_last_view[10];
+static int v6_last_view[4+8];          /* pad, page, recipe, fine; every value (8 at most: the kick, PERC) */
 
 static void v6_cell(const KitPatch *patch, int pad, int k, int x, int w)
 {
-    int param = ui.epage*4+k;
+    int param = v6_param(pad, ui.epage*4+k);
     const KitParamSpec *spec = kit_param_spec(pad,param);
     int tick = kit_param_get(patch,pad,param);
     int enabled = kit_param_editable(patch,pad,param);
@@ -9373,10 +9386,10 @@ static void v6_draw_editor(void)
     KitPatch current;
     trial_snapshot(pad,&current);
     int recipe = kit_preset_match(&current,pad), fine = (ui.btn >> B_SEL)&1u;
-    int view[10] = {pad,ui.epage,recipe,fine};
-    for (int j=0;j<total;++j) view[4+j] = kit_param_get(&current,pad,j);
+    int view[4+8] = {pad,ui.epage,recipe,fine};
+    for (int j=0;j<total && j<8;++j) view[4+j] = kit_param_get(&current,pad,j);
     int changed = 0;
-    for (int j=0;j<10;++j) if (view[j]!=v6_last_view[j]) {
+    for (int j=0;j<4+8;++j) if (view[j]!=v6_last_view[j]) {
         v6_last_view[j]=view[j]; changed=1;
     }
     if (!changed) return;
@@ -9406,7 +9419,7 @@ static void v6_draw_editor(void)
         cv_begin(240,72,C_FIELD);
         if (count==1) {
             if (!row) v6_cell(&current,pad,0,0,240);
-            else v6_single_range(&current,pad,first);
+            else v6_single_range(&current,pad,v6_param(pad,first));
         } else if (count==2 || (count==3 && !row)) {
             v6_cell(&current,pad,row,0,240);
         } else {
@@ -10459,7 +10472,7 @@ static void speak(void)                   /* a screen reader that has just start
             text_cat(t,page);
             v6_append_tom_pitch(t," PITCH ",pad,&current);
             for (int k=0; k<4; ++k) {
-                int param = 4*ui.epage+k;
+                int param = v6_param(pad, 4*ui.epage+k);
                 if (!kit_param_spec(pad,param)) break;
                 char key[] = " K1 ", text[24];
                 key[2] += (char)k;

@@ -1,0 +1,115 @@
+# The DrumEngine's voice pages (EDIT on the drum track, a pad picked): K1 turns a sound on every drum, never a choice
+# that steps through what the presets do. A voice's choices (MODEL, PROFILE, MODE) come after its sound's knobs
+# (app.c v6_param); its presets stay on SELECT, the kit on PRESETS. Also draws every voice's pages (the screen's
+# refresh holds 8 values: the kick's and PERC's 8 once wrote past it).
+#   tools/build.py ../../app --host, then  app/build/host/ghettomachine_host app/tests/drum_voice_knobs.txt OUTDIR
+listen
+wait 300
+expect demode 1
+turn ALGO -3
+wait 50
+# the kick: BODY TUNE first, as before (no choices)
+key 1 down
+wait 20
+key 1 up
+tap EDIT
+wait 100
+turn K1 1
+wait 100
+said Body tune
+# the snare: TUNE on K1, WIRE on K4; MODEL on page 2 (after TONE and DRIVE)
+tap SEQ
+key 3 down
+wait 20
+key 3 up
+tap EDIT
+wait 100
+turn K1 1
+wait 100
+said Tune
+unsaid Model
+turn K4 1
+wait 100
+said Wire
+tap EDIT
+wait 100
+turn K3 1
+wait 100
+said Model Hard
+turn SELECT 1
+wait 100
+said SNARE
+# the clap: SPREAD on K1
+tap SEQ
+key 5 down
+wait 20
+key 5 up
+tap EDIT
+wait 100
+turn K1 1
+wait 100
+said Spread
+unsaid Model
+# a tom: TUNE on K1
+tap SEQ
+key 8 down
+wait 20
+key 8 up
+tap EDIT
+wait 100
+turn K1 1
+wait 100
+said Tune
+unsaid Model
+# the closed hat: DECAY on K1, PROFILE alone on page 2
+tap SEQ
+key 15 down
+wait 20
+key 15 up
+tap EDIT
+wait 100
+turn K1 1
+wait 100
+said Decay
+unsaid Profile
+tap EDIT
+wait 100
+turn K1 1
+wait 100
+said Profile High
+# the cymbal: DECAY on K1; MODE (its presets' names) and PROFILE on page 2
+tap SEQ
+key 20 down
+wait 20
+key 20 up
+tap EDIT
+wait 100
+turn K1 1
+wait 100
+said Decay
+unsaid Ride
+tap EDIT
+wait 100
+turn K1 1
+wait 100
+said Mode Ride
+# PERC 1: TUNE on K1; SWEEP and SPEED, then TONE, DRIVE, MODEL on page 2
+tap SEQ
+key 22 down
+wait 20
+key 22 up
+tap EDIT
+wait 100
+turn K1 1
+wait 100
+said Tune
+unsaid Model
+tap EDIT
+wait 100
+turn K4 1
+wait 100
+said Model B FM pair
+# the screen reader reads the knobs in the same order (page 2: SPEED, TONE, DRIVE, MODEL)
+where
+wait 100
+said K4 B FM pair
