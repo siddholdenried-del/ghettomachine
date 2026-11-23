@@ -10432,7 +10432,7 @@ static void speak(void)                   /* a screen reader that has just start
                 text_cat(t, u);
             }
             if (ui.trk == TR_DRUM) {
-                text_cat(t, ". MUTED");
+                text_cat(t, dcur()->mute ? ". MUTED" : ". NO LANES MUTED");
                 for (k = 0; k < NPADS; k++)
                     if (dcur()->mute >> k & 1u) {
                         text_cat(t, " ");

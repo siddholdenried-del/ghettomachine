@@ -77,6 +77,9 @@ wait 30
 expect mix1_0 110
 expect mix3_0 100
 expect playing 1
+where
+wait 100
+said NO LANES MUTED
 # ---- the drums: a white key a lane's mute. The cymbal struck, muted while it rings: its audio fades, the hit before
 # it and one struck while muted go on underneath; let go, the tail still ringing comes back
 midi 9F 2C 7F
