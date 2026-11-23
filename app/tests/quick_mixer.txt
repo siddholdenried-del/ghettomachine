@@ -1,0 +1,233 @@
+# HOME's PATTERNS and QUICK MIXER (0.5): HOME opens PATTERNS, again the QUICK MIXER, then SONG and SETUP as before.
+# PATTERNS shows the pattern playing and the one to come apart; the change at the bar as it was. QUICK MIXER: a track
+# key picks a track (one press: no mute, no stop); K1 LEVEL, K2 REVERB, K3 DELAY, K4 PAN are the mixer's own values;
+# the black keys 5-11 the perform keys; on the drums the white keys mute lanes (their audio: the hits go on, so a tail
+# still ringing comes back); on T2-T4 white keys 1-4 are held moves (FILTER CLOSE, FILTER OPEN, VERB SPLASH, DELAY
+# THROW) on the track's own filter and sends, never saved, let go on leaving the page, another track or a stop.
+# Keys: black (track keys) 1 3 5 8 = DRUMS T2 T3 T4, 10 13 ... the perform keys; white 0 2 4 6 7 9 11 12 14 ... = 1..
+listen
+wait 300
+expect demode 1
+master 4096
+tap PLAY
+wait 100
+expect playing 1
+# ---- PATTERNS: playing 01; pattern 2 queued, shown apart, taken up at the bar (2 s at 120)
+tap HOME
+wait 30
+expect page 3
+where
+wait 100
+said PLAYING 01
+key 2 down
+wait 20
+key 2 up
+wait 30
+expect queued 2
+expect pat 1
+where
+wait 100
+said PLAYING 01 NEXT 02
+# ---- the QUICK MIXER: opening it doesn't touch playback or the queue
+tap HOME
+wait 30
+expect page 19
+expect playing 1
+expect queued 2
+wait 2200
+expect pat 2
+expect queued 0
+expect playing 1
+# a track key picks T3: one press, no mute, playback on
+key 5 down
+wait 20
+key 5 up
+wait 30
+expect trk 3
+expect tmute 0
+expect playing 1
+where
+wait 100
+said QUICK MIXER. LEVEL
+# its knobs: K1 LEVEL, K2 REVERB, K3 DELAY, K4 PAN, the mixer's own
+turn K1 -127
+turn K1 100
+turn K2 -127
+turn K2 20
+turn K3 -127
+turn K3 30
+turn K4 -127
+turn K4 64
+wait 30
+expect mix3_0 100
+expect mix3_2 20
+expect mix3_3 30
+expect mix3_1 64
+# another track picked: T3's values as they were (no jump, nothing overwritten); the drums' own
+key 1 down
+wait 20
+key 1 up
+wait 30
+expect trk 1
+expect mix3_0 100
+expect mix3_2 20
+turn K1 -127
+turn K1 110
+wait 30
+expect mix1_0 110
+expect mix3_0 100
+expect playing 1
+# ---- the drums: a white key a lane's mute. The cymbal struck, muted while it rings: its audio fades, the hit before
+# it and one struck while muted go on underneath; let go, the tail still ringing comes back
+midi 9F 2C 7F
+wait 60
+key 14 down
+wait 20
+key 14 up
+wait 60
+expect mute 256
+expect lanegate9 0
+where
+wait 100
+said MUTED CY
+# (lanepkN: the lane's peak out since last asked, dB; asking starts it again. The pattern never strikes the cymbal)
+expect lanepk9 >-999
+wait 100
+expect lanepk9 -200
+midi 9F 2C 7F
+wait 150
+expect lanepk9 -200
+expect mute 256
+key 14 down
+wait 20
+key 14 up
+wait 30
+expect mute 0
+expect lanegate9 1000
+expect lanepk9 >-30
+wait 200
+expect lanepk9 >-40
+expect playing 1
+# a white key past the lanes: nothing
+key 26 down
+wait 20
+key 26 up
+wait 30
+expect mute 0
+# ---- T3's moves: no notes, no saved setting changed
+key 5 down
+wait 20
+key 5 up
+wait 30
+expect trk 3
+# FILTER CLOSE held (white 1)
+key 0 down
+wait 60
+expect qmheld 1
+expect pcut3 -48
+expect voices3 0
+# FILTER OPEN held too: the last wins; let go while CLOSE is still down: CLOSE again
+key 2 down
+wait 60
+expect qmheld 3
+expect pcut3 48
+key 2 up
+wait 60
+expect pcut3 -48
+key 0 up
+wait 60
+expect qmheld 0
+expect pcut3 0
+# VERB SPLASH: the reverb send raised while held; K2 turned meanwhile is kept; the move isn't
+key 4 down
+wait 40
+expect prb3 1000
+turn K2 5
+wait 20
+expect mix3_2 25
+key 4 up
+wait 40
+expect prb3 0
+expect mix3_2 25
+# DELAY THROW: the delay send raised while held, back when let go (its repeats ring on in the delay)
+key 6 down
+wait 40
+expect pdb3 1000
+key 6 up
+wait 40
+expect pdb3 0
+expect mix3_3 30
+# white 5 on, on a synth track: nothing (no note, no move)
+key 7 down
+wait 30
+expect qmheld 0
+expect voices3 0
+key 7 up
+# with a roll (black 5, a perform key) held under a move
+key 10 down
+wait 30
+expect pfon >0
+key 0 down
+wait 60
+expect pcut3 -48
+key 0 up
+key 10 up
+wait 60
+expect pfon 0
+expect pcut3 0
+# ---- held moves let go: on leaving the page...
+key 0 down
+key 4 down
+wait 40
+expect qmheld 5
+tap HOME
+wait 60
+expect page 11
+expect qmheld 0
+expect pcut3 0
+expect prb3 0
+key 0 up
+key 4 up
+wait 30
+expect qmheld 0
+expect voices3 0
+# ... on another track (back to the QUICK MIXER: SETUP, back, PATTERNS, QUICK MIXER)
+tap HOME
+wait 30
+tap HOME
+wait 30
+tap HOME
+wait 30
+tap HOME
+wait 30
+expect page 19
+key 0 down
+wait 40
+expect qmheld 1
+key 8 down
+wait 20
+key 8 up
+wait 60
+expect trk 4
+expect qmheld 0
+expect pcut3 0
+key 0 up
+wait 30
+# ... and on a stop
+key 5 down
+wait 20
+key 5 up
+key 0 down
+wait 40
+expect qmheld 1
+tap PLAY
+wait 60
+expect playing 0
+expect qmheld 0
+expect pcut3 0
+key 0 up
+wait 30
+expect mix3_0 100
+expect mix3_2 25
+expect mix3_3 30
+expect mix3_1 64

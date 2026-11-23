@@ -10,7 +10,8 @@ GhettoMachine, part of the BongWare firmware line engineered by BongTech, turns 
 - **A mixer**, a reverb, a tempo delay, and **a master bus with a mastering chain**: EQ, compressor, tape saturation,
   stereo width and a limiter, with presets and a loudness meter.
 - **Made to be played live:** a scene grid (each track on its own pattern), seven perform keys (roll, fill, stutter,
-  filter, throw, wash, crush, plus tape stop), follow actions, sounds per pattern, tap tempo and MIDI clock.
+  filter, throw, wash, crush, plus tape stop), a quick mixer with drum lane mutes and held filter and send moves,
+  follow actions, sounds per pattern, tap tempo and MIDI clock.
 - **A deeper synth:** OSC 2 with its own wave, FM and ring modulation, a wave shaper (fold, clip, rectify, crush),
   analog drift, a third envelope, a second LFO for each note, a six-slot mod matrix and four macro knobs.
 - **A 303 pattern generator** on T2–T4: acid lines with slides and accents, made from a few knobs.
@@ -65,7 +66,7 @@ route still works for getting M-VAVE's firmware back.
 | **REC** | Tap: recording on or off (turn a knob while it's on and playing: the knob is recorded). Hold it: the metronome, count-in and quantize (below). |
 | **SEQ** | The steps. On T2–T4, press again for the 303 generator (ACID), again for the keys. |
 | **EDIT, ENV, LFO, ARP, FX, GLO** | Their pages. Press again for the next page; after the last, back. |
-| **HOME** | The scene grid, for playing live. Again: the song, then SETUP, then back to the track. |
+| **HOME** | PATTERNS, the scene grid, for playing live. Again: the QUICK MIXER, then the song, then SETUP, then back to the track. None of them stops or re-times what's playing. |
 | **SEL + GLO** | The master bus, at once. |
 | **SEL + FX (T2–T4)** | The selected instrument track's insert; SELECT chooses a mode or OFF. |
 | **SAVE** | Tap: save the project. Hold it and press a pattern key: copy the pattern there. Hold it and turn PRESETS: save a preset. Hold it and press OCT−: the track's sound back to how it was saved. |
@@ -97,7 +98,7 @@ monospace face. Three parts, top to bottom:
   does, its value and a gauge in the section's colour. Two-way knobs (pan, EQ, depth) fill from the middle; switches
   show a step each. The cell you're turning turns **violet**. A **locked** value is pale violet with an **L**. A cell
   on the bare canvas with a green gauge is a reading, not a knob (the compressor's reduction, the stereo phase).
-- **HOME** also shows the processor's load (CPU) and the voices sounding.
+- **PATTERNS** (HOME) also shows the processor's load (CPU) and the voices sounding.
 
 ## The drum track
 
@@ -119,7 +120,7 @@ monospace face. Three parts, top to bottom:
   the 808 played a groove about 12 dB quieter). The 808's accent is stronger than the 909's, as on a real 808: about
   6 dB against 3; the KIT page's Accent sets it.
   - Hold a step and turn a knob: that value for that step only (a lock). Held step + OCT− clears its locks.
-- **ENV:** the LANE MUTE page. Tap a black pad key to toggle that drum lane in this pattern, or hold **ENV** and tap a pad from the drum editor. The grid shows each lane as ON or MUTE. OCT+ unmutes them all. Muting cuts a ringing hit immediately; unmuting waits for a new hit.
+- **ENV:** the LANE MUTE page. Tap a black pad key to toggle that drum lane in this pattern, or hold **ENV** and tap a pad from the drum editor. The grid shows each lane as ON or MUTE. OCT+ unmutes them all. With the DrumEngine (the default) a lane mute is the lane's sound only: it fades out in 1.5 ms and its hits go on underneath, so unmuting brings back a tail that's still ringing. (On the stock 808/909 engine a mute stops the lane's hits, and unmuting waits for the next one.) The QUICK MIXER's white keys are the same mutes.
 - **Knobs on the steps page:** LENGTH and RATE of this track's part, SWING and TEMPO.
 
 Hold **SEQ** and tap **OCT+** to repeat the selected track’s part into a second half, or **OCT−** to keep its first half (rounding an odd length down). This copies notes, accents, chance and locks without changing the track’s rate. The second half is erased on halving. A full repeat is blocked if it would exceed 128 steps or the part’s lock capacity. **EDIT + OCT−** undoes, **EDIT + OCT+** redoes. On instrument STEPS, black keys 1–8 pick the available banks of 16.
@@ -361,7 +362,8 @@ Turning a knob without recording on, or stopped, only changes the sound.
 
 ## Mixer, FX and the master bus
 
-- **GLO, the mixer:** LEVEL, PAN, REVERB, DELAY pages. On each, K1–K4 are DRUMS, T2, T3, T4. The drums' sends open the
+- **GLO, the mixer:** LEVEL, PAN, REVERB, DELAY pages. On each, K1–K4 are DRUMS, T2, T3, T4. The QUICK MIXER (HOME,
+  twice) has one track's LEVEL, REVERB, DELAY and PAN on K1–K4 instead. The drums' sends open the
   FX to their pads' own reverb and delay knobs.
 - **FX:** one shared **BongVerb** and one shared **BongDelay**. Each track's REVERB and DELAY sends feed them; their
   returns join the dry tracks before **BongMaster**, and never go back into a send.
@@ -439,11 +441,13 @@ once. Each stem is one track as it comes into the mix:
   master pair, or use the DAW's own click.
 - **16 bits** a channel: USB at the FM-1's speed carries ten channels at 44.1 kHz with 16 bits each, and no more.
 
-## HOME: the scene grid
+## HOME: PATTERNS, the scene grid
 
-HOME is for playing live. The screen is a grid: **16 patterns across** (the white keys), **a track a row** (DR, T2,
+HOME is for playing live. Its first page, **PATTERNS**, is a grid: **16 patterns across** (the white keys), **a track a row** (DR, T2,
 T3, T4, the pad keys 1–4). Each track plays its own pattern, its **clip**, so you can mix the drums of pattern 3 with the
-bass of pattern 7. The playing clip is solid with a bar showing where it is; a clip waiting to start blinks.
+bass of pattern 7. The playing clip is solid with a bar showing where it is; a clip waiting to start blinks. The band
+reads **PLAYING 01** (PATTERN 01 when stopped) and, while another pattern waits for its turn, **NEXT 02** beside it,
+its number blinking violet in the header; it starts when it always has (LAUNCH, below).
 
 | On HOME | What it does |
 | --- | --- |
@@ -452,13 +456,16 @@ bass of pattern 7. The playing clip is solid with a bar showing where it is; a c
 | **Hold a track key + OCT−** | That track stops (at the bar). Start it again with a clip. |
 | **Tap a track key** | Mute or unmute it. |
 | **Hold a track key + OCT+** | **Solo** it; again to go back to how the mutes were. |
-
-Track and lane mutes cut their internal voices and new sends immediately, including held notes. Unmuting waits for a new hit or note. Sound already in the shared reverb/delay or performance loop decays or releases naturally; muting does not flush effects used by the other tracks.
 | **Hold a white key + K1 / K2** | That scene's **follow action** and after how many bars (below). |
 | **Black keys 5–11, held** | The **perform keys** (below). |
 | **Hold OCT+** | TAPE STOP. |
 | **Tap OCT−** | **Tap tempo:** two taps or more, the tempo follows them. |
 | **SEL + SELECT** while playing | **Nudge:** the whole groove 5 ms later or earlier a detent, to line up with a record or another machine. |
+
+A track mute cuts the track's voices and new sends at once, held notes included; unmuting waits for a new hit or note.
+A drum lane mute (the QUICK MIXER's white keys, the drums' ENV page) is the lane's sound only, with the DrumEngine: its
+hits go on silently, so unmuting brings back a tail still ringing. Sound already in the shared reverb and delay or a
+perform loop rings out either way; muting never empties the effects the other tracks use.
 
 Whatever you edit (steps, notes, locks) is the clip the track is on: SEQ, EDIT and the rest go to the track's clip,
 not to "the pattern". The pattern number in the band is the last scene picked.
@@ -490,9 +497,36 @@ Hold one and it works; let go and the sound is as it was. **K1 while you hold it
 
 STUTTER and TAPE STOP borrow the delay's memory, so the delay's tail is gone while they're held.
 
+## HOME again: the QUICK MIXER
+
+Press HOME on PATTERNS. One track's mix on the four knobs, with the pattern playing on: opening it, picking a track or
+using a key here never stops, restarts or re-times playback.
+
+| On the QUICK MIXER | What it does |
+| --- | --- |
+| **A track key** (pad keys 1–4) | Picks DRUMS, T2, T3 or T4 to edit. One press: no mute. The screen and the readout show its values at once. |
+| **K1 LEVEL · K2 REVERB · K3 DELAY · K4 PAN** | Always these four, the mixer's own values (the same as on GLO). A knob moves on from the value the track has, so picking another track never jumps or overwrites a level. |
+| **Black keys 5–11, held** | The perform keys, as on PATTERNS (ROLL, FILL...). |
+| **On the drums: white keys 1–11** | Mute or unmute that drum lane (BD, SD, LT... in pad order). Muted lanes are drawn dark and named in the readout ("MUTED CY"). With the DrumEngine the mute is the lane's sound only: its hits go on, so a tail still ringing comes back when you unmute. These are the pattern's lane mutes, the ENV page's. |
+| **On T2–T4: white keys 1–4, held** | The moves, below. White keys 5–16 do nothing here. |
+
+The moves, held, on the selected instrument track:
+
+| White key | Held |
+| --- | --- |
+| **1 FILTER CLOSE** | The track's own filter cutoff down by half its range: darker. |
+| **2 FILTER OPEN** | Its cutoff up as much: brighter. Hold both and the last one pressed wins; let it go while the other is down and the other takes over. |
+| **3 VERB SPLASH** | The track's reverb send raised (to 90 %, or left where it is if it's higher). |
+| **4 DELAY THROW** | Its delay send raised the same way. The repeats ring on after you let go. |
+
+They use the track's filter and the shared BongVerb and BongDelay, no new effects, and ramp in and out (about 15 ms)
+so they don't click. They play no notes and record nothing, even with REC on, and nothing about them is saved: let go
+and the track is at its settings as they are now, a knob turned while you held one included. Leaving the page, picking
+another track or stopping lets them all go, so a move never sticks or moves to another track. They work under a ROLL.
+
 ## The song
 
-Press HOME on the scene grid: up to 32 entries, each a pattern for 1–16 bars.
+Press HOME on the QUICK MIXER: up to 32 entries, each a pattern for 1–16 bars.
 
 - White keys set the cursor's entry and move on; at the end they add one.
 - SELECT moves the cursor. K1 changes the entry's pattern, K2 its bars, **K3 LAUNCH** (above), K4 turns SONG on or off.

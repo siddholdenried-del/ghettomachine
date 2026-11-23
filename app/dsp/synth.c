@@ -393,7 +393,13 @@ static int32_t acc_t[2][SYN_CTL];
 static uint8_t used_m[2][SYN_TRACKS], used_lr[2][SYN_TRACKS];
 static struct {
     float pl, pr, rs, ds;                 /* the track's pan gains and its sends */
+    float rb, db, rb_to, db_to;           /* a held move's send boosts now and where they go (syn_perform), 0..1 */
 } mix[SYN_TRACKS];
+/* a held move's cutoff offset now and where it goes (syn_perform), 1/256 cutoff steps; slewed a control block at a time */
+static float pcut[SYN_TRACKS], pcut_to[SYN_TRACKS];
+#define PF_CUT_STEP (96.0f * 256.0f / 40.0f)   /* the offset's slew a control block: 96 steps in about 29 ms */
+#define PF_SEND_STEP (1.0f / 24.0f)       /* a boost's a control block: all the way in about 17 ms, a sample at a time */
+#define PF_SEND_TOP 0.9f                  /* a boost's send: the track's own raised toward this */
 
 static void push(int t)                   /* the track's sound -> the engine's parameters */
 {
@@ -497,6 +503,8 @@ void syn_init(void)
         tk[t].level = 0.8f;
         mix[t].pl = mix[t].pr = 1.0f;
         mix[t].rs = mix[t].ds = 0.0f;
+        mix[t].rb = mix[t].db = mix[t].rb_to = mix[t].db_to = 0.0f;
+        pcut[t] = pcut_to[t] = 0.0f;
         xm_scan(t);
         push(t);
     }
@@ -541,6 +549,23 @@ GM_INLINE void render_voice(int i, int32_t *out)
     const track_t *tp = vx[i].usep ? &vx[i].pv : &trk[t];   /* the matrix moved some of its parameters: its own */
     analog_render((track_t *)tp, &vv[i], out, SYN_CTL, &vx[i].m);   /* (ENG_ANALOG.render, called directly: RAM code
                                                                      * calls no pointer) */
+}
+
+void syn_perform(int t, int cut, float rev, float dly)
+{
+    if (t < 1 || t >= SYN_TRACKS)
+        return;
+    pcut_to[t] = (float)clamp(cut, -127, 127) * 256.0f;
+    mix[t].rb_to = rev < 0.0f ? 0.0f : rev > 1.0f ? 1.0f : rev;
+    mix[t].db_to = dly < 0.0f ? 0.0f : dly > 1.0f ? 1.0f : dly;
+}
+
+int syn_perform_now(int t, int what)       /* a held move now (the tests): 0 the cutoff offset in steps, 1 2 the boosts x 1000 */
+{
+    if (t < 1 || t >= SYN_TRACKS)
+        return 0;
+    return what == 0 ? (int)(pcut[t] / 256.0f + (pcut[t] < 0.0f ? -0.5f : 0.5f))
+                     : (int)((what == 1 ? mix[t].rb : mix[t].db) * 1000.0f + 0.5f);
 }
 
 void syn_mixer(int t, int pan, float rev, float dly)
@@ -964,8 +989,13 @@ void syn_split(int share0_q8) { split_q8 = share0_q8 < 0 ? 0 : share0_q8 > 256 ?
 void syn_prepare(void)
 {
     int i, h = 0, deal = 128;
-    for (i = 1; i < SYN_TRACKS; i++)
+    for (i = 1; i < SYN_TRACKS; i++) {
         push_mod(i);
+        if (pcut[i] != pcut_to[i]) {      /* a held move's cutoff, slewed (syn_perform) */
+            const float d = pcut_to[i] - pcut[i];
+            pcut[i] = d > PF_CUT_STEP ? pcut[i] + PF_CUT_STEP : d < -PF_CUT_STEP ? pcut[i] - PF_CUT_STEP : pcut_to[i];
+        }
+    }
     for (i = 0; i < NVOICE; i++) {
         voice_t *v = &vv[i];
         vx_t *x = &vx[i];
@@ -1068,6 +1098,8 @@ void syn_prepare(void)
         else if (tk[t].mdest == SM_PWM)
             x->m.shape = clamp(x->m.shape + (int32_t)(tk[t].mlfo * tk[t].mdepth * (63.0f * 256.0f)), 0,
                                127 << 8);
+        if (pcut[t] != 0.0f)              /* a held FILTER CLOSE / OPEN (syn_perform) */
+            x->m.cutoff += (int32_t)pcut[t];
         if (acc[MD_CUTOFF] != 0.0f)
             x->m.cutoff += (int32_t)(acc[MD_CUTOFF] * (127.0f * 256.0f));
         if (s[SP_DRIFT])
@@ -1194,17 +1226,45 @@ GM_RAM void syn_mix_repack(float *l, float *r, float *rev, float *dly)
     int k, t;
     for (k = 0; k < SYN_CTL; k++)
         l[k] = r[k] = rev[k] = dly[k] = 0.0f;
-    for (t = 1; t < SYN_TRACKS; t++)
+    for (t = 1; t < SYN_TRACKS; t++) {
+        /* a held VERB SPLASH / DELAY THROW (syn_perform): the send raised toward PF_SEND_TOP by the boost, ramped a
+         * sample at a time; let go, back to the track's own (as it is now) */
+        const float rb0 = mix[t].rb, db0 = mix[t].db;
+        float rb1 = rb0, db1 = db0;
+        if (rb1 != mix[t].rb_to)
+            rb1 = mix[t].rb_to > rb1 ? (rb1 + PF_SEND_STEP < mix[t].rb_to ? rb1 + PF_SEND_STEP : mix[t].rb_to)
+                                     : (rb1 - PF_SEND_STEP > mix[t].rb_to ? rb1 - PF_SEND_STEP : mix[t].rb_to);
+        if (db1 != mix[t].db_to)
+            db1 = mix[t].db_to > db1 ? (db1 + PF_SEND_STEP < mix[t].db_to ? db1 + PF_SEND_STEP : mix[t].db_to)
+                                     : (db1 - PF_SEND_STEP > mix[t].db_to ? db1 - PF_SEND_STEP : mix[t].db_to);
+        mix[t].rb = rb1;
+        mix[t].db = db1;
         if (trk_used >> t & 1u) {
             const float rs = mix[t].rs * (1.f/36000.f), ds = mix[t].ds * (1.f/36000.f);
             const float *tl = trk_l[t], *tr = trk_r[t], *ts = trk_send[t];
-            for (k = 0; k < SYN_CTL; k++) {
-                l[k] += tl[k];
-                r[k] += tr[k];
-                rev[k] += ts[k] * rs;
-                dly[k] += ts[k] * ds;
+            if (rb0 == 0.0f && rb1 == 0.0f && db0 == 0.0f && db1 == 0.0f) {   /* (no move: as it always was) */
+                for (k = 0; k < SYN_CTL; k++) {
+                    l[k] += tl[k];
+                    r[k] += tr[k];
+                    rev[k] += ts[k] * rs;
+                    dly[k] += ts[k] * ds;
+                }
+            } else {
+                const float rtop = (mix[t].rs > PF_SEND_TOP ? mix[t].rs : PF_SEND_TOP) * (1.f/36000.f) - rs;
+                const float dtop = (mix[t].ds > PF_SEND_TOP ? mix[t].ds : PF_SEND_TOP) * (1.f/36000.f) - ds;
+                const float rstep = (rb1 - rb0) * (1.f / (float)SYN_CTL), dstep = (db1 - db0) * (1.f / (float)SYN_CTL);
+                float rb = rb0, db = db0;
+                for (k = 0; k < SYN_CTL; k++) {
+                    rb += rstep;
+                    db += dstep;
+                    l[k] += tl[k];
+                    r[k] += tr[k];
+                    rev[k] += ts[k] * (rs + rtop * rb);
+                    dly[k] += ts[k] * (ds + dtop * db);
+                }
             }
         }
+    }
 }
 
 /* The tracks' voices (the halves' sums: centred voices in acc_m, unison voices off the centre in acc_l / acc_r) into

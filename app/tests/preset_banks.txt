@@ -105,6 +105,8 @@ wait 30
 expect page 3
 tap HOME
 wait 30
+tap HOME   # (past the QUICK MIXER, 0.5)
+wait 30
 expect page 11
 tap HOME
 wait 30

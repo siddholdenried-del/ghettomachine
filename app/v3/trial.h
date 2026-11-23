@@ -14,6 +14,12 @@ void trial_hit(unsigned pad1, float velocity);
 void trial_hit_moved(unsigned pad1, float velocity, int param, float move);
 /* A pad muted while it sounds: its sound fades out in 1.5 ms and stays out until it strikes again */
 void trial_cut(unsigned pad1);
+/* a lane's audio muted (1) or not (0): its hits go on (the voices sound underneath), the lane fades out and back in */
+void trial_mute(unsigned pad1, int on);
+int trial_lane_gate(unsigned pad1);      /* its gate now, thousandths (the tests) */
+#ifdef PLAT_HOST
+int trial_lane_peak(unsigned pad1);      /* its peak out since last asked, dB, -200 silent (the tests; resets) */
+#endif
 /* A factory recipe's level trim, tenths of a dB (v3/levels.inc) */
 int trial_trim_db10(unsigned pad1, unsigned recipe);
 /* 1 kick preset, 2 cymbal mode, 3 Perc A mode, 4 Perc B mode. */

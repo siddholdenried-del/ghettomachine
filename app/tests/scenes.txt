@@ -105,6 +105,8 @@ expect clip4 1
 # ---- LAUNCH NOW (SONG page, K3): a clip starts at once
 tap HOME
 wait 30
+tap HOME   # (past the QUICK MIXER, 0.5)
+wait 30
 expect page 11
 spin K3 2
 wait 30
@@ -146,6 +148,8 @@ wait 30
 expect clip2 1
 expect clip3 1
 tap HOME
+wait 30
+tap HOME   # (past the QUICK MIXER, 0.5)
 wait 30
 expect page 11
 spin K3 -2

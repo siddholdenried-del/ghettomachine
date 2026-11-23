@@ -447,14 +447,26 @@ static int drum_lane_muted(int pad)
 {
     return track_is_muted(TR_DRUM) || (dcur()->mute >> pad & 1u);
 }
+/* a pad's hits held back: the drums' track muted; a lane muted, with the stock engine only (with the DrumEngine a lane's
+ * mute is its audio: its hits go on underneath, so letting the mute go brings back a tail still ringing: trial_mute) */
+static int drum_hits_off(int pad)
+{
+    return track_is_muted(TR_DRUM) || (!v3_mode && (dcur()->mute >> pad & 1u));
+}
 
 /* Same lock as the DSP: refresh after a pattern/FILL change as well as the UI.
  * Only rising edges cut a voice. Turning a mute off cannot resume a tail. */
 static void sync_drum_mutes(void)
 {
     uint16_t mask = track_is_muted(TR_DRUM) ? (uint16_t)((1u << NPADS) - 1u) : dcur()->mute;
-    uint16_t cut = mask & (uint16_t)~drum_mutes_applied;
+    uint16_t cut;
     int pad;
+    if (v3_mode) {                        /* the DrumEngine: the lanes' mutes are their audio; only the track's cuts */
+        for (pad = 0; pad < NPADS; pad++)
+            trial_mute((unsigned)pad + 1u, (int)(dcur()->mute >> pad & 1u));
+        mask = track_is_muted(TR_DRUM) ? (uint16_t)((1u << NPADS) - 1u) : 0u;
+    }
+    cut = mask & (uint16_t)~drum_mutes_applied;
     if (mask == drum_mutes_applied)
         return;
     drum_mutes_applied = mask;
@@ -498,7 +510,7 @@ static int drum_lfo_moved;                /* the last hit's move by the drums' L
                                            * (0: not moved; tests) */
 static void pad_fire(int pad, float vel)
 {
-    if (pad < 0 || pad >= NPADS || drum_lane_muted(pad))
+    if (pad < 0 || pad >= NPADS || drum_hits_off(pad))
         return;
     drum_lfo_moved = 0;
     if (v3_mode) {                        /* the drums' LFO on one of this pad's controls: moved for this hit */
@@ -2149,7 +2161,7 @@ static void seq_drum(void)                /* audio interrupt: the drum part's ne
         next = 0;
     sq.t[TR_DRUM].step = next;
     for (pad = 0; pad < NPADS && !(perf.on >> PF_ROLL & 1u); pad++) {   /* (ROLL: silent underneath) */
-        if (!bit_get(p->hit[pad], next) || (p->mute >> pad & 1u))
+        if (!bit_get(p->hit[pad], next) || (!v3_mode && (p->mute >> pad & 1u)))   /* (DrumEngine: audio, drum_hits_off) */
             continue;
         if (sq.skip_once[pad] == next) {
             sq.skip_once[pad] = -1;
@@ -2397,10 +2409,13 @@ static void seq_start(void)
     plat_unlock(f);
 }
 
+static void qm_clear(void);              /* (the QUICK MIXER's held moves: below) */
 static void seq_stop(void)
 {
-    uint32_t f = plat_lock();
+    uint32_t f;
     int t;
+    qm_clear();                           /* (a stop lets the QUICK MIXER's held moves go) */
+    f = plat_lock();
     if (sq.playing && (proj.recq >> 2 & 3u) == 1u)   /* MIDI CLOCK sent: Stop */
         plat_midi_send(0x0Fu | 0xFCu << 8, TO_USB);
     sq.playing = 0;
@@ -3859,9 +3874,10 @@ static void undo_step(int redo)
 
 /* ------------------------------------------------------------------------ UI --- */
 enum { PG_SEQ, PG_EDIT, PG_MUTE, PG_HOME, PG_KIT, PG_KEYS, PG_ENV, PG_LFO, PG_ARP, PG_MIX, PG_FX, PG_SONG, PG_MST, PG_SETUP,
-       PG_GEN, PG_PICK, PG_COLOR = 17, PG_V3_BUS };
+       PG_GEN, PG_PICK, PG_COLOR = 17, PG_V3_BUS, PG_QMIX };
 static const char *const PAGE_NAME[] = {"STEPS", "EDIT", "MUTE", "PATTERNS", "KIT", "KEYS", "ENV", "LFO", "ARP", "MIXER",
-                                        "FX", "SONG", "MASTER", "SETUP", "ACID", "PICK NOTES", "", "COLOR", "DrumEngine BUS"};
+                                        "FX", "SONG", "MASTER", "SETUP", "ACID", "PICK NOTES", "", "COLOR", "DrumEngine BUS",
+                                        "QUICK MIXER"};
 static const char *const V3_BUS_LABEL[] = {"SATURATOR", "COMPRESSOR", "TRANSIENT", "LIMITER"};
 static const char *const V3_MODE_LABEL[] = {"STOCK", "DRY", "BUS"};
 #define NGENPAGE 3                        /* the 303 generator's (SEQ after STEPS, T2..T4): ACID, NOTES, LINE (SELECT) */
@@ -4140,7 +4156,7 @@ static void pad_play(int pad, uint32_t vel)   /* a pad played by hand: heard, se
 {
     float v = vel >= 127u ? 1.0f : (float)vel / 127.0f;
     uint32_t f = plat_lock();
-    if (!drum_lane_muted(pad)) {
+    if (!drum_hits_off(pad)) {
         locks_apply(dcur(), -1, pad);     /* no step's locks; the drums' LFO, if it moves this pad */
         pad_fire(pad, v);
         if (pad == 0)
@@ -5632,9 +5648,8 @@ static void mix_text(int t, int page, char *s)
     }
 }
 
-static void mix_knob(int k, int32_t e)    /* the mixer: K1..K4 are the drums, T2, T3 and T4 */
+static void mix_turn(int t, int page, int32_t e)   /* track t's mixer value page (0 LEVEL 1 PAN 2 REVERB 3 DELAY) */
 {
-    int t = k, page = ui.mixpage;
     char s[12], u[24];
     uint32_t f = plat_lock();
     if (page == 0 && t == TR_DRUM) {
@@ -5656,6 +5671,80 @@ static void mix_knob(int k, int32_t e)    /* the mixer: K1..K4 are the drums, T2
     text_cat(u, " ");
     text_cat(u, MIX_NAME[page]);
     app_say(u, s);
+}
+
+static void mix_knob(int k, int32_t e)    /* the mixer: K1..K4 are the drums, T2, T3 and T4 */
+{
+    mix_turn(k, ui.mixpage, e);
+}
+
+/* ---- the QUICK MIXER (HOME, then HOME again): the track picked (a track key: one press), its K1 LEVEL, K2 REVERB,
+ * K3 DELAY, K4 PAN (the mixer's own values: mix_turn); the perform keys (black 5-11) as on PATTERNS. Its white keys:
+ * on the drums the lanes' mutes (their audio: drum_hits_off), on T2-T4 the first four held moves on the track's own
+ * filter and sends (syn_perform: never saved, no notes, no automation), let go on leaving the page, another track or
+ * a stop (qm_clear) so nothing sticks or moves to another track */
+enum { QM_CLOSE, QM_OPEN, QM_SPLASH, QM_THROW, QM_MOVES };
+static const char *const QM_NAME[QM_MOVES] = {"FILTER CLOSE", "FILTER OPEN", "VERB SPLASH", "DELAY THROW"};
+static const uint8_t QM_PAGE[4] = {0, 2, 3, 1};   /* K1..K4: the mixer's LEVEL, REVERB, DELAY, PAN */
+static const char *const QM_KNOB[4] = {"LEVEL", "REVERB", "DELAY", "PAN"};
+#define QM_CUT 48                         /* FILTER CLOSE / OPEN: cutoff steps down / up */
+static struct {
+    uint8_t held;                         /* the moves' keys down (a bit each) */
+    uint8_t last_filt;                    /* the filter key pressed last (QM_CLOSE, QM_OPEN): it wins */
+    int8_t trk;                           /* the track they're on (-1: none) */
+} qm = {0, 0, -1};
+
+static void qm_apply(void)                /* the held moves -> the synth (ramped there) */
+{
+    int cut = 0;
+    uint32_t f;
+    if (qm.trk < 1)
+        return;
+    if ((qm.held >> QM_CLOSE & 1u) && (qm.held >> QM_OPEN & 1u))
+        cut = qm.last_filt == QM_OPEN ? QM_CUT : -QM_CUT;
+    else if (qm.held >> QM_CLOSE & 1u)
+        cut = -QM_CUT;
+    else if (qm.held >> QM_OPEN & 1u)
+        cut = QM_CUT;
+    f = plat_lock();
+    syn_perform(qm.trk, cut, (qm.held >> QM_SPLASH & 1u) ? 1.0f : 0.0f, (qm.held >> QM_THROW & 1u) ? 1.0f : 0.0f);
+    plat_unlock(f);
+    ui.redraw = 1;
+}
+
+static void qm_clear(void)                /* every held move let go (they ramp back to the track's own) */
+{
+    if (qm.held && qm.trk >= 1) {
+        qm.held = 0;
+        qm_apply();
+    }
+    qm.held = 0;
+    qm.trk = -1;
+}
+
+static void qm_move(int m, int down)      /* a white key 1-4 on the QUICK MIXER, T2-T4: its move held or let go */
+{
+    if (down) {
+        if (ui.trk == TR_DRUM)
+            return;
+        if (qm.trk != ui.trk)
+            qm_clear();
+        qm.trk = (int8_t)ui.trk;
+        qm.held |= (uint8_t)(1u << m);
+        if (m == QM_CLOSE || m == QM_OPEN)
+            qm.last_filt = (uint8_t)m;
+        app_say(QM_NAME[m], "");
+    } else {
+        if (!(qm.held >> m & 1u))         /* (let go already: the page left, another track, a stop) */
+            return;
+        qm.held &= (uint8_t)~(1u << m);   /* (the other filter key still down: it again) */
+    }
+    qm_apply();
+}
+
+static void qm_knob(int k, int32_t e)
+{
+    mix_turn(ui.trk, QM_PAGE[k], e);
 }
 
 static void fx_text(int i, char *s)
@@ -5829,11 +5918,13 @@ static void track_pick(int tr)
 {
     tr = clamp(tr, 0, NTRK - 1);
     if (tr != ui.trk) {
+        qm_clear();                       /* (the QUICK MIXER's held moves: not carried to another track) */
         if (ui.page == PG_PICK)
             pick_leave();
         /* between the drums and an instrument track: the track's own page (its keys play), unless on EDIT or
          * HOME; between instrument tracks the page stays */
-        if ((tr == TR_DRUM) != (ui.trk == TR_DRUM) && ui.page != PG_EDIT && ui.page != PG_HOME && ui.page != PG_LFO &&
+        if ((tr == TR_DRUM) != (ui.trk == TR_DRUM) && ui.page != PG_EDIT && ui.page != PG_HOME && ui.page != PG_QMIX &&
+            ui.page != PG_LFO &&
             ui.page != PG_MIX && ui.page != PG_FX && ui.page != PG_SONG && ui.page != PG_MST && ui.page != PG_SETUP)
             ui.page = (uint8_t)home_page(tr);
         keys_let_go();
@@ -6839,6 +6930,11 @@ static void knob(int k, int32_t e)        /* KNOB 1..4 (k 0..3) on the page show
         ui.redraw = 1;
         return;
     }
+    if (ui.page == PG_QMIX) {             /* the QUICK MIXER: the track picked's level, sends and pan */
+        qm_knob(k, e);
+        ui.redraw = 1;
+        return;
+    }
     if (ui.page == PG_HOME && ui.scene_key >= 0) {   /* a scene key held: its follow action */
         follow_knob(ui.scene_key, k, e);
         ui.redraw = 1;
@@ -7117,8 +7213,8 @@ static void input(void)
             ui.page = PG_KEYS;
         }
     }
-    if (pressed >> B_HOME & 1u)           /* HOME: the patterns, then the song, then back */
-        ui.page = (uint8_t)(ui.page == PG_HOME ? PG_SONG : ui.page == PG_SONG ? PG_SETUP
+    if (pressed >> B_HOME & 1u)           /* HOME: the patterns, the quick mixer, the song, SETUP, then back */
+        ui.page = (uint8_t)(ui.page == PG_HOME ? PG_QMIX : ui.page == PG_QMIX ? PG_SONG : ui.page == PG_SONG ? PG_SETUP
                             : ui.page == PG_SETUP ? home_page(ui.trk) : PG_HOME);
     if (pressed >> B_GLO & 1u) {          /* the mixer: LEVEL, PAN, REVERB, DELAY; the master bus's pages; then back */
         if (btn >> B_REC & 1u) {          /* REC + GLO: the track's part erased, to record again */
@@ -7251,6 +7347,10 @@ static void input(void)
     kr = ~keys & ui.keys;
     for (k = 0; k < 16u; k++) {           /* white keys */
         uint32_t key = WK[k], bit = 1u << key;
+        if ((kr & bit) && k < QM_MOVES && (qm.held >> k & 1u)) {   /* a QUICK MIXER move let go */
+            qm_move((int)k, 0);
+            continue;
+        }
         if (kr & bit) {
             if (ui.scene_key == (int)k) {
                 ui.scene_key = -1;
@@ -7272,6 +7372,13 @@ static void input(void)
             pattern_copy_to((int)k);
         } else if (ui.page == PG_SONG) {
             song_key((int)k);
+        } else if (ui.page == PG_QMIX) {   /* the drums: a lane's mute; T2-T4: keys 1-4 the moves, the rest nothing */
+            if (!inst) {
+                if ((int)k < NPADS)
+                    mute_toggle((int)k);
+            } else if (k < QM_MOVES) {
+                qm_move((int)k, 1);
+            }
         } else if (ui.page == PG_HOME) {
             int tk = home_trkkey();
             if (tk >= 0) {                /* a track key held: that track's clip */
@@ -7320,6 +7427,14 @@ static void input(void)
             ui.sel_used = 1;
             track_pick((int)k);
             inst = ui.trk != TR_DRUM;
+        } else if (ui.page == PG_QMIX) {  /* a track key: that track picked (one press); 5-11: the perform keys */
+            if (k < NTRK) {
+                track_pick((int)k);
+                inst = ui.trk != TR_DRUM;
+                ui.redraw = 1;
+            } else if (k - NTRK < NPF) {
+                pf_press((int)k - NTRK);
+            }
         } else if (ui.page == PG_HOME) {  /* a track key: held, a modifier (a clip, OCT- stop); tapped, mute */
             if (k < NTRK) {
                 ui.tkey_down |= (uint8_t)(1u << k);
@@ -7540,7 +7655,8 @@ static void lights(void)
     if (ui.page != PG_KEYS)
         b |= 1u << (ui.page == PG_SEQ || ui.page == PG_GEN || ui.page == PG_PICK ? B_SEQ : ui.page == PG_EDIT ? B_EDIT : ui.page == PG_MUTE || ui.page == PG_ENV ? B_ENV
                     : ui.page == PG_LFO ? B_LFO : ui.page == PG_ARP ? B_ARP : ui.page == PG_FX || ui.page == PG_COLOR || ui.page == PG_V3_BUS ? B_FX
-                    : ui.page == PG_HOME || ui.page == PG_SONG || ui.page == PG_SETUP ? B_HOME : B_GLO);
+                    : ui.page == PG_HOME || ui.page == PG_QMIX || ui.page == PG_SONG || ui.page == PG_SETUP ? B_HOME
+                    : B_GLO);
     if (sq.playing)
         b |= LED_PLAY_GREEN;
     if (ui.rec)
@@ -7660,7 +7776,7 @@ static uint16_t sec_col(void)             /* the section's colour */
     if (rec_page())
         return C_RECCOL;
     switch (ui.page) {
-    case PG_HOME: case PG_SONG: case PG_MIX: case PG_SETUP: return C_CREAM;
+    case PG_HOME: case PG_QMIX: case PG_SONG: case PG_MIX: case PG_SETUP: return C_CREAM;
     case PG_FX: case PG_V3_BUS: return C_FXCOL;
     case PG_MST: return C_MSTCOL;
     default: return trk_rgb(ui.trk);
@@ -7948,7 +8064,7 @@ static void strip(void)                   /* four cells in one hard-edged grid, 
 
 /* ---- each kind of page's four knobs */
 enum { KD_SEQ, KD_HELD, KD_DRUM, KD_KIT, KD_MODEL, KD_INST, KD_ENV, KD_LFO, KD_ARP, KD_MIX, KD_FX, KD_MST, KD_SONG, KD_REC, KD_PF,
-       KD_SETUP, KD_FOLLOW, KD_GEN, KD_COLOR };
+       KD_SETUP, KD_FOLLOW, KD_GEN, KD_COLOR, KD_QMIX };
 
 static int fx_mid(int i)                  /* a two-way FX knob's middle, or -1 */
 {
@@ -8095,6 +8211,11 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
         if (tr == TR_DRUM || (v = arp_value(tr, page, k, &max, t)) < 0)
             return 0;
         card_put(c, ARP_LABEL[page][k], t, v, 0, max, -1);
+        return 1;
+    case KD_QMIX:                         /* the QUICK MIXER: the track picked's LEVEL, REVERB, DELAY, PAN */
+        mix_text(ui.trk, QM_PAGE[k], t);
+        card_put(c, QM_KNOB[k], t, mix_value(ui.trk, QM_PAGE[k]), 0, 127, QM_PAGE[k] == 1 ? 64 : -1);
+        c->acc = trk_rgb(ui.trk);
         return 1;
     case KD_MIX:
         mix_text(k, page, t);
@@ -9388,6 +9509,10 @@ static void page_home(void)               /* the scene grid: 16 patterns across 
     if (tk >= 0) {
         text_cat(c, TRK_NAME[tk]);
         text_cat(c, ": KEY = CLIP");
+    } else if (sq.playing && sq.queued >= 0) {   /* the pattern to come, apart from the one playing */
+        text_cat(c, "NEXT ");
+        two_digits(sq.queued + 1, u);
+        text_cat(c, u);
     } else {
         text_cat(c, "CPU ");
         int_text((int32_t)plat_cpu_pct(), u);
@@ -9396,12 +9521,20 @@ static void page_home(void)               /* the scene grid: 16 patterns across 
         int_text(syn_voices(-1), u);
         text_cat(c, u);
     }
-    band_set(C_CREAM, "HOME", "SCENES", c, 0, 0);
+    {
+        char pl[16];
+        pl[0] = 0;
+        text_cat(pl, sq.playing ? "PLAYING " : "PATTERN ");
+        two_digits(proj.pat + 1, u);
+        text_cat(pl, u);
+        band_set(C_CREAM, "PATTERNS", pl, c, 0, 0);
+    }
     levels_take();
     rrect(32 + proj.pat * 13, 0, 14, 132, 4, C_PANEL);   /* the focused scene's column */
     for (k = 0; k < NPAT; k++) {          /* the scene numbers */
         two_digits(k + 1, u);
-        text_c(39 + k * 13, 0, &FONT_T, u[0] == '0' ? u + 1 : u, k == proj.pat ? TH_TXT : C_TXT2);
+        text_c(39 + k * 13, 0, &FONT_T, u[0] == '0' ? u + 1 : u,
+               k == proj.pat ? TH_TXT : sq.playing && k == sq.queued ? (blink ? C_VIOLET : TH_TXT) : C_TXT2);
     }
     for (t = 0; t < NTRK; t++) {
         int y = 14 + t * 29, muted = (int)(proj.tmute >> t & 1u), h;
@@ -9444,7 +9577,7 @@ static void page_home(void)               /* the scene grid: 16 patterns across 
         t2[0] = 'P';
         two_digits(ui.scene_key + 1, t2 + 1);
         text_cat(t2, " FOLLOW");
-        band_set(C_CREAM, "HOME", "SCENES", t2, 0, 0);
+        band_set(C_CREAM, "PATTERNS", "FOLLOW", t2, 0, 0);
         cards_of(KD_FOLLOW, ui.scene_key);
     } else if (ui.pf_key >= 0 && (perf.want >> ui.pf_key & 1u)) {   /* a perform key held: its knob */
         cards_of(KD_PF, ui.pf_key);
@@ -9564,6 +9697,49 @@ static void page_song(void)               /* the song: its entries, the cursor's
             cv_rect(160 + i * 4, y + 5, 3, 6, me ? C_INK : C_GRID);
     }
     cards_of(KD_SONG, 0);
+}
+
+static void page_qmix(void)               /* the QUICK MIXER: the tracks (the picked one lit), its white keys, its knobs */
+{
+    int t, k, tr = ui.trk;
+    band_set(C_CREAM, "QUICK MIXER", tr == TR_DRUM ? drum_kit_title() : TRK_NAME[tr],
+             tr == TR_DRUM ? "WHITE KEYS: MUTES" : "WHITE 1-4: HOLD", 0, 0);
+    levels_take();
+    for (t = 0; t < NTRK; t++) {          /* the four tracks (the track keys): the picked one lit, its level beside */
+        int x = 3 + t * 59, h, muted = (int)(proj.tmute >> t & 1u);
+        uint16_t col = trk_rgb(t);
+        rrect(x, 2, 56, 24, 5, t == tr ? col : C_PANEL);
+        text_c(x + 28, 5, &FONT_S, t == TR_DRUM ? drum_kit_short() : TRK_NAME[t],
+               muted ? TH_RED : t == tr ? C_INK : C_TXT2);
+        h = db_h(lvl[t], 52, 48.0f);
+        cv_rect(x + 2, 22, 52, 2, C_GRID);
+        if (h > 0)
+            cv_rect(x + 2, 22, h, 2, t == tr ? C_INK : col);
+    }
+    if (tr == TR_DRUM) {                  /* the lanes: a white key each, muted dark with its name struck */
+        const uint16_t mute = dcur()->mute;
+        for (k = 0; k < NPADS; k++) {
+            int x = 3 + (k % 6) * 39, y = 32 + (k / 6) * 48, muted = (int)(mute >> k & 1u);
+            char n[4];
+            rrect(x, y, 37, 44, 5, muted ? C_PANEL : trk_rgb(TR_DRUM));
+            text_c(x + 18, y + 4, &FONT_B, trial_pad_name(drum_model(k), k), muted ? C_TXT2 : C_INK);
+            n[0] = 0;
+            int_text(k + 1, n);
+            text_c(x + 18, y + 26, &FONT_XS, muted ? "MUTED" : n, muted ? TH_RED : C_INK);
+        }
+    } else {                              /* the moves: a white key each, held lit */
+        for (k = 0; k < QM_MOVES; k++) {
+            int x = 3 + (k % 2) * 118, y = 32 + (k / 2) * 48, on = qm.trk == tr && (qm.held >> k & 1u);
+            char n[8];
+            rrect(x, y, 116, 44, 6, on ? trk_rgb(tr) : C_PANEL);
+            text_c(x + 58, y + 6, &FONT_B, QM_NAME[k], on ? C_INK : TH_TXT);
+            n[0] = 0;
+            text_cat(n, "WHITE ");
+            int_text(k + 1, n + 6);
+            text_c(x + 58, y + 26, &FONT_XS, on ? "HELD" : n, on ? C_INK : C_TXT2);
+        }
+    }
+    cards_of(KD_QMIX, 0);
 }
 
 static void page_mix(void)                /* the mixer: a strip a track, its meter beside the page's value */
@@ -10046,6 +10222,7 @@ static void page(void)
     case PG_ARP: page_arp(); break;
     case PG_MUTE: page_mute(); break;
     case PG_HOME: page_home(); break;
+    case PG_QMIX: page_qmix(); break;
     case PG_SONG: page_song(); break;
     case PG_SETUP: page_setup(); break;
     case PG_KIT:
@@ -10078,7 +10255,7 @@ static int page_moves(void)               /* a page whose picture moves by itsel
     if (rec_page())
         return 0;
     switch (ui.page) {
-    case PG_HOME: case PG_MIX: case PG_MUTE: case PG_LFO: case PG_KEYS: case PG_ARP: return 1;
+    case PG_HOME: case PG_QMIX: case PG_MIX: case PG_MUTE: case PG_LFO: case PG_KEYS: case PG_ARP: return 1;
     case PG_SEQ: return !inst;
     case PG_EDIT: return !inst || ui.epage == 0;
     case PG_SONG: return sq.playing;
@@ -10244,6 +10421,42 @@ static void speak(void)                   /* a screen reader that has just start
                 } else text_cat(t,"FIXED");
             }
         }
+        if (ui.page == PG_QMIX) {         /* the QUICK MIXER: its track's values; the drums' mutes; the moves held */
+            char u[12];
+            int k;
+            for (k = 0; k < 4; k++) {
+                text_cat(t, k ? " " : ". ");
+                text_cat(t, QM_KNOB[k]);
+                text_cat(t, " ");
+                mix_text(ui.trk, QM_PAGE[k], u);
+                text_cat(t, u);
+            }
+            if (ui.trk == TR_DRUM) {
+                text_cat(t, ". MUTED");
+                for (k = 0; k < NPADS; k++)
+                    if (dcur()->mute >> k & 1u) {
+                        text_cat(t, " ");
+                        text_cat(t, trial_pad_name(drum_model(k), k));
+                    }
+            } else if (qm.held && qm.trk == ui.trk) {
+                text_cat(t, ". HELD");
+                for (k = 0; k < QM_MOVES; k++)
+                    if (qm.held >> k & 1u) {
+                        text_cat(t, " ");
+                        text_cat(t, QM_NAME[k]);
+                    }
+            }
+        } else if (ui.page == PG_HOME) {  /* PATTERNS: the one playing and the one to come */
+            char u[4];
+            text_cat(t, sq.playing ? ". PLAYING " : ". PATTERN ");
+            two_digits(proj.pat + 1, u);
+            text_cat(t, u);
+            if (sq.playing && sq.queued >= 0) {
+                text_cat(t, " NEXT ");
+                two_digits(sq.queued + 1, u);
+                text_cat(t, u);
+            }
+        }
         ann_say(t, 0, ANN_NOW);
         trial_metrics_speak(v3_mode);
         {   /* and the processor (0.5: read remotely while someone plays, tools/fm1_remote.py screen): each stage's
@@ -10391,6 +10604,8 @@ void app_frame(void)
 {
     uint32_t now = plat_ms(), t = sq.ticks;
     input();
+    if (qm.held && (ui.page != PG_QMIX || ui.trk != qm.trk))   /* the QUICK MIXER left: its held moves let go */
+        qm_clear();
 #if FM1B_USB_HOST
     if (plat_usb_host_msg() != USBH_MSG_NONE && ui.page == PG_SETUP)
         ui.redraw = 1;
@@ -10549,6 +10764,16 @@ int app_expect(const char *what, int *got)
         *got = p->mute;
     else if (!strcmp(what, "dirty"))
         *got = dirty;
+    else if (!strncmp(what, "lanegate", 8))   /* lanegateN: drum pad N's (1..11) audio gate now, thousandths */
+        *got = trial_lane_gate((unsigned)atoi(what + 8));
+    else if (!strncmp(what, "lanepk", 6))     /* lanepkN: drum pad N's lane peak out since last asked, dB (-200 silent) */
+        *got = trial_lane_peak((unsigned)atoi(what + 6));
+    else if (!strcmp(what, "qmheld"))     /* the QUICK MIXER's moves held (a bit each), and the track they're on */
+        *got = qm.held;
+    else if (!strcmp(what, "qmtrk"))
+        *got = qm.trk;
+    else if (!strncmp(what, "pcut", 4) || !strncmp(what, "prb", 3) || !strncmp(what, "pdb", 3))   /* pcutN prbN pdbN */
+        *got = syn_perform_now(atoi(what + (what[1] == 'c' ? 4 : 3)) - 1, what[1] == 'c' ? 0 : what[1] == 'r' ? 1 : 2);
     else if (!strcmp(what, "drumlfo"))    /* the last hit's move by the drums' LFO, thousandths of the control's range */
         *got = drum_lfo_moved;
     else if (!strcmp(what, "rec"))

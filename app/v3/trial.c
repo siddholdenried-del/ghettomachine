@@ -68,6 +68,9 @@ static float trim_now[KIT_PADS], trim_goal[KIT_PADS];
 #define DE_GATE 64u
 static float gate[KIT_PADS];
 static unsigned char gate_shut[KIT_PADS];
+/* a lane muted (trial_mute): its audio, not its hits. Its voices go on striking and sounding underneath; the lane fades
+ * out over DE_GATE samples and back in when let go, so a tail still ringing comes back */
+static unsigned char lane_mute[KIT_PADS];
 
 static float db10_gain(int db10)
 {
@@ -118,6 +121,10 @@ static void capture_shaping(unsigned i, const KitPatch *p)
     }
 }
 
+#ifdef PLAT_HOST
+static float lane_pk[KIT_PADS];           /* each lane's peak out since the tests last asked (lanepkN) */
+#endif
+
 static void render_lanes(float *lanes[KIT_PADS], unsigned span)
 {
     for (unsigned p = 0; p < KIT_PADS; ++p) {
@@ -127,7 +134,7 @@ static void render_lanes(float *lanes[KIT_PADS], unsigned span)
             trim_now[p] = trim_goal[p];
             continue;
         }
-        if (gate_shut[p] && gate[p] <= 0.f) {   /* cut: silent until its next strike */
+        if ((gate_shut[p] || lane_mute[p]) && gate[p] <= 0.f) {   /* cut (silent until its next strike) or muted */
             for (unsigned n = 0; n < span; ++n) x[n] = 0.f;
             continue;
         }
@@ -156,15 +163,49 @@ static void render_lanes(float *lanes[KIT_PADS], unsigned span)
             for (unsigned n = 0; n < ramp; ++n) { t += step; x[n] *= t * inv; }
             trim_now[p] = goal;
         }
-        if (gate_shut[p]) {               /* fading out (trial_cut) */
+        if (gate_shut[p] || lane_mute[p]) {   /* fading out (trial_cut, trial_mute) */
             float g = gate[p];
             for (unsigned n = 0; n < span; ++n) {
                 g = g > 1.f / (float)DE_GATE ? g - 1.f / (float)DE_GATE : 0.f;
                 x[n] *= g;
             }
             gate[p] = g;
+        } else if (gate[p] < 1.f) {       /* a mute let go: back in over DE_GATE samples, the tail as it is now */
+            float g = gate[p];
+            for (unsigned n = 0; n < span; ++n) {
+                g = g < 1.f - 1.f / (float)DE_GATE ? g + 1.f / (float)DE_GATE : 1.f;
+                x[n] *= g;
+            }
+            gate[p] = g;
         }
+#ifdef PLAT_HOST
+        for (unsigned n = 0; n < span; ++n) {
+            const float a = x[n] < 0.f ? -x[n] : x[n];
+            if (a > lane_pk[p]) lane_pk[p] = a;
+        }
+#endif
     }
+}
+
+#ifdef PLAT_HOST
+int trial_lane_peak(unsigned pad)        /* a lane's peak out since last asked, dB (-200: silent); asking resets it */
+{
+    if (pad < 1 || pad > KIT_PADS) return -1;
+    const float a = lane_pk[pad - 1];
+    lane_pk[pad - 1] = 0.f;
+    return a > 1e-10f ? (int)(fm_log2f(a) * 6.0206f - .5f) : -200;
+}
+#endif
+
+int trial_lane_gate(unsigned pad)        /* a lane's gate now, thousandths (the tests) */
+{
+    return pad >= 1 && pad <= KIT_PADS ? (int)(gate[pad - 1] * 1000.f + .5f) : -1;
+}
+
+void trial_mute(unsigned pad, int on)
+{
+    if (pad >= 1 && pad <= KIT_PADS)
+        lane_mute[pad - 1] = (unsigned char)(on != 0);
 }
 
 void trial_cut(unsigned pad)
@@ -412,7 +453,8 @@ void trial_hit(unsigned pad, float velocity)
         capture_shaping(i, &patch);
         trim_goal[i] = pad_trim(i);
         gate_shut[i] = 0;
-        gate[i] = 1.f;
+        if (!lane_mute[i])
+            gate[i] = 1.f;
         kit_hit(&kit, (int)pad, velocity, &patch);
     }
 }
@@ -433,7 +475,8 @@ void trial_hit_moved(unsigned pad, float velocity, int param, float move)
         capture_shaping(i, &moved);
         trim_goal[i] = pad_trim(i);
         gate_shut[i] = 0;
-        gate[i] = 1.f;
+        if (!lane_mute[i])
+            gate[i] = 1.f;
         kit_hit(&kit, (int)pad, velocity, &moved);
     }
 }

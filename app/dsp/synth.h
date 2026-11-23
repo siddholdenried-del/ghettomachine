@@ -115,6 +115,11 @@ void syn_split(int share0_q8);          /* the voices' share for syn_half(0), of
 void syn_half(uint32_t half);
 /* the mixer's view of a track (phase 5): pan 0..127 (64 the centre), its reverb and delay sends 0..1 */
 void syn_mixer(int trk, int pan, float rev, float dly);
+/* a held performance move on a track (the Quick Mixer's white keys): cut, cutoff steps added (-127..127, slewed over
+ * about 30 ms); rev, dly 0..1 how far its reverb and delay sends are raised toward 0.9 (ramped over about 17 ms).
+ * All 0: back to the track's own settings, whatever they are by then. Nothing of the sound is changed or saved */
+void syn_perform(int trk, int cut, float rev, float dly);
+int syn_perform_now(int trk, int what);  /* (the tests) 0 the cutoff offset now in steps; 1, 2 the boosts x 1000 */
 void syn_mix_repack(float *l, float *r, float *rev, float *dly); /* merge unmuted cached blocks after a track cut */
 void syn_mix(float *l, float *r, float *rev, float *dly);   /* SYN_CTL samples each, overwritten: the mix and its sends */
 /* the same in parts (0.5: the tracks' mix shared between the two cores): each track once, on either core (its
