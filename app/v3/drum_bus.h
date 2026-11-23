@@ -34,8 +34,10 @@ void drum_bus_init(DrumBus *b);
 /* Ordered mono lanes -> stereo dry (pads' level and pan) and the pads' reverb and delay sends -> bus level/pan
    -> saturation -> compressor -> transient (BUS) on the dry only. Null lanes are silent. Overwrites left, right,
    rev and dly; the caller supplies distinct buffers. The sends carry the dry's .75 trim, not the bus processing */
-void drum_bus_render(DrumBus *b, const BusMix *mix, float *lanes[BUS_PADS],
+void drum_bus_render(DrumBus *b, const BusMix *mix, float *lanes[BUS_PADS], const float *trim, float dry_out,
                      float *left, float *right, float *rev, float *dly, unsigned n);
+/* trim: each pad's lane gain (null: 1). dry_out: with dry_only, the gain after it all (the caller's trims and scale),
+   folded into the one pass (render_dry); with the bus on, the caller applies its own after the limiter */
 /* Call AFTER the common audition trim and live de-click, immediately before
    handing samples to the sink. Stereo-linked, zero lookahead, sample peak. */
 void drum_bus_limit_final(DrumBus *b, const BusMix *mix, float *left, float *right, unsigned n);

@@ -147,18 +147,14 @@ static void render_lanes(float *lanes[KIT_PADS], unsigned span)
             const float g = shape[p].gain, o = shape[p].out;
             for (unsigned n = 0; n < span; ++n) x[n] = o * fm_tanhf(g * x[n]);
         }
-        {   /* the trim: a step only where another recipe struck, ramped */
+        if (trim_now[p] != trim_goal[p]) {   /* the trim (the bus applies trim_goal: drum_bus_render): only a change of
+                                              * recipe is ramped here, from the old to the new, as a ratio to it */
+            const float goal = trim_goal[p], inv = 1.f / goal;
             float t = trim_now[p];
-            const float goal = trim_goal[p];
-            unsigned n = 0;
-            if (t != goal) {
-                const unsigned ramp = span < DE_RAMP ? span : DE_RAMP;
-                const float step = (goal - t) / (float)ramp;
-                for (; n < ramp; ++n) { t += step; x[n] *= t; }
-                t = goal;
-                trim_now[p] = goal;
-            }
-            for (; n < span; ++n) x[n] *= t;
+            const unsigned ramp = span < DE_RAMP ? span : DE_RAMP;
+            const float step = (goal - t) / (float)ramp;
+            for (unsigned n = 0; n < ramp; ++n) { t += step; x[n] *= t * inv; }
+            trim_now[p] = goal;
         }
         if (gate_shut[p]) {               /* fading out (trial_cut) */
             float g = gate[p];
@@ -445,29 +441,45 @@ unsigned trial_macro_value(unsigned which)
     return which < 4u ? knobs[which] : 0u;
 }
 
-static void finish_bus(float *l, float *r, float *rev, float *dly, unsigned n)
+/* after the bus. DRY has its out folded into its one pass (drum_bus.c render_dry): only the mode change's de-click is
+ * left, on the drum track's scale. With the bus on: the audition trim, the de-click, the final limiter (on the kit's
+ * own scale, its ceiling's, and after the de-click as it always was: else it holds the bus's first transient down for
+ * half a second), then the drum track's scale. The de-click's level is kept on the drum track's scale (last_l) */
+static void fade_in(float *l, float *r, unsigned n, float scale)
 {
-    for (unsigned i = 0; i < n; ++i) {
-        l[i] *= .63095734f;
-        r[i] *= .63095734f;
-    }
     unsigned end = transition.left < n ? transition.left : n;
+    const float fl = transition.fade_l * scale, fr = transition.fade_r * scale;
     for (unsigned i = 0; i < end; ++i) {
         float t = (float)(FADE_FRAMES - transition.left) / (float)FADE_FRAMES;
-        l[i] = transition.fade_l + t * (l[i] - transition.fade_l);
-        r[i] = transition.fade_r + t * (r[i] - transition.fade_r);
+        l[i] = fl + t * (l[i] - fl);
+        r[i] = fr + t * (r[i] - fr);
         --transition.left;
     }
-    drum_bus_limit_final(&bus, &mix, l, r, n);
+}
+
+static void finish_bus(float *l, float *r, float *rev, float *dly, unsigned n)
+{
+    if (!mix.dry_only) {
+        for (unsigned i = 0; i < n; ++i) {
+            l[i] *= .63095734f;
+            r[i] *= .63095734f;
+        }
+        fade_in(l, r, n, 1.f / DE_STAGE);
+        drum_bus_limit_final(&bus, &mix, l, r, n);
+        for (unsigned i = 0; i < n; ++i) {
+            l[i] *= DE_STAGE;
+            r[i] *= DE_STAGE;
+            rev[i] *= DE_STAGE * .63095734f;
+            dly[i] *= DE_STAGE * .63095734f;
+        }
+    } else {
+        bus.limiter_reduction = 0.f;
+        bus.limiter_gr_db = 0.f;
+        fade_in(l, r, n, 1.f);
+    }
     transition.last_l = l[n - 1];
     transition.last_r = r[n - 1];
     transition.rendered = 1;
-    for (unsigned i = 0; i < n; ++i) {    /* onto the drum track's scale */
-        l[i] *= DE_STAGE;
-        r[i] *= DE_STAGE;
-        rev[i] *= DE_STAGE * .63095734f;
-        dly[i] *= DE_STAGE * .63095734f;
-    }
 }
 
 void trial_render(float *l, float *r, float *rev, float *dly, unsigned n, unsigned mode,
@@ -487,7 +499,7 @@ void trial_render(float *l, float *r, float *rev, float *dly, unsigned n, unsign
         render_lanes(lanes, span);
         uint32_t split = plat_ticks24();
         voices += split - start;
-        drum_bus_render(&bus, &mix, lanes, l, r, rev, dly, span);
+        drum_bus_render(&bus, &mix, lanes, trim_goal, DE_STAGE * .63095734f, l, r, rev, dly, span);
         finish_bus(l, r, rev, dly, span);
         effects += plat_ticks24() - split;
         n -= span;

@@ -3,6 +3,7 @@
 #define FM_ALWAYS_INLINE
 #include "bongfx.h"
 #include "fastmath.h"
+#include "gm_ram.h"
 
 #define BF_FLOOR 1.0e-6f                  /* -120 dBFS: silence, for the sleep */
 #ifndef BF_SLEEP
@@ -11,13 +12,13 @@
 #define BV_SLEEP 22050u                   /* in and out under it for 0.5 s: the tank has emptied */
 #define BD_SLEEP 48000u                   /* ... for 1.09 s: longer than the ring (1.04 s), so it holds nothing more */
 
-static float bf_clip(float f, float lo, float hi) { return f < lo ? lo : f > hi ? hi : f; }
-static int bf_finite(float x) { return __builtin_isfinite(x); }
+GM_INLINE float bf_clip(float f, float lo, float hi) { return f < lo ? lo : f > hi ? hi : f; }
+GM_INLINE int bf_finite(float x) { return __builtin_isfinite(x); }
 
 /* ======================================================================= BongVerb (bongverb verb.c, 100717b) === */
 /* Motion Plate: an original half-rate mono-send / stereo four-line FDN; slowly moving diffusion reads (the idea after
  * Mutable Instruments Clouds; none of its code, coefficients or topology) */
-static float approach(float a, float b, float k) { return a + (b - a) * k; }
+GM_INLINE float approach(float a, float b, float k) { return a + (b - a) * k; }
 
 static void bv_recalc(bongverb_t *v)
 {
@@ -83,9 +84,10 @@ void bongverb_set(bongverb_t *v, int id, float value)
         return;
     v->param[id] = value;
     bv_recalc(v);
+    v->settled = 0;
 }
 
-static inline float bv_pred(const bongverb_t *v, float delay)
+GM_INLINE float bv_pred(const bongverb_t *v, float delay)
 {
     const int whole = (int)delay;
     const float frac = delay - (float)whole;
@@ -94,7 +96,7 @@ static inline float bv_pred(const bongverb_t *v, float delay)
     return v->pre[i] + frac * (v->pre[j] - v->pre[i]);
 }
 
-static inline float bv_allpass(bongverb_t *v, int which, float in, float gain)
+GM_INLINE float bv_allpass(bongverb_t *v, int which, float in, float gain)
 {
     const int k = v->ap_off[which] + v->ap_pos[which];
     const float old = v->diff[k];
@@ -107,7 +109,7 @@ static inline float bv_allpass(bongverb_t *v, int which, float in, float gain)
 
 /* One inexpensive smooth-ish modulation update per 16 internal samples, then linear ramps. The two LFOs do not lock
  * phase; modulation is strictly in the wet tank. The excursion is at most a fraction of 0.1 ms, not audible chorus. */
-static inline void bv_step_motion(bongverb_t *v, float mode)
+GM_INLINE void bv_step_motion(bongverb_t *v, float mode)
 {
     if (!v->motion_clock) {
         const float depth = .37f + .35f * mode;
@@ -127,7 +129,7 @@ static inline void bv_step_motion(bongverb_t *v, float mode)
     v->motion[1] += v->motion_step[1];
 }
 
-static inline float bv_tank_read(const bongverb_t *v, int i)
+GM_INLINE float bv_tank_read(const bongverb_t *v, int i)
 {
     const int j = i >> 1;
     const float offset = v->motion[j];
@@ -142,7 +144,7 @@ static inline float bv_tank_read(const bongverb_t *v, int i)
     return approach(line[a], line[b], offset - (float)whole);
 }
 
-static inline void bv_core(bongverb_t *v, float in, float *left, float *right)
+GM_INLINE void bv_core(bongverb_t *v, float in, float *left, float *right)
 {
     const float k = v->coef;
     v->mode = approach(v->mode, v->mode_target, k);
@@ -179,7 +181,7 @@ static inline void bv_core(bongverb_t *v, float in, float *left, float *right)
     *right = mid - side + early_r;
 }
 
-static inline void bv_tick(bongverb_t *v, float in, float *left, float *right)
+GM_INLINE void bv_tick(bongverb_t *v, float in, float *left, float *right)
 {
     const float input = bf_finite(in) ? bf_clip(in, -4.f, 4.f) : 0.f;
     if (!v->half) {
@@ -200,19 +202,29 @@ int bongverb_asleep(const bongverb_t *v) { return v->quiet >= BV_SLEEP; }
 
 /* asleep for n samples: what the kernel would have done that is not sound, done (its settings' glides, the motion,
  * the lines' places), so it wakes where the kernel would be; the sound itself would have been silence */
-static void bv_skip(bongverb_t *v, int n)
+GM_INLINE void bv_skip(bongverb_t *v, int n)
 {
     const int m = v->half ? (n + 1) / 2 : n / 2;   /* the core's runs among the n ticks */
     const float k = v->coef;
     int i, s;
     v->half ^= n & 1;
     for (s = 0; s < m; s++) {
-        v->mode = approach(v->mode, v->mode_target, k);
-        v->delay += bf_clip((v->delay_target - v->delay) * k, -.65f, .65f);
-        v->damp = approach(v->damp, v->damp_target, k);
+        if (!v->settled) {                /* the glides, until a step leaves every one where it was: from then on each
+                                           * step would too (the same values in, the same out), so they are left */
+            const float mo = v->mode, de = v->delay, da = v->damp;
+            int moved = 0;
+            v->mode = approach(v->mode, v->mode_target, k);
+            v->delay += bf_clip((v->delay_target - v->delay) * k, -.65f, .65f);
+            v->damp = approach(v->damp, v->damp_target, k);
+            moved = v->mode != mo || v->delay != de || v->damp != da;
+            for (i = 0; i < BV_LINES; i++) {
+                const float g = v->gain[i];
+                v->gain[i] = approach(v->gain[i], v->gain_target[i], k);
+                moved |= v->gain[i] != g;
+            }
+            v->settled = !moved;
+        }
         bv_step_motion(v, v->mode);
-        for (i = 0; i < BV_LINES; i++)
-            v->gain[i] = approach(v->gain[i], v->gain_target[i], k);
     }
     if (m <= 0)
         return;
@@ -223,7 +235,7 @@ static void bv_skip(bongverb_t *v, int n)
     v->pre_pos = (v->pre_pos + m) % v->pre_len;
 }
 
-void bongverb_block(bongverb_t *v, const float *in, float *l, float *r, float gain, int n)
+GM_RAM void bongverb_block(bongverb_t *v, const float *in, float *l, float *r, float gain, int n)
 {
     float pk_in = 0.f, pk_out = 0.f;
     int i;
@@ -246,20 +258,20 @@ void bongverb_block(bongverb_t *v, const float *in, float *l, float *r, float ga
 /* ===================================================================== BongDelay (bongdelay delay.c, 017d298) === */
 /* Clock Echo: one half-rate 16-bit line; an effective bucket clock shapes the bandwidth (the principle after Jatin
  * Chowdhury's BBDDelay; none of its code or coefficients). Wet only, dual mono */
-static float bd_lp(const bongdelay_t *d, float cutoff)
+GM_INLINE float bd_lp(const bongdelay_t *d, float cutoff)
 {
     const float w = 6.28318531f * cutoff * d->inv_hz;
     return w / (1.f + w);
 }
 
 /* The cubic has unit slope around zero and rolls off at a finite ceiling. */
-static inline float bd_soft(float x)
+GM_INLINE float bd_soft(float x)
 {
     x = bf_clip(x, -1.5f, 1.5f);
     return x * (1.f - (4.f / 27.f) * x * x);
 }
 
-static void bd_retune(bongdelay_t *d)
+GM_INLINE void bd_retune(bongdelay_t *d)
 {
     const float seconds = d->lag * d->inv_hz;
     /* Longer times represent slower bucket clocks. Never darken below this floor, and let TONE tune the top of that
@@ -276,6 +288,7 @@ void bongdelay_set(bongdelay_t *d, int id, float value)
     if (!bf_finite(value))
         return;
     const float x = bf_clip(value, 0.f, 1.f);
+    d->settled = 0;
     switch (id) {
     case 0: d->lag_to = (.045f + .905f * x * x) * d->hz; if (!d->started) d->lag = d->lag_to; break;
     case 1: d->regen_to = 1.18f * x * x; if (!d->started) d->regen = d->regen_to; break;
@@ -322,7 +335,7 @@ void bongdelay_restart(bongdelay_t *d)
     d->quiet = BD_SLEEP;                  /* (an empty line: asleep until something comes) */
 }
 
-static inline void bd_tick(bongdelay_t *d, float in, float *left, float *right)
+GM_INLINE void bd_tick(bongdelay_t *d, float in, float *left, float *right)
 {
     if (!bf_finite(in))
         in = 0;
@@ -374,11 +387,14 @@ static inline void bd_tick(bongdelay_t *d, float in, float *left, float *right)
 
 int bongdelay_asleep(const bongdelay_t *d) { return d->quiet >= BD_SLEEP; }
 
-static void bd_skip(bongdelay_t *d, int n)  /* (as bv_skip: the glides, the control's retuning, the drift, the place) */
+GM_INLINE void bd_skip(bongdelay_t *d, int n)   /* (as bv_skip: the glides until settled, the retuning, the drift,
+                                                  * the place) */
 {
     const int m = d->phase ? (n + 1) / 2 : n / 2;
+    int s = 0;
     d->phase ^= (unsigned)(n & 1);
-    for (int s = 0; s < m; s++) {
+    for (; s < m && !d->settled; s++) {
+        const float la = d->lag, re = d->regen, to = d->tone, dr = d->drive;
         d->lag += bf_clip((d->lag_to - d->lag) * d->lag_coef, -.86f, .86f);
         d->regen += (d->regen_to - d->regen) * d->smooth;
         d->tone += (d->tone_to - d->tone) * d->smooth;
@@ -387,12 +403,25 @@ static void bd_skip(bongdelay_t *d, int n)  /* (as bv_skip: the glides, the cont
             bd_retune(d);
         d->control = (d->control + 1) & (BD_CONTROL - 1);
         d->drift += d->drift_delta;
+        d->at = d->at + 1u == BD_RING ? 0u : d->at + 1u;
+        if (d->lag == la && d->regen == re && d->tone == to && d->drive == dr)
+            d->settled = 2;               /* (still to retune once on these values: below) */
     }
-    if (m > 0)
-        d->at = (d->at + (unsigned)m) % BD_RING;
+    if (s < m) {                          /* settled: the rest in one go. A retune on the way gives what any later one
+                                           * would (its inputs no longer move): one, if it is due, and only once */
+        const unsigned r = (unsigned)(m - s);
+        if (d->settled == 2 && (d->control == 0 || d->control + r > BD_CONTROL)) {   /* (a step with control 0 among
+                                                                                        * the r: a retune is due) */
+            bd_retune(d);
+            d->settled = 1;
+        }
+        d->control = (d->control + r) & (BD_CONTROL - 1);
+        d->drift += d->drift_delta * (uint32_t)r;
+        d->at = (d->at + r) % BD_RING;
+    }
 }
 
-void bongdelay_block(bongdelay_t *d, const float *in, float *l, float *r, float gain, int n)
+GM_RAM void bongdelay_block(bongdelay_t *d, const float *in, float *l, float *r, float gain, int n)
 {
     float pk_in = 0.f, pk_out = 0.f;
     int i;

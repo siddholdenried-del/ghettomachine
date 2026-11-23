@@ -856,6 +856,15 @@ static float cs_pk[CS_NUM];               /* the worst block lately, us: held, f
 static float cs_mx[CS_MXB][CS_NUM];
 static uint8_t cs_mxi;
 static uint16_t cs_mxn;
+/* OTHER (CS_REST) in parts, the first core's alone (speak: OTHER US, each part's mean and its worst block of the last
+ * 10 s, us): IN, the block's start up to its chunks (the second core's tail handed over, the stems, MIDI in, the tempo,
+ * the perform keys, the clock out, the count-in); SEQ, the sequencer's steps (each chunk's start and end); DRUM, a
+ * chunk's drums outside their own time (the DrumEngine's glue, the track's mix, its stem and its level); JOIN, the
+ * drums from the second core waited for and added (drums2_mode); WAIT, the block before's tail waited for; OUT, the
+ * output; LEFT, what is left (THROW and WASH, the tail's note, the timers) */
+enum { OT_IN, OT_SEQ, OT_DRUM, OT_JOIN, OT_WAIT, OT_OUT, OT_LEFT, OT_NUM };
+static uint32_t ot_t[OT_NUM];
+static float ot_us[OT_NUM], ot_mx[CS_MXB][OT_NUM];
 /* the synth's stage in three parts (speak): the control tick (the LFOs, the arpeggiators, syn_prepare), the voices
  * (both halves, the second core's waited for) and the dry track mix */
 enum { SY_PREP, SY_VOICES, SY_MIX, SY_NUM };
@@ -2794,6 +2803,14 @@ static void syn_job2(uint32_t half)
     syn_t2 = plat_ticks24() - a;
 }
 static uint32_t syn_work;                 /* this block: the voices' rendering on both cores, ticks */
+/* GhettoMachine 0.5 (CPU): the voices dealt between the cores by time (synth.c syn_split). Each synth block that both
+ * render: the first core waited for the second (wait): more voices to the first; the second had done before the first
+ * (no wait, the first's half the longer): more to the second. A step of 4 / 256 a block either way: it settles where
+ * both finish together, a voice's worth either side. split_fixed: a test's share, held */
+static int split_q8 = 128;
+static uint8_t split_fixed;
+static float split_wait_us, split_share;  /* running means (the readout): the first core's wait a synth block, us; the
+                                           * first core's share, % */
 static void drum_offer(void);             /* (the drums to the second core: below, by app_render) */
 
 /* the second core takes its half of the voices only from SYN_SPLIT_MIN voices up: handing a job over and waiting for
@@ -2863,12 +2880,27 @@ static void syn_block(void)
         if (cpu2 && syn_voices(-1) >= SYN_SPLIT_MIN && plat_cpu2_on() && plat_cpu2_run(syn_job2, 1u)) {
             syn_job(0);
             work = plat_ticks24() - t1;
-            if (plat_cpu2_wait() != 0) {  /* it was given up (cpu2_fallback): its half here */
-                CS_MARK(t2);
-                syn_job(1);
-                work += plat_ticks24() - t2;
-            } else {
-                work += syn_t2;
+            {
+                CS_MARK(tw);
+                const int gone = plat_cpu2_wait() != 0;
+                const uint32_t wait = plat_ticks24() - tw;
+                if (gone) {               /* it was given up (cpu2_fallback): its half here */
+                    CS_MARK(t2);
+                    syn_job(1);
+                    work += plat_ticks24() - t2;
+                } else {
+                    work += syn_t2;
+                    if (!split_fixed) {   /* (the deal for the next synth block: syn_prepare) */
+                        if (wait > 2u * PLAT_TICKS_PER_US)
+                            split_q8 += 4;
+                        else if (work - syn_t2 > syn_t2)
+                            split_q8 -= 4;
+                        split_q8 = split_q8 < 32 ? 32 : split_q8 > 224 ? 224 : split_q8;
+                        syn_split(split_q8);
+                    }
+                    split_wait_us += ((float)wait * (1.0f / (float)PLAT_TICKS_PER_US) - split_wait_us) * 0.01f;
+                    split_share += ((float)split_q8 * (100.0f / 256.0f) - split_share) * 0.01f;
+                }
             }
         } else {
             syn_job(0);
@@ -3027,6 +3059,7 @@ static struct {
     uint8_t odd;
     float first;                          /* 22.05 kHz: the first of a pair */
     volatile uint32_t pos;                /* frames recorded */
+    uint32_t cancels;                     /* sampling given up by a TYPE change (the tests) */
 } rec;
 
 static void rec_frame(float m)            /* audio interrupt: a frame into rec_buf, packed as it goes */
@@ -3390,6 +3423,8 @@ static uint32_t v3_voice_ticks, v3_bus_ticks;   /* this block's DrumEngine voice
 static void drum_chunk(uint32_t done, uint32_t chunk)   /* either core: a chunk's drums into the mix's buses */
 {
     uint32_t i;
+    const unsigned core = plat_core() & 1u;
+    const uint32_t dc0 = plat_ticks24(), own0 = dr_t[core] + fxin_t[core];
     if (v3_mode) {                        /* the DrumEngine: no drum Color (its bus has SAT, COMP, TRANS, LIMIT) */
         unsigned vt = 0, bt = 0;
         trial_render(buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, chunk, v3_mode, &vt, &bt);
@@ -3418,6 +3453,10 @@ static void drum_chunk(uint32_t done, uint32_t chunk)   /* either core: a chunk'
                 pk = b;
         }
         drum_pk = pk;
+    }
+    if (!core) {                          /* (OTHER's DRUM: the chunk's time but the drums' own and their bus's) */
+        const uint32_t all = plat_ticks24() - dc0, own = dr_t[0] + fxin_t[0] - own0;
+        ot_t[OT_DRUM] += all > own ? all - own : 0u;
     }
 }
 
@@ -3468,9 +3507,12 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     const uint32_t prev = cur_set;        /* the block before's set: its tail runs now (post_job) */
     int bar_at = -1, post_there = 0, post_here = 0;
     float gain = (float)master_q12 / 4096.0f, pk = peak, pkl = peak_l, pkr = peak_r;
+    uint32_t out0;
     CS_MARK(cs_start);
     for (i = 0; i < CS_NUM; i++)
         cs_t[i] = 0;
+    for (i = 0; i < OT_NUM; i++)
+        ot_t[i] = 0;
     dr_t[0] = dr_t[1] = 0;
     v3_voice_ticks = v3_bus_ticks = 0;
     syn_here = 0;
@@ -3542,9 +3584,11 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             ck.pre_pads = 0;
         }
     }
+    ot_t[OT_IN] = plat_ticks24() - cs_start;
     while (done < n) {                     /* rendered in pieces that end where a step (or the bar) starts */
         uint32_t chunk = n - done;
         int t;
+        uint32_t sq0 = plat_ticks24();
         if (sq.playing) {
             float m;
             if (sq.bar_left < 0.5f) {      /* the bar first: a queued pattern starts there, every track at its step 1 */
@@ -3623,6 +3667,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
                 chunk = m < 1.0f ? 1u : (uint32_t)m;
         }
         sync_drum_mutes();
+        ot_t[OT_SEQ] += plat_ticks24() - sq0;
         if (d2.mode) {
             /* the drums for the second core this block (drums2_mode): the synth first, here, into the hold; the
              * drums handed over as soon as the second core has done the block before's tail (drum_offer: now, and
@@ -3639,19 +3684,23 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
                 d2.due = 0;
                 drum_chunk(done, chunk);
             } else {
+                const uint32_t w0 = plat_ticks24();
                 int gone = plat_cpu2_wait() != 0;
                 plat_cpu2_sync();
+                ot_t[OT_JOIN] += plat_ticks24() - w0;
                 if (gone || !d2.fin)      /* it was given up with the job (cpu2_fallback): here */
                     drum_chunk(done, chunk);
                 else
                     d2.ran2 = 1;
             }
+            sq0 = plat_ticks24();
             for (i = done; i < done + chunk; i++) {
                 buf_l[i] += hold_l[i];
                 buf_r[i] += hold_r[i];
                 bus_rev[i] += hold_rv[i];
                 bus_dly[i] += hold_dl[i];
             }
+            ot_t[OT_JOIN] += plat_ticks24() - sq0;
         } else {
             drum_chunk(done, chunk);
             {
@@ -3660,6 +3709,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
                 syn_here += plat_ticks24() - cs_s0;
             }
         }
+        sq0 = plat_ticks24();
         if (sq.playing) {
             sq.bar_left -= (float)chunk;
             perf.roll_to -= (float)chunk;
@@ -3671,6 +3721,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             sq.clock += chunk;
         }
         done += chunk;
+        ot_t[OT_SEQ] += plat_ticks24() - sq0;
     }
     if (perf.on & (1u << PF_THROW | 1u << PF_WASH))   /* THROW, WASH: the whole mix into the delay, the reverb */
         for (i = 0; i < n; i++) {
@@ -3697,8 +3748,11 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     {   /* the block before's tail: the second core's, waited for (its synth jobs after it were, already); else here */
         post_t *j = &post[prev];
         if (j->ready) {
-            if (post_there)
+            if (post_there) {
+                CS_MARK(w0);
                 plat_cpu2_wait();
+                ot_t[OT_WAIT] = plat_ticks24() - w0;
+            }
             if (!j->done) {
                 post_job(prev);
                 post_here = 1;
@@ -3709,6 +3763,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         }
         j->ready = 0;
     }
+    out0 = plat_ticks24();
     for (i = 0; i < n; i++) {
         float l = BUS[prev]->l[i], r = BUS[prev]->r[i];
         if (l > 0.999f || l < -0.999f || r > 0.999f || r < -0.999f)
@@ -3723,6 +3778,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     peak = pk > pkl ? (pk > pkr ? pk : pkr) : (pkl > pkr ? pkl : pkr);
     peak_l = pkl;
     peak_r = pkr;
+    ot_t[OT_OUT] = plat_ticks24() - out0;
     {   /* the stages' running means (about the last 50 blocks: 0.3 s). REVERB+DELAY and MASTER: the block before's
          * tail, on the second core (or this one's, then counted out of REST); REST: the rest of this core's time,
          * waiting for the second included */
@@ -3747,6 +3803,12 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             sum += cs_t[CS_FX] + cs_t[CS_MASTER];
         cs_t[CS_REST] = tot > sum ? tot - sum : 0u;
         cs_t[CS_TOTAL] = tot;
+        {   /* OTHER's parts: what is left of it */
+            uint32_t parts = 0;
+            for (i = 0; i < OT_LEFT; i++)
+                parts += ot_t[i];
+            ot_t[OT_LEFT] = cs_t[CS_REST] > parts ? cs_t[CS_REST] - parts : 0u;
+        }
         for (i = 0; i < CS_NUM; i++) {
             const float u = (float)cs_t[i] * (1.0f / (float)PLAT_TICKS_PER_US);
             cs_us[i] += (u - cs_us[i]) * 0.02f;
@@ -3754,11 +3816,19 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             if (u > cs_mx[cs_mxi][i])
                 cs_mx[cs_mxi][i] = u;
         }
+        for (i = 0; i < OT_NUM; i++) {
+            const float u = (float)ot_t[i] * (1.0f / (float)PLAT_TICKS_PER_US);
+            ot_us[i] += (u - ot_us[i]) * 0.02f;
+            if (u > ot_mx[cs_mxi][i])
+                ot_mx[cs_mxi][i] = u;
+        }
         if (++cs_mxn >= 344u) {           /* 2 s: the next bucket, started again */
             cs_mxn = 0;
             cs_mxi = (uint8_t)((cs_mxi + 1u) % CS_MXB);
             for (i = 0; i < CS_NUM; i++)
                 cs_mx[cs_mxi][i] = 0.0f;
+            for (i = 0; i < OT_NUM; i++)
+                ot_mx[cs_mxi][i] = 0.0f;
         }
         for (i = 0; i < SY_NUM; i++) {
             sy_us[i] += ((float)sy_t[i] * (1.0f / (float)PLAT_TICKS_PER_US) - sy_us[i]) * 0.02f;
@@ -3787,6 +3857,12 @@ void app_init(void)
         const char *e = getenv("GM_DRUMS2");
         if (e && (e[0] == '1' || e[0] == '2'))
             d2.force = (uint8_t)(e[0] - '0');
+        e = getenv("GM_SYNSPLIT");        /* GM_SYNSPLIT=N: the voices' share held at N / 256 (the same sound: tests) */
+        if (e && atoi(e) > 0) {
+            split_q8 = atoi(e);
+            split_fixed = 1;
+            syn_split(split_q8);
+        }
     }
 #endif
     drums_init();
@@ -5388,6 +5464,14 @@ static void iedit_knob(int k, int32_t e)  /* an instrument track's EDIT pages: V
             ts->type = (uint8_t)ty;
             syn_release(tr, 0);
             syn_source(tr, ty == TY_SAMPLER);
+            /* a track that stops being a SAMPLER stops sampling: armed or recording, given up (nothing kept). Else
+             * it stayed armed with no sampler to show it, and the next sound was recorded and stored (found on the
+             * FM-1, 23 Nov) */
+            if (ty != TY_SAMPLER && rec.trk == tr && (rec.state == RS_ARMED || rec.state == RS_REC || rec.state == RS_DONE)) {
+                rec.state = RS_IDLE;
+                rec.pos = 0;
+                rec.cancels++;
+            }
             plat_unlock(f);
             dirty = 1;
         }
@@ -10473,7 +10557,33 @@ static void speak(void)                   /* a screen reader that has just start
             text_cat(t, " BASE ");
             int_text((int32_t)(gov.syn_base + 0.5f), u);
             text_cat(t, u);
+            text_cat(t, " SPLIT ");              /* the first core's share of the voices, %; its wait a synth block, us */
+            int_text((int32_t)(split_share + 0.5f), u);
+            text_cat(t, u);
+            text_cat(t, " WAIT ");
+            int_text((int32_t)(split_wait_us + 0.5f), u);
+            text_cat(t, u);
             ann_say(t, 0, 0);
+            {   /* OTHER's parts, us a block: the mean and the worst of the last 10 s */
+                static const char *const ON[OT_NUM] = {"IN", "SEQ", "DRUM", "JOIN", "WAIT", "OUT", "LEFT"};
+                t[0] = 0;
+                text_cat(t, "OTHER US");
+                for (i = 0; i < OT_NUM; i++) {
+                    float m = 0.0f;
+                    for (b = 0; b < CS_MXB; b++)
+                        if (ot_mx[b][i] > m)
+                            m = ot_mx[b][i];
+                    text_cat(t, i ? ". " : " ");
+                    text_cat(t, ON[i]);
+                    text_cat(t, " ");
+                    int_text((int32_t)(ot_us[i] + 0.5f), u);
+                    text_cat(t, u);
+                    text_cat(t, " MAX ");
+                    int_text((int32_t)(m + 0.5f), u);
+                    text_cat(t, u);
+                }
+                ann_say(t, 0, 0);
+            }
         }
     }
     ann_tick(plat_ms());
@@ -10952,6 +11062,21 @@ int app_expect(const char *what, int *got)
         for (s = 0; s < NTRK; s++)
             stem_pk[s][0] = stem_pk[s][1] = 0.0f;
         *got = 1;
+    } else if (!strncmp(what, "synsplit_", 9)) {   /* synsplit_N: the first core's share of the voices held at N / 256
+                                                  * (0: let it move again) */
+        int v = atoi(what + 9);
+        split_fixed = v > 0;
+        if (v > 0)
+            split_q8 = v;
+        syn_split(split_q8);
+        *got = 1;
+    } else if (!strcmp(what, "synsplit")) {   /* the share now, of 256 */
+        *got = split_q8;
+    } else if (!strcmp(what, "rstate_t")) {   /* sampling: its state (0 idle 1 armed 2 recording 3 done), and the track
+                                               * x 10 */
+        *got = (int)rec.state + 10 * (int)rec.trk;
+    } else if (!strcmp(what, "reccancels")) {   /* sampling given up by a track's TYPE change */
+        *got = (int)rec.cancels;
     } else if (!strcmp(what, "fxasleep")) {   /* the returns asleep: bit 0 BongVerb, bit 1 BongDelay */
         *got = fx_returns_asleep();
     } else if (!strncmp(what, "fxsleep", 7) && what[7] >= '1' && what[7] < '1' + NTRK && !what[8]) {

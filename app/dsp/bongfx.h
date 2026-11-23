@@ -30,6 +30,7 @@ typedef struct {
     float param[4], mode, delay, damp, gain[BV_LINES], mode_target, delay_target, damp_target, gain_target[BV_LINES],
         lp[BV_LINES];
     uint32_t quiet;                       /* samples in and out under the floor (the sleep) */
+    uint8_t settled;                      /* its glides have stopped moving (the sleep skips them) */
 } bongverb_t;
 
 void bongverb_init(bongverb_t *v);
@@ -51,6 +52,7 @@ typedef struct {
     float in_a, in_b, read_a, read_b, dc, dc_coef;
     float alpha, input_gain, loop_gain, motion;
     uint32_t quiet;
+    uint8_t settled;                      /* 2: its glides have stopped (a retune still due), 1: and retuned */
 } bongdelay_t;
 
 void bongdelay_init(bongdelay_t *d, int16_t *ring);

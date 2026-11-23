@@ -123,6 +123,7 @@ int syn_probe(int trk, int what);         /* tests, the track's newest voice: 0 
                                            * as the voice plays it (the matrix's moves in); -1 none */
 
 void syn_prepare(void);
+void syn_split(int share0_q8);          /* the voices' share for syn_half(0), of 256 (128: one each in turn) */
 void syn_half(uint32_t half);
 /* the mixer's view of a track (phase 5): pan 0..127 (64 the centre), its reverb and delay sends 0..1 */
 void syn_mixer(int trk, int pan, float rev, float dly);

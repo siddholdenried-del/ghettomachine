@@ -1,0 +1,46 @@
+# Sampling given up when its track stops being a SAMPLER (found on the FM-1, 23 Nov: armed on T4, T4 turned back to
+# POLY, it stayed armed with nothing showing it, and the next sound would have been recorded and stored).
+#   tools/build.py ../../app --host, then  app/build/host/ghettomachine_host app/tests/sampler_type.txt OUTDIR
+# rstate_t: sampling's state (0 idle, 1 armed, 2 recording, 3 done) + 10 x its track index (T4: 3); reccancels: given up by a TYPE
+# change; dlyon: the delay has its line back
+wait 600
+# T4 (SEL + its key), its first EDIT page, TYPE to SAMPLER
+press SEL
+wait 20
+key 8 down
+wait 20
+key 8 up
+wait 20
+release SEL
+wait 30
+expect trk 4
+tap EDIT
+wait 30
+turn SELECT -4
+wait 30
+spin K1 1
+wait 30
+expect type4 2
+expect dlyon 1
+# armed: the delay's line lent
+press REC
+wait 20
+tap SEL
+wait 20
+release REC
+wait 100
+expect rstate_t 31
+expect dlyon 0
+# TYPE back to POLY: sampling given up, nothing kept, the line back
+spin K1 -1
+wait 30
+expect type4 1
+expect rstate_t 30
+expect reccancels 1
+wait 200
+expect dlyon 1
+# a sound now is not recorded
+midi 93 3C 7F
+wait 300
+midi 83 3C 00
+expect rstate_t 30

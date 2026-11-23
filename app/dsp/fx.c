@@ -219,9 +219,9 @@ void fx_process(const float *dry_l, const float *dry_r, const float *rev, const 
             out_l[i] = dry_l[i];
             out_r[i] = dry_r[i];
         }
-    bongverb_block(&verb, rev, out_l, out_r, gain_rv, n);
+    GM_FAR(bongverb_block)(&verb, rev, out_l, out_r, gain_rv, n);   /* (RAM code: gm_ram.h) */
     if (!dl_off)
-        bongdelay_block(&dly, dly_in, out_l, out_r, gain_dl, n);
+        GM_FAR(bongdelay_block)(&dly, dly_in, out_l, out_r, gain_dl, n);
 }
 
 int fx_returns_asleep(void) { return bongverb_asleep(&verb) | (dl_off || bongdelay_asleep(&dly)) << 1; }

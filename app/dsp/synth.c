@@ -1126,9 +1126,15 @@ static void matrix(int t, int i, float *acc)
     }
 }
 
+/* GhettoMachine 0.5 (CPU): the voices' share for the first core (syn_half 0), of 256, the rest the second's: the app
+ * moves it so that both finish together (app.c syn_block). Dealt as Bresenham deals a line's steps: at 128, one each in
+ * turn, as before. Which core renders a voice changes nothing heard: each half's voices are summed in integers */
+static int split_q8 = 128;
+void syn_split(int share0_q8) { split_q8 = share0_q8 < 0 ? 0 : share0_q8 > 256 ? 256 : share0_q8; }
+
 void syn_prepare(void)
 {
-    int i, h = 0;
+    int i, h = 0, deal = 128;
     for (i = 1; i < SYN_TRACKS; i++)
         push_mod(i);
     for (i = 0; i < NVOICE; i++) {
@@ -1279,8 +1285,11 @@ void syn_prepare(void)
         }
         x->m.envq15 = (int32_t)(x->aenv * 32767.0f);
         v->env = (int32_t)(x->aenv * 16777216.0f);
+        deal += split_q8;                 /* (the first core's when the deal reaches a whole voice) */
+        h = deal >= 256 ? 0 : 1;
+        if (!h)
+            deal -= 256;
         x->half = (uint8_t)h;
-        h ^= 1;
     }
 }
 

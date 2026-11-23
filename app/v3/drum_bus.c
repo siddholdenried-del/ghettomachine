@@ -126,7 +126,60 @@ static void transients(DrumBus *b, const BusPatch *p, float *l, float *r, unsign
     b->slow_env = slow>1.e-14f ? slow : 0.f;
 }
 
-static float render_block(DrumBus *b, const BusMix *m, float *lanes[BUS_PADS],
+/* GhettoMachine 0.5 (CPU): DRY, the whole path in one pass. Every gain the dry sound and its sends take after a pad's
+   lane (its trim, level and pan, the bus's .75, level and pan, the track's gain, and the caller's out: the audition trim
+   and the drum track's scale) is one constant a pad, so each sample is written once a pad: the first pad's sets the
+   buffers, the rest add. It was four clears, the lanes, and three scaling passes (6-8 % of a block on the FM-1).
+   The same sound, to float rounding (the gains multiplied in another order) */
+static void render_dry(DrumBus *b, const BusMix *m, float *lanes[BUS_PADS], const float *trim, float out,
+                       unsigned offset, float *l, float *r, float *rev, float *dly, unsigned n)
+{
+    float blg, brg;
+    balance(m->bus.pan,m->bus.level,&blg,&brg);
+    const float g = .75f * b->track_gain * out;
+    const float master_rv = g * kit_unit(m->bus.reverb_send);
+    const float master_dl = g * kit_unit(m->bus.delay_send);
+    int first = 1, sends_written = 0;
+    for (unsigned p = 0; p < BUS_PADS; ++p) {
+        if (!lanes[p]) continue;
+        const BusPad *v = &m->pad[p];
+        const float level = kit_unit(v->level), t = trim ? trim[p] : 1.f;   /* (the trim past the level's clamp) */
+        if (level == 0) continue;
+        float lg, rg;
+        balance(v->pan,level,&lg,&rg);
+        lg *= g * blg * t;
+        rg *= g * brg * t;
+        const float *src = lanes[p] + offset;
+        const float rv = level * t * master_rv * kit_unit(v->reverb);
+        const float dl = level * t * master_dl * kit_unit(v->delay);
+        const int sends = rv != 0 || dl != 0;
+        if (first) {
+            for (unsigned i = 0; i < n; ++i) { const float x = src[i]; l[i] = lg*x; r[i] = rg*x; }
+            first = 0;
+        } else {
+            for (unsigned i = 0; i < n; ++i) { const float x = src[i]; l[i] += lg*x; r[i] += rg*x; }
+        }
+        if (sends) {
+            if (!sends_written) {
+                for (unsigned i = 0; i < n; ++i) { const float x = src[i]; rev[i] = rv*x; dly[i] = dl*x; }
+                sends_written = 1;
+            } else {
+                for (unsigned i = 0; i < n; ++i) { const float x = src[i]; rev[i] += rv*x; dly[i] += dl*x; }
+            }
+        }
+    }
+    if (first) {
+        V3_CLEAR(l, 0, n * sizeof *l);
+        V3_CLEAR(r, 0, n * sizeof *r);
+    }
+    if (!sends_written) {
+        V3_CLEAR(rev, 0, n * sizeof *rev);
+        V3_CLEAR(dly, 0, n * sizeof *dly);
+    }
+    b->comp_env = b->fast_env = b->slow_env = 0;
+}
+
+static float render_block(DrumBus *b, const BusMix *m, float *lanes[BUS_PADS], const float *trim,
                          unsigned offset, float *l, float *r, float *rev, float *dly, unsigned n)
 {
     V3_CLEAR(l, 0, n * sizeof *l);
@@ -138,13 +191,15 @@ static float render_block(DrumBus *b, const BusMix *m, float *lanes[BUS_PADS],
     for (unsigned p = 0; p < BUS_PADS; ++p) {
         if (!lanes[p]) continue;
         const BusPad *v = &m->pad[p];
-        float level = kit_unit(v->level);
+        const float level = kit_unit(v->level), t = trim ? trim[p] : 1.f;
         if (level == 0) continue;
         float lg, rg;
         balance(v->pan,level,&lg,&rg);
+        lg *= t;
+        rg *= t;
         const float *src = lanes[p] + offset;
-        float rv = level * master_rv * kit_unit(v->reverb);
-        float dl = level * master_dl * kit_unit(v->delay);
+        float rv = level * t * master_rv * kit_unit(v->reverb);
+        float dl = level * t * master_dl * kit_unit(v->delay);
         if (rv != 0 || dl != 0) {
             for (unsigned i = 0; i < n; ++i) {
                 l[i] += lg*src[i]; r[i] += rg*src[i];
@@ -172,13 +227,18 @@ static float render_block(DrumBus *b, const BusMix *m, float *lanes[BUS_PADS],
     return lowest;
 }
 
-void drum_bus_render(DrumBus *b, const BusMix *mix, float *lanes[BUS_PADS],
+void drum_bus_render(DrumBus *b, const BusMix *mix, float *lanes[BUS_PADS], const float *trim, float dry_out,
                      float *left, float *right, float *rev, float *dly, unsigned n)
 {
     float lowest = 1.f;
     for (unsigned at = 0; at < n;) {
         unsigned part = n-at > BUS_FRAMES ? BUS_FRAMES : n-at;
-        float g = render_block(b,mix,lanes,at,left+at,right+at,rev+at,dly+at,part);
+        if (mix->dry_only) {
+            render_dry(b,mix,lanes,trim,dry_out,at,left+at,right+at,rev+at,dly+at,part);
+            at += part;
+            continue;
+        }
+        float g = render_block(b,mix,lanes,trim,at,left+at,right+at,rev+at,dly+at,part);
         if (g < lowest) lowest = g;
         at += part;
     }
