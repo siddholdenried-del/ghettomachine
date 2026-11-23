@@ -225,8 +225,8 @@
       "sha256": "0300e8193b6967afd4bb2a0c6e3107210d8080c35d33bf6bd1e16925b9513743"
     },
     "bongdrums/index.html": {
-      "bytes": 9493,
-      "sha256": "b4c69607d4addf0ce85e8fcfa612bb4cacabbbc3622f37d6f7f29c5fce9fb31e"
+      "bytes": 9467,
+      "sha256": "54cc775b7987abd66661de90f8e0a53c1ca5f9d9ee96ae032f9f11e2859b08b4"
     },
     "bongdrums/instrument.webp": {
       "bytes": 58022,
@@ -241,8 +241,8 @@
       "sha256": "2cab525420316deedd5737517e949574cb3c4d2fa1e4d317e7d5bee60d27d628"
     },
     "bongsynth/index.html": {
-      "bytes": 8956,
-      "sha256": "a8dfb39cefc687547f9f3f07aecab4d8addcc3eb2714760b4915c268aebb8657"
+      "bytes": 9170,
+      "sha256": "f43fcfe06d15fb0e92b729000de7182403dacd0ef9f5eb3e07445bd9cde334d9"
     },
     "bongsynth/instrument.webp": {
       "bytes": 53512,
