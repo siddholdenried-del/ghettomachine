@@ -1,0 +1,91 @@
+# The drums' LFO with the DrumEngine (app.c pad_fire, trial_hit_moved): DEST picks one of the picked drum's own
+# controls (its choices such as MODEL left out), and each of that drum's hits is moved by it, the patch itself left
+# as it is. With the stock 808 / 909 the same LFO shows OFF and moves nothing (it moves a kit knob once picked there).
+# drumlfo: the last hit's move, thousandths of the control's range (0: not moved)
+listen
+wait 300
+expect demode 1
+turn ALGO -3
+wait 50
+# the snare picked; LFO: SQUARE (its out is all the way up or down), DEST its first control, DEPTH +40
+key 3 down
+wait 20
+key 3 up
+wait 50
+tap LFO
+wait 100
+turn K1 -10
+turn K1 4
+wait 50
+said SHAPE SQUARE
+turn K4 1
+wait 50
+said DEST SD Tune
+turn K4 1
+wait 50
+said DEST SD Body
+turn K4 -1
+wait 50
+said DEST SD Tune
+turn K3 40
+wait 50
+# the snare's hits: moved by 40/127 of TUNE's range, up or down
+key 3 down
+wait 20
+key 3 up
+wait 50
+expect drumlfo >300
+expect drumlfo <330
+# the kick's: not
+key 1 down
+wait 20
+key 1 up
+wait 50
+expect drumlfo 0
+# the snare's own sound unchanged by it (its TUNE as it was: the editor reads the patch)
+key 3 down
+wait 20
+key 3 up
+wait 50
+tap EDIT
+wait 100
+where
+wait 100
+said K1 47.0%
+tap LFO
+wait 50
+# DEPTH 0: not moved
+turn K3 -40
+wait 50
+key 3 down
+wait 20
+key 3 up
+wait 50
+expect drumlfo 0
+turn K3 40
+wait 50
+# the stock 808 / 909: the DrumEngine's DEST does nothing there; DEST now turns through the kit's knobs
+expect demode_0 1
+wait 100
+key 3 down
+wait 20
+key 3 up
+wait 50
+expect drumlfo 0
+turn K4 1
+wait 50
+said DEST SD
+turn K4 -1
+wait 50
+said DEST OFF
+# back to the DrumEngine: DEST through the drum's own controls again, its hits moved
+expect demode_1 1
+wait 100
+turn K4 1
+wait 50
+said DEST SD Tune
+key 3 down
+wait 20
+key 3 up
+wait 50
+expect drumlfo >300

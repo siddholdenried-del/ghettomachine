@@ -402,6 +402,27 @@ void trial_hit(unsigned pad, float velocity)
     }
 }
 
+void trial_hit_moved(unsigned pad, float velocity, int param, float move)
+{
+    static KitPatch moved;                /* (the audio interrupt's: one hit at a time) */
+    const KitParamSpec *spec = kit_param_spec((int)pad, param);
+    if (pad < 1 || pad > KIT_PADS)
+        return;
+    moved = patch;
+    if (spec && kit_param_editable(&moved, (int)pad, param)) {
+        const float d = move * (float)(spec->max_tick - spec->min_tick);
+        kit_param_set(&moved, (int)pad, param, kit_param_get(&moved, (int)pad, param) + (int)(d + (d < 0.f ? -.5f : .5f)));
+    }
+    {
+        const unsigned i = pad - 1;
+        capture_shaping(i, &moved);
+        trim_goal[i] = pad_trim(i);
+        gate_shut[i] = 0;
+        gate[i] = 1.f;
+        kit_hit(&kit, (int)pad, velocity, &moved);
+    }
+}
+
 static void begin_transition(void)
 {
     if (!transition.rendered) return;

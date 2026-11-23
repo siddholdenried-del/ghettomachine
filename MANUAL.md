@@ -342,8 +342,10 @@ Turning a knob without recording on, or stopped, only changes the sound.
   - Page 2: SYNC, RETRIG (FREE, NOTE, BAR), FADE IN, PHASE.
   - LFO 1 is the track's (one for all its notes, and it can follow the tempo); it's also a source in the matrix.
   - On T2–T4, DEST is cutoff, pitch, level, PWM, resonance, detune, mix, drive, noise or sub.
-  - **On the drums,** pick a pad, then turn DEST to pick one of its knobs. The LFO moves that knob at each of the pad's
-    hits: S&H on the hat's decay makes every hat different.
+  - **On the drums,** pick a pad, then turn DEST to pick one of its controls. The LFO moves that control at each of the
+    pad's hits, for that hit alone (your sound stays as you set it): S&H on the hat's decay makes every hat different.
+    With the DrumEngine the controls are the drum's own (TUNE, BODY, DECAY, TONE, DRIVE...; not MODEL or MODE); with the
+    stock 808 / 909 they're the kit's knobs. An LFO set up for one engine moves nothing while the other plays.
 - **ARP** (T2–T4):
   - Page 1: MODE (up, down, up and down, random, as played), RATE, OCTAVES, GATE.
   - Page 2: LATCH, and **chord mode** (below).

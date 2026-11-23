@@ -194,6 +194,8 @@ typedef struct {                          /* a track's LFO */
     uint8_t rsv[2];                       /* drum model +1 in rsv[0], zero retains legacy LFO targeting */
 } lfo_t;
 #define LFO_OFF 0xFFu
+#define LFO_V3 (DRUM_MODEL_NUM + 1)        /* the drums' LFO's rsv[0]: its DEST is one of the DrumEngine's controls of the
+                                           * pad (v3/presets.h); else the model + 1 whose knob it is (0: the pad's own) */
 
 enum { GS_MINOR, GS_PHRYG, GS_DORIAN, GS_PENTA, GS_BLUES, GS_HARM, GS_MAJOR, GS_MIXO, NGSCALES };   /* its scales */
 typedef struct {                          /* a part's 303 generator (the ACID pages, 0.4) */
@@ -462,13 +464,24 @@ static struct {
     uint32_t cuts, caps, sheds, guards;   /* drum sounds cut, voices shed, effects taken out, the guard's blocks, so far */
 } gov;
 
+static float lfo_out_drums(void);
+static int drum_lfo_moved;                /* the last hit's move by the drums' LFO, thousandths of the range, its size
+                                           * (0: not moved; tests) */
 static void pad_fire(int pad, float vel)
 {
     if (pad < 0 || pad >= NPADS || drum_lane_muted(pad))
         return;
-    if (v3_mode)
-        trial_hit((unsigned)pad + 1u, vel);
-    else {
+    drum_lfo_moved = 0;
+    if (v3_mode) {                        /* the drums' LFO on one of this pad's controls: moved for this hit */
+        const lfo_t *lf = &proj.lfo[TR_DRUM];
+        if (lf->rsv[0] == LFO_V3 && lf->dest != LFO_OFF && lf->depth && lf->pad == pad) {
+            const float move = lfo_out_drums() * (float)lf->depth * (1.0f / 127.0f);
+            drum_lfo_moved = (int)((move < 0.0f ? -move : move) * 1000.0f);
+            trial_hit_moved((unsigned)pad + 1u, vel, lf->dest, move);
+        } else {
+            trial_hit((unsigned)pad + 1u, vel);
+        }
+    } else {
         if (!drums_has_pad(drum_model(pad), pad)) return;
         drums_trigger_mapped(proj.kit, proj.model, pad, vel);
     }
@@ -964,7 +977,7 @@ static void project_check(void)           /* a loaded project's values kept in r
         l->phase &= 127u;
         l->depth = (int8_t)clamp(l->depth, -64, 63);
         if (t == TR_DRUM) {
-            if (l->rsv[0] > DRUM_MODEL_NUM)
+            if (l->rsv[0] > LFO_V3)
                 l->rsv[0] = 0;
             if (l->pad >= NPADS || (l->dest != LFO_OFF && l->dest >= NPOTS))
                 l->dest = LFO_OFF, l->pad = 0;
@@ -1582,6 +1595,7 @@ static struct {
     float a, b;                           /* S&H, SMOOTH: the value this cycle, and the next */
     float fade;                           /* 0..1 after a note (FADE) */
 } lfo_rt[NTRK];
+static float lfo_out_drums(void) { return lfo_rt[TR_DRUM].out; }
 static uint32_t mod_rng = 0x9E3779B9u;
 
 static float mod_rnd(void)                /* -1..1 */
@@ -5272,9 +5286,27 @@ static void mod_knob(int k, int32_t e)    /* an instrument's LFO 2 and MATRIX pa
     }
 }
 
+/* the drums' LFO: with the DrumEngine it moves one of the pad's own controls (its rsv[0] LFO_V3), with the stock
+ * 808 / 909 one of the kit's knobs (the model + 1); one set up for the other engine does nothing until it's back */
+static int lfo_drum_tag(int pad) { return v3_mode ? LFO_V3 : drum_model(pad) + 1; }
+static int lfo_drum_live(const lfo_t *l)
+{
+    if (l->dest == LFO_OFF || l->pad >= NPADS)
+        return 0;
+    if (l->rsv[0] == LFO_V3)
+        return v3_mode && kit_param_spec(l->pad + 1, l->dest) && !kit_param_option(l->pad + 1, l->dest, 0);
+    return !v3_mode && (!l->rsv[0] || l->rsv[0] == drum_model(l->pad) + 1) && drums_param(drum_model(l->pad), l->pad, l->dest);
+}
 static int lfo_drum_knobs(int pad, int *idx)   /* the knobs the drums' LFO can move on a pad (not switches or sends) */
 {
     int i, n = 0, np = drums_nparams(drum_model(pad), pad);
+    if (v3_mode) {                        /* the DrumEngine: the drum's controls, its choices (MODEL ...) left out */
+        np = kit_param_count(pad + 1);
+        for (i = 0; i < np && i < NPOTS; i++)
+            if (!kit_param_option(pad + 1, i, 0))
+                idx[n++] = i;
+        return n;
+    }
     for (i = 0; i < np && i < NPOTS; i++) {
         const x0x_param_t *d = drums_param(drum_model(pad), pad, i);
         if (d && !d->names && !param_is_send(d))
@@ -5315,12 +5347,13 @@ static void lfo_text(int tr, int page, int k, char *t)
     } else if (page == 0) {
         if (tr != TR_DRUM) {
             text_cat(t, LDEST_NAME[l->dest]);
-        } else if (l->dest == LFO_OFF || (l->rsv[0] && l->rsv[0] != drum_model(l->pad) + 1) || !drums_param(drum_model(l->pad), l->pad, l->dest)) {
+        } else if (!lfo_drum_live(l)) {
             text_cat(t, "OFF");
         } else {
             text_cat(t, trial_pad_name(drum_model(l->pad), l->pad));
             text_cat(t, " ");
-            text_cat(t, drums_param(drum_model(l->pad), l->pad, l->dest)->name);
+            text_cat(t, l->rsv[0] == LFO_V3 ? kit_param_spec(l->pad + 1, l->dest)->label
+                                            : drums_param(drum_model(l->pad), l->pad, l->dest)->name);
         }
     } else if (k == 0) {
         text_cat(t, l->sync ? "TEMPO" : "FREE");
@@ -5351,7 +5384,7 @@ static int lfo_value(int tr, int page, int k, int *max)   /* for the bar under t
         case 0: *max = NLSHAPES - 1; return l->shape;
         case 1: if (l->sync) { *max = NDIV - 1; return l->div; } return l->rate;
         case 2: return l->depth + 64;
-        default: *max = tr == TR_DRUM ? 1 : SM_NUM - 1; return tr == TR_DRUM ? l->dest != LFO_OFF : l->dest;
+        default: *max = tr == TR_DRUM ? 1 : SM_NUM - 1; return tr == TR_DRUM ? lfo_drum_live(l) : l->dest;
         }
     }
     switch (k) {
@@ -5390,13 +5423,13 @@ static void lfo_knob(int k, int32_t e)
                 l->dest = (uint8_t)clamp(l->dest + e, 0, SM_NUM - 1);
             } else {                      /* the picked pad's knobs, OFF before them */
                 int idx[NPOTS], n = lfo_drum_knobs(ui.pad, idx), pos = -1, i;
-                if (l->dest != LFO_OFF && l->pad == ui.pad && (!l->rsv[0] || l->rsv[0] == drum_model(ui.pad) + 1))
+                if (lfo_drum_live(l) && l->pad == ui.pad)
                     for (i = 0; i < n; i++)
                         if (idx[i] == l->dest)
                             pos = i;
                 pos = clamp(pos + e, -1, n - 1);
                 l->pad = ui.pad;
-                l->rsv[0] = (uint8_t)(drum_model(ui.pad) + 1);
+                l->rsv[0] = (uint8_t)lfo_drum_tag(ui.pad);
                 l->dest = (uint8_t)(pos < 0 ? LFO_OFF : idx[pos]);
             }
             break;
@@ -10440,6 +10473,8 @@ int app_expect(const char *what, int *got)
         *got = p->mute;
     else if (!strcmp(what, "dirty"))
         *got = dirty;
+    else if (!strcmp(what, "drumlfo"))    /* the last hit's move by the drums' LFO, thousandths of the control's range */
+        *got = drum_lfo_moved;
     else if (!strcmp(what, "rec"))
         *got = ui.rec;
     else if (!strcmp(what, "queued"))

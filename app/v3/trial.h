@@ -7,6 +7,9 @@
  * Initialize once while stopped. Native pad IDs are 1 through 11. */
 void trial_init(void);
 void trial_hit(unsigned pad1, float velocity);
+/* the same hit with one of the pad's controls (presets.h's index) moved by move times its whole range, for this hit
+ * alone (the drums' LFO): the patch itself is left as it is */
+void trial_hit_moved(unsigned pad1, float velocity, int param, float move);
 /* A pad muted while it sounds: its sound fades out in 1.5 ms and stays out until it strikes again */
 void trial_cut(unsigned pad1);
 /* A factory recipe's level trim, tenths of a dB (v3/levels.inc) */
