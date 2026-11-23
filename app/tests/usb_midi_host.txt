@@ -1,0 +1,96 @@
+# Use the same entry point as the physical panel. USB alone supplies no controller power.
+wait 300
+expect usbh 0
+tap HOME
+wait 30
+tap HOME
+wait 30
+tap HOME
+wait 30
+expect page 13
+turn K3 1
+wait 50
+expect usbh 1
+usbh plug Akai_MPK_Mini in
+wait 320
+expect usbh 2
+usbh midi 91 3C 64
+wait 20
+expect voices2 >0
+usbh midi 81 3C 00
+wait 2800
+expect voices2 0
+# A USB controller cannot enter the private device diagnostic mode.
+expect demode_0 1
+expect demode 0
+usbh midi BF 6E 01
+wait 20
+expect demode 0
+# Two inputs hold the same note. Removing USB must preserve the TRS owner.
+midi TRS 91 43 64
+usbh midi 91 43 64
+wait 20
+expect voices2 >0
+usbh unplug
+wait 2800
+expect usbh 1
+expect voices2 >0
+midi TRS 81 43 00
+wait 2800
+expect voices2 0
+# A USB-only held note does go away on unplug.
+usbh plug Akai_MPK_Mini in
+wait 320
+expect usbh 2
+usbh midi 91 44 64
+wait 20
+expect voices2 >0
+usbh unplug
+wait 2800
+expect usbh 1
+expect voices2 0
+turn K3 -1
+wait 100
+expect usbh 0
+midi 91 3C 64
+wait 20
+expect voices2 >0
+midi 81 3C 00
+wait 2800
+expect voices2 0
+# A Start without its first clock must not start a later USB session's clock.
+expect page 13
+spin K1 2
+expect mclock 2
+turn K3 1
+wait 100
+usbh plug Akai_MPK_Mini in
+wait 320
+usbh midi FA 00 00
+wait 15
+usbh unplug
+wait 35
+usbh plug Akai_MPK_Mini in
+wait 320
+usbh clock 5 21
+expect playing 0
+usbh midi FA 00 00
+usbh clock 5 21
+expect playing 1
+# Role remains host during a running sequence; Stop permits return.
+turn K3 -1
+wait 30
+expect usbh 2
+usbh midi FC 00 00
+wait 40
+expect playing 0
+turn K3 -1
+wait 50
+expect usbh 0
+# Host role is never saved.
+turn K3 1
+wait 50
+expect usbh 1
+reboot
+wait 300
+expect usbh 0

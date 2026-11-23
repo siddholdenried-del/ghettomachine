@@ -15,6 +15,7 @@ ram_code_allow = ["fx_master"]   # Master EQ, tape, stereo and meters are called
 cpu2 = true                    # the second core renders half the synth voices
 cpu2_fallback = true           # one core (8 voices) after a failure of it, instead of a restart
 companion = true              # the project file (plat_file_*); no files of the app's own (the sampler went in 0.5)
+usb_host = true                # explicit SETUP K3; boot always computer/device
 usb_audio_channels = 10        # USB audio in: the master on 1-2, then each track alone (the stems: drums 3-4, T2 5-6, T3 7-8, T4 9-10)
 # the site and firmware.json
 tagline = "a 4-track groovebox for the FM-1: an 808 / 909 drum track and three instrument tracks"

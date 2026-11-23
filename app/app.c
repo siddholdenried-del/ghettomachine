@@ -2477,12 +2477,89 @@ static void mclk_tick(void)               /* every 6th clock (a 16th): its time 
 
 static void drums2_force(unsigned v);     /* (below, by the drums' second-core state) */
 
+#if FM1B_USB_HOST
+#include "midi_host_owner.h"
+
+static volatile uint8_t usb_host_selected;
+static uint8_t mh_usb_start;
+
+static void mh_note(int tr, unsigned note, unsigned vel, unsigned source, int on)
+{
+    int arp_on = tset(tr)->arp_mode;
+    int repeat = on && source != MH_PANEL && (mh_notes[tr-1][note] & source);
+    int event = mh_own(tr, note, source, on);
+    if (on)
+        mh_latch_set(tr, note, 0);
+    if (event < 0 && arp_on && tset(tr)->arp_latch && source <= MH_USB_FIXED)
+        mh_latch_set(tr, note, 1);
+    if (!event && !repeat)
+        return;
+    if (arp_on) {
+        if (repeat) {
+            int i;
+            for (i = 0; i < arp[tr].n; i++)
+                if (arp[tr].note[i] == note && arp[tr].life[i] < 0) {
+                    arp[tr].vel[i] = (uint8_t)vel;
+                    return;
+                }
+        }
+        arp_key(tr, (int)note, (int)vel, on);
+    } else if (on) {
+        syn_note_on(tr, (int)note, (float)vel / 127.0f, -1, tset(tr)->type == TY_MONO);
+        lfo_note(tr);
+    } else
+        syn_note_off(tr, (int)note);
+}
+
+static void mh_usb_disconnected(void)
+{
+    int tr, note, i;
+    if (mh_usb_start) {
+        sq.mclk_go = 0;                   /* do not carry an unfulfilled Start across USB sessions */
+        mh_usb_start = 0;
+    }
+    for (tr = 1; tr < NTRK; tr++) {
+        for (note = 1; note < 128; note++) {
+            uint8_t *p = &mh_notes[tr - 1][note];
+            if (!(*p & 3u))
+                continue;
+            *p &= (uint8_t)~3u;
+            if (*p)
+                continue;
+            syn_note_off(tr, note);
+            if (tset(tr)->arp_mode) {
+                arp_key(tr, note, 0, 0);   /* remove the held key even when latch was enabled */
+                mh_latch_set(tr, (unsigned)note, 1);
+            }
+        }
+        for (i = arp[tr].n - 1; i >= 0; i--) {
+            note = arp[tr].note[i];
+            if (arp[tr].life[i] < 0 && (mh_usb_arp[tr - 1][note >> 3] & (1u << (note & 7))))
+                arp_drop(tr, i);
+        }
+        for (i = 0; i < 16; i++)
+            mh_usb_arp[tr - 1][i] = 0;
+    }
+    for (i = 0; i < 32; i++)
+        mh_route[0][i] = 0;
+}
+#endif
+
 static void midi_in(void)                 /* audio interrupt */
 {
     uint32_t pkt;
     int port;
+#if FM1B_USB_HOST
+    if (plat_usb_lost())
+        mh_usb_disconnected();
+#endif
     while (plat_midi_in(&pkt, &port)) {
         uint32_t st = (pkt >> 8) & 0xFFu, d1 = (pkt >> 16) & 0x7Fu, d2 = pkt >> 24 & 0x7Fu, ch = st & 0x0Fu;
+#if FM1B_USB_HOST
+        if (usb_host_selected && port == PORT_USB &&
+            ((st == 0xBFu && d1 >= 109u && d1 <= 119u) || (st == 0x9Fu && d1 >= 36u && d1 <= 46u)))
+            continue;                     /* app/device diagnostic controls are not for external USB controllers */
+#endif
         if (ch == 15u && st == 0xBFu && d1 >= 110u && d1 <= 119u) {
             if (d1 == 110u) v3_set_mode(d2);
             else if (d1 == 111u) { if (d2 == 1u) trial_metrics_reset(); }
@@ -2505,6 +2582,9 @@ static void midi_in(void)                 /* audio interrupt */
             if (st == 0xF8u) {            /* a clock: the first after a Start starts; every 6th times the tempo */
                 if (sq.mclk_go) {
                     sq.mclk_go = 0;
+#if FM1B_USB_HOST
+                    mh_usb_start = 0;
+#endif
                     if (!sq.playing)
                         seq_begin();
                 }
@@ -2514,10 +2594,16 @@ static void midi_in(void)                 /* audio interrupt */
                     mclk_tick();
             } else if ((st == 0xFAu || st == 0xFBu) && !sq.playing) {   /* Start (Continue: from the top too) */
                 sq.mclk_go = 1;
+#if FM1B_USB_HOST
+                mh_usb_start = (uint8_t)(port == PORT_USB);
+#endif
                 sq.mclk_n = 23;           /* (the next clock is the first beat's) */
                 sq.mclk_nt = 0;           /* (the 6th clocks counted from it) */
             } else if (st == 0xFCu) {
                 sq.mclk_go = 0;
+#if FM1B_USB_HOST
+                mh_usb_start = 0;
+#endif
                 if (sq.playing)
                     sq.ext_stop = 1;
             }
@@ -2525,7 +2611,21 @@ static void midi_in(void)                 /* audio interrupt */
         }
         int on = (st & 0xF0u) == 0x90u && d2, off = (st & 0xF0u) == 0x80u || ((st & 0xF0u) == 0x90u && !d2);
         int tr = ch == 9u ? TR_DRUM : ch == 0u ? (int)sel_trk : ch <= 3u ? (int)ch : -1;
+#if FM1B_USB_HOST
+        int trs = port != PORT_USB;
+        if (ch == 0u && d1 && (on || off)) {
+            int was = mh_route_get(trs, d1);
+            if (was && (off || was != tr))
+                mh_note(was, d1, 0, (unsigned)(trs ? MH_TRS_SEL : MH_USB_SEL), 0);
+            if (off) {
+                mh_route_set(trs, d1, 0);
+                continue;
+            }
+            mh_route_set(trs, d1, (unsigned)(tr > 0 && !track_is_muted(tr) ? tr : 0));
+        }
+#else
         (void)port;
+#endif
         if (tr == TR_DRUM) {
             int pad = gm_pad(d1);
             if (on && pad >= 0)
@@ -2533,6 +2633,11 @@ static void midi_in(void)                 /* audio interrupt */
         } else if (tr > 0 && d1 > 0u) {
             if (on && track_is_muted(tr))
                 continue;
+#if FM1B_USB_HOST
+            if (on || off)
+                mh_note(tr, d1, d2, (unsigned)(ch ? (trs ? MH_TRS_FIXED : MH_USB_FIXED)
+                                                   : (trs ? MH_TRS_SEL : MH_USB_SEL)), on);
+#else
             if (tset(tr)->arp_mode) {
                 if (on || off)
                     arp_key(tr, (int)d1, (int)d2, on);
@@ -2542,6 +2647,7 @@ static void midi_in(void)                 /* audio interrupt */
             } else if (off) {
                 syn_note_off(tr, (int)d1);
             }
+#endif
         }
     }
 }
@@ -3565,6 +3671,15 @@ void app_panic(void)
 
 void app_init(void)
 {
+#if FM1B_USB_HOST && defined(PLAT_HOST)
+    /* Simulator reboot keeps its data segment; hardware clears BSS on boot. */
+    usb_host_selected = 0;
+    mh_usb_start = 0;
+    mh_panel_keys = 0;
+    memset(mh_notes, 0, sizeof mh_notes);
+    memset(mh_route, 0, sizeof mh_route);
+    memset(mh_usb_arp, 0, sizeof mh_usb_arp);
+#endif
     trial_init();
     trial_metrics_reset();
 #ifdef PLAT_HOST
@@ -4433,6 +4548,11 @@ static void note_down(int key)            /* a key on the KEYS (or EDIT) page of
     nc = chord_of(ui.key_chord[key], note, cn);
     f = plat_lock();
     if (!track_is_muted(tr)) {
+#if FM1B_USB_HOST
+        mh_panel_keys |= 1u << key;
+        for (i = 0; i < nc; i++)
+            mh_note(tr, (unsigned)cn[i], (unsigned)vel, MH_PANEL, 1);
+#else
         for (i = 0; i < nc; i++) {
             if (ts->arp_mode)
                 arp_key(tr, cn[i], vel, 1);
@@ -4441,6 +4561,7 @@ static void note_down(int key)            /* a key on the KEYS (or EDIT) page of
         }
         if (!ts->arp_mode)
             lfo_note(tr);
+#endif
     }
     plat_unlock(f);
     for (i = 0; i < nc; i++)
@@ -4480,12 +4601,20 @@ static void note_up(int key)
         return;
     nc = chord_of(ui.key_chord[key], note, cn);
     f = plat_lock();
+#if FM1B_USB_HOST
+    if (mh_panel_keys & (1u << key)) {
+        mh_panel_keys &= ~(1u << key);
+        for (i = 0; i < nc; i++)
+            mh_note(tr, (unsigned)cn[i], 0, MH_PANEL, 0);
+    }
+#else
     for (i = 0; i < nc; i++) {
         if (tset(tr)->arp_mode)
             arp_key(tr, cn[i], 0, 0);
         else
             syn_note_off(tr, cn[i]);
     }
+#endif
     plat_unlock(f);
     for (i = 0; i < nc; i++)
         plat_midi_send(0x08u | (0x80u | (uint32_t)tr) << 8 | (uint32_t)cn[i] << 16, TO_USB);
@@ -5743,6 +5872,15 @@ static void setup_knob(int k, int32_t e)  /* SETUP: K1 MIDI CLOCK, K2 SOUNDS */
         }
         plat_unlock(f);
         app_say("SOUNDS", v ? "PER PATTERN" : "SHARED");
+#if FM1B_USB_HOST
+    } else if (k == 2) {
+        if (!e || sq.playing || ui.rec)
+            return;                     /* no role switch during transport or a take */
+        usb_host_selected = (uint8_t)(e > 0);
+        plat_usb_host(usb_host_selected);
+        app_say("USB PORT", usb_host_selected ? "MIDI HOST" : "COMPUTER");
+        return;                         /* role is session-only, not a project setting */
+#endif
     } else {
         return;
     }
@@ -7900,6 +8038,14 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
             card_put(c, "SOUNDS", sounds_pp() ? "OWN" : "SHARED", sounds_pp(), 0, 1, -1);
             return 1;
         }
+#if FM1B_USB_HOST
+        if (k == 2) {
+            int host = plat_usb_host_state();
+            card_put(c, "USB PORT", host == USBH_CONNECTED ? "MIDI READY" : usb_host_selected ? "WAITING" : "COMPUTER",
+                     usb_host_selected, 0, 1, -1);
+            return 1;
+        }
+#endif
         return 0;
     }
     case KD_GEN: {                        /* the 303 generator: page 0 ACID, 1 NOTES, 2 LINE */
@@ -9253,7 +9399,11 @@ static void page_setup(void)              /* SETUP: MIDI CLOCK; SOUNDS shared or
         page_cpu();
         return;
     }
+#if FM1B_USB_HOST
+    band_set(C_CREAM, "SETUP", "CLOCK, SOUNDS, USB", "K3: USB PORT", 0, 0);
+#else
     band_set(C_CREAM, "SETUP", "CLOCK, SOUNDS", "SELECT: CPU", 0, 0);
+#endif
     rrect(3, 2, 234, 40, 6, C_PANEL);
     cv_text(10, 4, &FONT_XS, "MIDI CLOCK (USB)", C_TXT2);
     cv_text(10, 20, &FONT_S, CL[proj.recq >> 2 & 3u], TH_TXT);
@@ -10128,6 +10278,10 @@ void app_frame(void)
 {
     uint32_t now = plat_ms(), t = sq.ticks;
     input();
+#if FM1B_USB_HOST
+    if (plat_usb_host_msg() != USBH_MSG_NONE && ui.page == PG_SETUP)
+        ui.redraw = 1;
+#endif
     ck.rec = ui.rec;
     if (sq.ext_stop) {                    /* MIDI CLOCK followed: a Stop */
         sq.ext_stop = 0;
