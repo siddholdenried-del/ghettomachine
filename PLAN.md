@@ -10,8 +10,9 @@ yet. The user's guide is [MANUAL.md](MANUAL.md).
 
 Bring one BongDrums track and three BongSynth tracks into a single FM‑1 render
 pipeline: a shared mixer, one BongVerb and one BongDelay reached through
-per-track sends, then BongMaster at the stereo output. BongMaster is being
-extracted as a separate stage so it can be tuned and measured independently.
+per-track sends. Sum the dry mix and both returns before BongMaster at the
+stereo output. BongMaster is being extracted as a separate stage so it can be
+tuned and measured independently.
 
 - Budget drums, synth voices, sends and returns, mastering, and callback overhead
   together. Reuse calculations only where equivalence is tested. Keep attacks,
