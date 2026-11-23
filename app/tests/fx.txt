@@ -126,6 +126,8 @@ release SEL
 wait 30
 expect trk 4
 expect dlyon 1
+expect rec 0
+listen
 press REC
 wait 20
 tap SEL
@@ -133,6 +135,9 @@ wait 20
 release REC
 wait 30
 expect dlyon 1
+expect rec 0
+unsaid RECORD
+unsaid SEL+PADS
 tap FX
 wait 30
 expect page 10

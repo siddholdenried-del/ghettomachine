@@ -6753,8 +6753,12 @@ static void input(void)
         ui.save_used = 0;
         ui.save_slot = -1;
     }
-    if (pressed >> B_SEL & 1u)            /* SEL: held + pad keys 1-4: tracks */
+    if (pressed >> B_SEL & 1u) {          /* SEL: held + pad keys 1-4: tracks */
         ui.sel_used = 0;
+        if (btn >> B_REC & 1u)            /* REC held + SEL (sampling until 0.5): nothing, neither RECORD on or off
+                                           * as REC is let go nor SEL's help (found on the FM-1) */
+            ui.sel_used = ui.rec_used = 1;
+    }
     if (pressed >> B_SEQ & 1u) {
         ui.seq_prev = ui.page;
         ui.seq_used = 0;
