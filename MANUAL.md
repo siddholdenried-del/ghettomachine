@@ -68,7 +68,7 @@ route still works for getting M-VAVE's firmware back.
 | **SEL + GLO** | The master bus, at once. |
 | **SEL + FX (T2–T4)** | The selected instrument track's insert; SELECT chooses a mode or OFF. |
 | **SAVE** | Tap: save the project. Hold it and press a pattern key: copy the pattern there. Hold it and turn PRESETS: save a preset. Hold it and press OCT−: the track's sound back to how it was saved. |
-| **EDIT + OCT− / OCT+** | Undo, redo (8 levels). |
+| **EDIT + OCT− / OCT+** | Undo, redo (6 levels). |
 
 ### The screen
 
@@ -143,11 +143,10 @@ A very dense collection of long parts can exceed the fixed FM-1 project save slo
   - **While stopped, on KEYS:** step recording. A note or a chord goes into the cursor's step, and the cursor moves on
     when you let go. SELECT moves the cursor, to leave a rest.
 
-### Color on a track
+### Color (retired)
 
-Pick **DRUMS, T2, T3 or T4**, then tap **FX** through Reverb, Delay, Delay 2 and Filter to reach that track's **COLOR**. On the first page, **K1 AMOUNT** blends the processed sound and **K4 COLOR** switches ON/BYPASS. Turn **SELECT** right for Modules: K1 **WEAR** (signal-gated hiss and crackle), K2 **WOW** (stereo wow and flutter), K3 **DIGITAL** (reduced rate and resolution), K4 **DROPOUT** (brief tape dips). Turn SELECT left for Amount and Bypass. While on Color, use **ALGORITHM** to pick a different track.
-
-Each track has its own strip and stored settings. On instruments, Color follows the track's insert, and comes before pan, shared sends and that track's USB stem. On drums, the preweighted reverb and delay feeds get the same Color timing without changing individual pad send levels. The master bus controls and chain are unchanged. Muting a track clears its Color history, not effects already ringing in the shared reverb or delay. A bypassed strip leaves samples unchanged. Projects made before Color load with all four strips bypassed. A track's Color and its insert **sleep** once silence has gone through them for about 0.1 s (their tails rung out): they take no processor time until the track's next sound, which wakes them at once.
+The unified engine has no Color, reverb or delay inside a track. Older projects keep their Color and insert settings as
+saved data; nothing applies them. The FX button now goes through the four FX pages and back to the track's own page.
 
 ### Instrument insert effects
 
@@ -369,11 +368,15 @@ Turning a knob without recording on, or stopped, only changes the sound.
 
 - **GLO, the mixer:** LEVEL, PAN, REVERB, DELAY pages. On each, K1–K4 are DRUMS, T2, T3, T4. The drums' sends open the
   FX to their pads' own reverb and delay knobs.
-- **FX:**
-  - REVERB: decay, tone, low cut, level.
-  - DELAY: time in note values, feedback, tone, level.
-  - DELAY 2: digital or tape, wear, ping-pong width, low cut.
+- **FX:** one shared **BongVerb** and one shared **BongDelay**. Each track's REVERB and DELAY sends feed them; their
+  returns join the dry tracks before **BongMaster**, and never go back into a send.
+  - BongVerb: decay, damp, pre-delay (0–100 ms), level. Defaults are the Motion Plate preset.
+  - BongDelay: time in note values (45–950 ms; longer values are halved), regen, tone, level. Defaults are the Clock
+    Echo preset, at 1/16.
+  - MODE: BongVerb's Plate or Hall, and BongDelay's drive.
   - FILTER: a DJ filter (left of centre low-pass, right high-pass) and its resonance, for sweeping the whole mix.
+  - Projects saved before BongFX keep decay, delay time, feedback (as regen), tone and both levels. The old reverb tone
+    becomes damp (reversed); pre-delay, mode and drive take their defaults.
 - **The delay pauses while you sample.** It shares its memory with the recording, and comes back once the sample is kept.
 
 ### The master bus

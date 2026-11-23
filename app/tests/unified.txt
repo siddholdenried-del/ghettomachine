@@ -1,0 +1,121 @@
+# The unified engine (PLAN.md): one BongDrums track (the DrumEngine) and three BongSynth tracks into the mixer; each
+# track's own sends to the one BongVerb and the one BongDelay; the dry tracks and both returns summed into BongMaster;
+# no Color, reverb or delay inside a track.  tools/build.py ../../app --host, then
+#   app/build/host/ghettomachine_host app/tests/unified.txt OUTDIR
+# demode: the drum track's engine (1 the DrumEngine, dry); fxasleep: the returns asleep, bit 0 BongVerb, bit 1 BongDelay
+# (nothing has come to them for a while: they are not run); fxN / fxliveN: an FX knob as saved / as the engine has it
+# now (THROW and WASH move it while held); stemN: a track's stem peak, dB x 10
+wait 600
+master 4096
+expect demode 1
+# ---- BongVerb's and BongDelay's knobs: the selected audition presets (Motion Plate, Clock Echo)
+expect fx0 62
+expect fx1 56
+expect fx2 20
+expect fx3 85
+expect fx4 2
+expect fx5 58
+expect fx6 66
+expect fx7 85
+expect fx8 0
+expect fx9 27
+wait 1500
+expect fxasleep 3
+# ---- the DrumEngine's kick at the stock kits' level on the drum stem (the 909's kick: -106; before its levels were
+# set, -240)
+expect stemreset 1
+midi 99 24 58
+wait 100
+expect stem1 >-130
+expect stem1 <-80
+midi 89 24 00
+# ---- each track's own sends: T2's bass sends nothing (its REVERB and DELAY at 0), the returns stay asleep
+wait 4000
+expect fxasleep 3
+midi 91 30 7F
+wait 300
+expect stem2 >-600
+expect fxasleep 3
+midi 81 30 00
+wait 200
+# T3's pluck sends to both (45, 35): both wake
+midi 92 3C 7F
+wait 100
+expect fxasleep 0
+midi 82 3C 00
+# and go back to sleep once its tails have gone
+wait 8000
+expect fxasleep 3
+# the drums' sends: the DrumEngine's snare reaches both too
+midi 99 26 64
+wait 100
+expect fxasleep 0
+midi 89 26 00
+wait 8000
+expect fxasleep 3
+# ---- THROW and WASH (HOME's perform keys): the delay's REGEN and the reverb's DECAY moved while held, the saved
+# knobs put back after (the project's are never touched)
+tap HOME
+wait 30
+key 20 down
+wait 100
+expect pfon 16
+expect fxlive5 90
+expect fx5 58
+key 20 up
+wait 100
+expect pfon 0
+expect fxlive5 58
+key 22 down
+wait 100
+expect pfon 32
+expect fxlive0 127
+expect fx0 62
+key 22 up
+wait 100
+expect pfon 0
+expect fxlive0 62
+# ---- STUTTER borrows the delay's line, and gives it back: the delay echoes again after
+key 15 down
+wait 100
+expect pfon 4
+expect dlyon 0
+wait 500
+key 15 up
+wait 200
+expect dlyon 1
+wait 3000
+midi 92 3C 7F
+wait 60
+midi 82 3C 00
+wait 100
+expect fxasleep 0
+# ---- an old project (format 5; ROOM's and DIGI's knobs: decay 73, tone 57, low cut 62, level 85; 1/8., feedback 52,
+# tone 51, level 85; DIGI, wear 64): DECAY, the delay's TIME, FEEDBACK (REGEN), TONE and both LEVELs kept, ROOM's TONE
+# the other way as DAMP, the rest BongFX's defaults; saved again as format 9 and read back the same
+flash_load app/tests/fixtures/proj_v5.img
+reboot
+wait 600
+expect projfmt 5
+expect fx0 73
+expect fx1 70
+expect fx2 20
+expect fx3 85
+expect fx4 7
+expect fx5 52
+expect fx6 51
+expect fx7 85
+expect fx8 0
+expect fx9 27
+expect fx10 0
+expect fx11 0
+expect fxlive1 70
+tap SAVE
+wait 400
+expect projfmt 9
+reboot
+wait 600
+expect projfmt 9
+expect fx1 70
+expect fx2 20
+expect fx9 27

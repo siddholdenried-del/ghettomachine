@@ -72,8 +72,9 @@ static const char *trial_pad_name(int kit, int pad)
 #define NKEYS 27
 #define KEY_NOTE0 53                      /* key 0 (F3) at octave 0 */
 #define PROJ_MAGIC 0x31544745u            /* "EGT1": fm1-eight 0.1's project; another magic loads the default project */
-#define PROJ_VERSION 8                    /* 8: each clip its own LFO (plfo); 7: combined Color and mixed kits; 1–5 and 7
-                                           * readable, private divergent v6 rejected */
+#define PROJ_VERSION 9                    /* 9: BongVerb's and BongDelay's knobs in the sends' slots (fx_migrate; the layout
+                                           * is 8's); 8: each clip its own LFO (plfo); 7: combined Color and mixed kits;
+                                           * 1–5, 7 and 8 readable, private divergent v6 rejected */
 #define EIGHT_VERSION "0.4"
 #define NSONG 32                          /* the song chain's entries */
 #define NUSER 16                          /* user sounds (T2..T4) */
@@ -1072,6 +1073,8 @@ static int proj_file_format(void)
         return 0;
     if (sz >= (int)PROJ_META && sz <= (int)PROJ_CAPACITY && ver == PROJ_VERSION)
         return PROJ_VERSION;
+    if (sz >= (int)PROJ_META && sz <= (int)PROJ_CAPACITY && ver == 8)
+        return 8;                         /* (9's layout; the sends' knobs meant ROOM's and DIGI's) */
     if (sz >= (int)(PROJ_PREFIX + PROJ_V7_TAIL_BYTES) && sz <= (int)PROJ_CAPACITY && ver == 7)
         return 7;
     if (sz >= (int)(PROJ_PREFIX + PROJ_V5_TAIL_BYTES) && sz <= (int)PROJ_CAPACITY && ver == 5)
@@ -1244,6 +1247,19 @@ static int project_load_v1(void)
     return 0;
 }
 
+/* a project saved before BongFX (format 8 or older): its sends' knobs, BongVerb's and BongDelay's. DECAY, the delay's
+ * TIME (a division as before), FEEDBACK (REGEN), TONE and both LEVELs keep their places and meaning; ROOM's TONE turns
+ * the other way as DAMP; its LOW CUT, the delay's TYPE, WEAR, WIDTH and LOW CUT have no counterpart: PRE-DELAY, the
+ * reverb's MODE and DRIVE take their defaults */
+static void fx_migrate(void)
+{
+    proj.fx[FXP_RV_DAMP] = (uint8_t)(127 - clamp(proj.fx[FXP_RV_DAMP], 0, 127));
+    proj.fx[FXP_RV_PREDELAY] = (uint8_t)fx_param(FXP_RV_PREDELAY)->def;
+    proj.fx[FXP_RV_MODE] = (uint8_t)fx_param(FXP_RV_MODE)->def;
+    proj.fx[FXP_DL_DRIVE] = (uint8_t)fx_param(FXP_DL_DRIVE)->def;
+    proj.fx[FXP_RSV10] = proj.fx[FXP_RSV11] = 0;
+}
+
 static int project_load(void)
 {
     int fmt = proj_file_format(), r = -1;
@@ -1272,6 +1288,8 @@ static int project_load(void)
     }
     if (fmt < 8)                          /* before each clip had its own LFO: every clip its track's */
         plfo_fill();
+    if (fmt < 9)                          /* the ROOM reverb's and DIGI delay's knobs: BongVerb's and BongDelay's now */
+        fx_migrate();
     project_check();
     clips_raw(proj.pat);
     for (i = 0; i < NTRK; i++)            /* every track on the focused pattern: its clip's LFO */
@@ -3048,7 +3066,7 @@ typedef struct {
     float l[APP_BLOCK], r[APP_BLOCK], rev[APP_BLOCK], dly[APP_BLOCK];
 } bus_t;
 static bus_t bus_a;
-static bus_t bus_b PLAT_POOL;
+static bus_t bus_b;                       /* (out of the pool since BongVerb's lines went in) */
 static bus_t *const BUS[2] = {&bus_a, &bus_b};
 static float *buf_l = bus_a.l, *buf_r = bus_a.r, *bus_rev = bus_a.rev, *bus_dly = bus_a.dly;
 static volatile float peak_l, peak_r;     /* each side's peak since the last look (the tests) */
@@ -3315,8 +3333,7 @@ static void govern(uint32_t t_drums, uint32_t t_synth, uint32_t t_fxin, uint32_t
         gov.fx_mean += (fx - gov.fx_mean) * 0.25f;
         if (gov.fx_wait) {
             gov.fx_wait--;
-        } else if (!v3_mode && gov.fx_mean > BUD_US(BUD_FX) && !gov.fx_shed &&
-                   color_active(&proj.color[TR_DRUM]) && !track_is_muted(TR_DRUM)) {
+        } else if (0) {                    /* (drum Color was the effect to shed: none in the tracks now) */
             gov.fx_shed = 1;
             gov.fx_wait = 8;
             gov.sheds++;
@@ -3384,21 +3401,9 @@ static void drum_chunk(uint32_t done, uint32_t chunk)   /* either core: a chunk'
             for (i = done; i < done + chunk; ++i)
                 buf_l[i] = buf_r[i] = bus_rev[i] = bus_dly[i] = 0.f;
     } else {
-    CS_MARK(cs_d0);
+    CS_MARK(cs_d0);                       /* the stock 808 / 909 (STOCK): no Color (the unified engine: none in a track) */
     drums_render(proj.kit, buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, (int)chunk);
     dr_t[plat_core() & 1u] += plat_ticks24() - cs_d0;
-    if (!track_is_muted(TR_DRUM) && color_active(&proj.color[TR_DRUM]) && !(gov.fx_shed & 1u)) {
-        int q = fxs_peak(buf_l + done, buf_r + done, chunk) < FXS_LEVEL &&
-                fxs_peak(bus_rev + done, bus_dly + done, chunk) < FXS_LEVEL;
-        CS_MARK(cs_c0);
-        if (!fxs_asleep(q)) {
-            color_run_drums(&drum_color_rt, &color_drums_send, &proj.color[TR_DRUM],
-                            buf_l+done, buf_r+done, bus_rev+done, bus_dly+done, chunk);
-            fxs_after(q, fxs_peak(buf_l + done, buf_r + done, chunk) < FXS_LEVEL &&
-                                  fxs_peak(bus_rev + done, bus_dly + done, chunk) < FXS_LEVEL, chunk);
-        }
-        fxin_t[plat_core() & 1u] += plat_ticks24() - cs_c0;
-    }
     }
     drum_mix(buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, chunk);
     if (STEMS && stems_on)                /* (the mix holds the drums alone until the synth comes in) */
@@ -3807,7 +3812,7 @@ void app_init(void)
 
 /* ---------------------------------------------------------------------- undo --- */
 /* a snapshot is a whole pattern (all four tracks) */
-#define NUNDO 8
+#define NUNDO 6                           /* (8 until BongVerb's lines took 26 KB of the pool: a step 3.6 KB) */
 typedef struct { pattern_t p; gen_t g[NINST]; uint8_t idx; } snap_t;   /* (the parts' generators with them) */
 /* The total can never exceed NUNDO: a new edit drops redo, and undo/redo
  * each move one item. Grow the stacks from opposite ends of one pool. */
@@ -5778,11 +5783,11 @@ static void arp_knob(int k, int32_t e)
 /* ----------------------------------------------------------------- MIXER and FX --- */
 static const char *const MIX_NAME[4] = {"LEVEL", "PAN", "REVERB", "DELAY"};
 #define NFXPAGE 4
-static const char *const FX_PAGE_NAME[NFXPAGE] = {"REVERB", "DELAY", "DELAY 2", "FILTER"};
+static const char *const FX_PAGE_NAME[NFXPAGE] = {"BongVerb", "BongDelay", "MODE", "FILTER"};
 static const int8_t FX_PAGE_P[NFXPAGE][4] = {
-    {FXP_RV_DECAY, FXP_RV_TONE, FXP_RV_HPF, FXP_RV_LEVEL},
+    {FXP_RV_DECAY, FXP_RV_DAMP, FXP_RV_PREDELAY, FXP_RV_LEVEL},
     {FXP_DL_TIME, FXP_DL_FDBK, FXP_DL_TONE, FXP_DL_LEVEL},
-    {FXP_DL_TYPE, FXP_DL_WEAR, FXP_DL_WIDTH, FXP_DL_HPF},
+    {FXP_RV_MODE, FXP_DL_DRIVE, -1, -1},  /* BongVerb's PLATE / HALL, BongDelay's DRIVE */
     {FXP_FILTER, FXP_F_RESO, -1, -1},    /* the DJ filter: on the master bus, after the compressor */
 };
 /* the master bus (GLO after the mixer's pages, or SEL + GLO): its pages and their knobs */
@@ -5798,8 +5803,8 @@ static const int8_t MST_PAGE_P[NMSTPAGE][4] = {
     {FXP_ST_WIDTH, FXP_ST_BASS, FXP_ST_BAL, -1},   /* (the fourth: the correlation) */
     {FXP_L_GAIN, FXP_L_CEIL, FXP_L_REL, FXP_LIMIT},
 };
-static const char *const FX_LABEL[FXP_NUM] = {"DECAY", "TONE", "LOW CUT", "LEVEL", "TIME", "FEEDBACK", "TONE", "LEVEL",
-                                              "TYPE", "WEAR", "WIDTH", "LOW CUT", "THRESHOLD", "RATIO", "ATTACK",
+static const char *const FX_LABEL[FXP_NUM] = {"DECAY", "DAMP", "PRE-DELAY", "LEVEL", "TIME", "REGEN", "TONE", "LEVEL",
+                                              "VERB MODE", "DRIVE", "-", "-", "THRESHOLD", "RATIO", "ATTACK",
                                               "RELEASE", "MAKEUP", "MIX", "PUMP", "FILTER", "RESO", "LIMIT",
                                               "LOW", "MID", "HIGH", "LOW CUT", "LOW FREQ", "MID FREQ", "MID Q",
                                               "HIGH FREQ", "DRIVE", "WARMTH", "TONE", "MIX", "WIDTH", "BASS MONO",
@@ -7412,7 +7417,7 @@ static void input(void)
         } else {
             ui.fxpage = 0;
             ui.color_page = 0;
-            ui.page = inst ? (uint8_t)home_page(ui.trk) : PG_COLOR;
+            ui.page = (uint8_t)home_page(ui.trk);   /* (no Color: the unified engine has none in the tracks) */
         }
     }
 
@@ -9702,7 +9707,7 @@ static void page_home(void)               /* the scene grid: 16 patterns across 
  * core's, which waits for the second at the end of a block (OTHER) and for its half of the synth's voices (SYNTH) */
 static void page_cpu(void)
 {
-    static const char *const NM[CS_NUM] = {"DRUMS", "SYNTH", "DRUM COLOR", "REV+DLY CORE2", "MASTER CORE2", "OTHER",
+    static const char *const NM[CS_NUM] = {"DRUMS", "SYNTH", "DRUM BUS", "VERB+DLY CORE2", "MASTER CORE2", "OTHER",
                                            "TOTAL"};
     const float per = 100.0f * 44100.0f / (1.0e6f * (float)APP_BLOCK);   /* us a block -> % of its time */
     char t[24], u[8];
@@ -9857,7 +9862,7 @@ static void page_fx(void)                 /* the sends' FX: what they do, drawn 
     rrect(4, 4, 232, 124, 6, C_PANEL);
     if (pg == 0) {                        /* the reverb: its tail, long by DECAY, bright by TONE, loud by LEVEL */
         float decay = 0.2f + (float)proj.fx[FXP_RV_DECAY] / 127.0f * 0.78f, lvlv = (float)proj.fx[FXP_RV_LEVEL] / 127.0f, a = 1.0f;
-        uint16_t c = mix565(C_BODY, TH_INK, 120 + proj.fx[FXP_RV_TONE] / 2);
+        uint16_t c = mix565(C_BODY, TH_INK, 120 + (127 - proj.fx[FXP_RV_DAMP]) / 2);
         cv_rect(10, 118, 220, 1, C_GRID);
         for (i = 0; i < 54; i++) {
             int h = (int)(a * (0.3f + 0.7f * lvlv) * 100.0f);
@@ -9867,7 +9872,7 @@ static void page_fx(void)                 /* the sends' FX: what they do, drawn 
         }
     } else if (pg == 1 || pg == 2) {      /* the delay: the echoes over 2 s, each lower by FEEDBACK; DELAY 2 to the sides */
         float ms = fx_delay_ms(), fb = fx_delay_fb(), a = (float)proj.fx[FXP_DL_LEVEL] / 127.0f * 0.8f + 0.2f;
-        int wide = proj.fx[FXP_DL_WIDTH] > 0, n;
+        int wide = 0, n;                  /* (BongDelay: dual mono) */
         uint16_t c = fx_delay_on() ? TH_FG : C_GRID;
         cv_rect(10, 66, 220, 1, C_GRID);
         rrect(10, 18, 4, 96, 2, TH_HI);  /* the sound */
@@ -10387,7 +10392,7 @@ static void speak(void)                   /* a screen reader that has just start
              * share of a block, its mean and its worst block of the last 10 s; the blocks late; the voices
              * sounding, the budget's cap and the pool; what the budgets gave up (drum sounds cut, voices shed,
              * effects taken out, and which are out now); the second core; the synth's parts */
-            static const char *const NM[CS_NUM] = {"DRUMS", "SYNTH", "DRUM COLOR", "REVERB", "MASTER", "OTHER", "CPU"};
+            static const char *const NM[CS_NUM] = {"DRUMS", "SYNTH", "DRUM BUS", "RETURNS", "MASTER", "OTHER", "CPU"};
             static const uint8_t SEQ[CS_NUM] = {CS_TOTAL, CS_DRUMS, CS_SYNTH, CS_FXIN, CS_FX, CS_MASTER, CS_REST};
             const float per = 100.0f * 44100.0f / (1.0e6f * (float)APP_BLOCK);
             char u[12];
@@ -10947,6 +10952,8 @@ int app_expect(const char *what, int *got)
         for (s = 0; s < NTRK; s++)
             stem_pk[s][0] = stem_pk[s][1] = 0.0f;
         *got = 1;
+    } else if (!strcmp(what, "fxasleep")) {   /* the returns asleep: bit 0 BongVerb, bit 1 BongDelay */
+        *got = fx_returns_asleep();
     } else if (!strncmp(what, "fxsleep", 7) && what[7] >= '1' && what[7] < '1' + NTRK && !what[8]) {
         /* Only drums have a local effect chain. */
         *got = what[7] != '1' || drum_color_quiet >= FXS_AFTER;
@@ -11041,6 +11048,12 @@ int app_expect(const char *what, int *got)
         if (tr < 0 || tr >= NTRK || !u)
             return 0;
         *got = mix_value(tr, atoi(u + 1) & 3);
+    } else if (!strncmp(what, "fxlive", 6)) {   /* fxliveI: what the FX knob I is set to in the engine now (THROW and
+                                                 * WASH move it while held; the project keeps the knob) */
+        int i = atoi(what + 6);
+        if (i < 0 || i >= FXP_NUM)
+            return 0;
+        *got = fx_get(i);
     } else if (!strncmp(what, "fx", 2)) {    /* fxI: the FX knob I (dsp/fx.h FXP_*) */
         int i = atoi(what + 2);
         if (i < 0 || i >= FXP_NUM)

@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* GhettoMachine's effects and master bus (PLAN.md, phases 5 and 7), X0X's (GPL-3.0) and its own behind one small interface:
- *   the sends: a reverb (ROOM: four diffusers into an 8-line feedback network) and a tempo-synced delay (DIGI or TAPE,
- *   ping-pong by its WIDTH), added to the dry mix (fxbus.c; its own glue compressor, distortion and volume left at off
- *   and unity);
- *   the master bus, in this order: EQ (low cut, low shelf, mid bell, high shelf: mbus.c); a compressor (threshold, ratio,
+/* GhettoMachine's effects and master bus (PLAN.md, the unified engine), behind one small interface:
+ *   the sends (BongFX, bongfx.c): one shared BongVerb (Motion Plate: Plate or Hall) and one shared BongDelay (Clock
+ *   Echo, its time a tempo division), each track's sends their inputs; their returns added to the dry mix of the four
+ *   tracks; the returns never reach a send;
+ *   the master bus (BongMaster: master.c, mbus.c, as the bongmaster repository has them), in this order: EQ (low cut, low shelf, mid bell, high shelf: mbus.c); a compressor (threshold, ratio,
  *   attack, release, makeup, mix, a 6 dB soft knee; PUMP ducks it at each kick), on by default and gentle (2:1 over
  *   -18 dB, 10 ms, 150 ms); a one-knob DJ filter (master.c); TAPE and STEREO (mbus.c); the limiter's GAIN, then a
  *   look-ahead limiter under its CEILING with a soft knee (master.c); last the MASTER volume, so the knob sets how loud
@@ -17,9 +17,12 @@
 
 /* the knobs the FX pages show: REVERB, DELAY, DELAY 2, COMP, COMP 2 (and the reduction), MASTER */
 enum {
-    FXP_RV_DECAY, FXP_RV_TONE, FXP_RV_HPF, FXP_RV_LEVEL,
+    /* BongVerb's and BongDelay's (project format 9; up to 8 these slots held the ROOM reverb's and the DIGI / TAPE
+     * delay's knobs: tone, low cut, type, wear, width, low cut, where damp, pre-delay, the reverb's mode and drive are
+     * now: app.c fx_migrate) */
+    FXP_RV_DECAY, FXP_RV_DAMP, FXP_RV_PREDELAY, FXP_RV_LEVEL,
     FXP_DL_TIME, FXP_DL_FDBK, FXP_DL_TONE, FXP_DL_LEVEL,
-    FXP_DL_TYPE, FXP_DL_WEAR, FXP_DL_WIDTH, FXP_DL_HPF,
+    FXP_RV_MODE, FXP_DL_DRIVE, FXP_RSV10, FXP_RSV11,
     FXP_C_THRESH, FXP_C_RATIO, FXP_C_ATTACK, FXP_C_RELEASE,
     FXP_C_MAKEUP, FXP_C_MIX, FXP_PUMP,
     FXP_FILTER, FXP_F_RESO, FXP_LIMIT,
@@ -43,7 +46,7 @@ int fx_get(int i);
 void fx_format(int i, char *buf);         /* the master bus's knobs in their units ("-12dB", "2:1", "10ms"); 16 bytes;
                                            * "" for the sends' (their values or names as they are) */
 void fx_set(int i, int v);
-void fx_bpm(float bpm);                   /* the delay's divisions follow the tempo */
+void fx_bpm(float bpm);                   /* the delay's divisions follow the tempo (BongDelay's 45..950 ms: halved past it) */
 /* the mix: the dry sum and the two send buses (mono) in, the dry with the reverb and the delay out (n <= 256) */
 void fx_process(const float *dry_l, const float *dry_r, const float *rev, const float *dly, float *out_l, float *out_r,
                 int n);
@@ -63,8 +66,9 @@ float fx_in_peak(int who);
 float fx_out_peak(int who);
 float fx_db(float lin);                   /* 20 log10, -120 for silence */
 void fx_out_sides(float *l, float *r);    /* each side's output peak (before MASTER) since the last look: the band's meter */
-float fx_delay_ms(void);                  /* the delay's time now, and its feedback (the FX page's picture) */
+float fx_delay_ms(void);                  /* the delay's time now, and its regeneration (the FX page's picture) */
 float fx_delay_fb(void);
+int fx_returns_asleep(void);              /* bit 0 BongVerb, bit 1 BongDelay asleep (silence in and out: not run) */
 /* the chain presets: they set the compressor's, EQ's, TAPE's, STEREO's and the limiter's knobs (not PUMP, the filter,
  * the limiter's switch or the sends) */
 int fx_presets(void);

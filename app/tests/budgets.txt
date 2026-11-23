@@ -1,7 +1,7 @@
 # A 256-frame half at 44.1 kHz has 5804.99 us. The soft drum target is 35%,
-# the synth target is 30%, and drum Color plus shared returns have 25%.
+# the synth target is 30%, and the shared returns (BongVerb, BongDelay) have 25%.
 # cpufakeN_US supplies deterministic stage times solely to the load governor.
-# Stages 0, 1, 2, 3 and 6 are drums, synth, drum Color, returns and core 0 total.
+# Stages 0, 1, 2, 3 and 6 are drums, synth, the drum bus, returns and core 0 total.
 expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 master 4096
@@ -74,7 +74,7 @@ expect govcuts >0
 expect cpufake0_0 1
 tap PLAY
 wait 300
-# Shared returns contribute to cost, but there is nothing to shed until drum Color is enabled.
+# Shared returns contribute to cost; there is nothing in a track to shed.
 expect cpufake3_1800 1
 wait 200
 expect govfx 0
@@ -91,26 +91,13 @@ tap FX
 wait 30
 tap FX
 wait 30
-expect page 17
-spin K4 1
-wait 30
-expect color1_5 1
+expect page 0
+# no Color in a track: nothing for the effects' budget to take out, however long the returns take
 expect govfx 0
-# Color plus returns (1800 us) exceeds the 1451 us threshold. Only the drum strip leaves.
 expect cpufake2_1000 1
 expect cpufake3_800 1
-wait 160
-expect govfx 1
-# Between 60% and 100% of the budget the bypass holds. Well below 60% it recovers.
-expect cpufake2_500 1
-expect cpufake3_500 1
-wait 250
-expect govfx 1
-expect cpufake2_100 1
-expect cpufake3_300 1
 wait 250
 expect govfx 0
-expect color1_5 1
 expect cpufake2_0 1
 expect cpufake3_0 1
 # ---- the guard: the drums playing, six voices held, and a block above 90%: the voices down by two a block to the

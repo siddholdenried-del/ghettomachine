@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* GhettoMachine's effects and master bus: X0X's fxbus and master, and mbus, behind fx.h. */
+/* GhettoMachine's effects and master bus: BongFX's BongVerb and BongDelay on the sends, then BongMaster (master.c and
+ * mbus.c), behind fx.h. */
 #define FM_ALWAYS_INLINE                  /* (code in RAM here: fastmath.h, gm_ram.h) */
 #include "fx.h"
-#include "fxbus.h"
+#include "bongfx.h"
 #include "master.h"
 #include "mbus.h"
 #include "fastmath.h"
@@ -14,7 +15,11 @@
 #define FX_POOL __attribute__((section(".pool")))   /* (plat.h's PLAT_POOL: zeroed RAM for big state) */
 #endif
 
-static fxbus_t fxb FX_POOL;               /* the reverb's lines are inside it: about 17 KB */
+static bongverb_t verb FX_POOL;           /* its lines: 31 KB */
+static bongdelay_t dly;                   /* its ring is the lent line (fx_init) */
+static uint8_t send_pot[12];              /* the sends' knobs (FXP_RV_DECAY .. FXP_RSV11) */
+static uint8_t dl_off;                    /* the line lent out: the delay out of the chain */
+static float bpm_now = 120.0f, gain_rv, gain_dl;
 static master_t mst;
 static mbus_t mb;
 static int16_t *line;
@@ -29,12 +34,11 @@ static volatile float out_side[2];        /* each side's output peak (before MAS
  * and the limiter's GAIN decides how loud the master is */
 #define BUS_TRIM FX_BUS_TRIM
 
-/* each FX knob: which section has it (0 fxbus, 1 master, 2 mbus, 3 this file), and its index there */
+/* each FX knob: which section has it (0 the sends here, 1 master, 2 mbus, 3 this file's own), and its index there */
 enum { S_BUS, S_MST, S_MB, S_OWN };
 static const struct { uint8_t sec, idx; } MAP[FXP_NUM] = {
-    {S_BUS, FX_RV_DECAY}, {S_BUS, FX_RV_TONE}, {S_BUS, FX_RV_HPF}, {S_BUS, FX_RV_LEVEL},
-    {S_BUS, FX_DL_TIME}, {S_BUS, FX_DL_FDBK}, {S_BUS, FX_DL_TONE}, {S_BUS, FX_DL_LEVEL},
-    {S_BUS, FX_DL_TYPE}, {S_BUS, FX_DL_WEAR}, {S_BUS, FX_DL_WIDTH}, {S_BUS, FX_DL_HPF},
+    {S_BUS, 0}, {S_BUS, 1}, {S_BUS, 2}, {S_BUS, 3}, {S_BUS, 4}, {S_BUS, 5}, {S_BUS, 6}, {S_BUS, 7},
+    {S_BUS, 8}, {S_BUS, 9}, {S_BUS, 10}, {S_BUS, 11},
     {S_MST, MST_THRESH}, {S_MST, MST_RATIO}, {S_MST, MST_ATTACK}, {S_MST, MST_RELEASE},
     {S_MST, MST_MAKEUP}, {S_MST, MST_MIX}, {S_MST, MST_PUMP},
     {S_MST, MST_DJF}, {S_MST, MST_RESO}, {S_MST, MST_LIMIT},
@@ -76,15 +80,62 @@ static const uint8_t PV[NPRESET][NPK] = {
 static const char *const ONOFF_N[] = {"OFF", "ON"};
 static const x0x_param_t OWN_P[2] = {{"PRESET", NPRESET - 1, 0, PRESET_N}, {"BYPASS", 1, 0, ONOFF_N}};
 
+/* ---- the sends' knobs. Their defaults are the selected audition presets (bongverb's and bongdelay's presets.json:
+ * Motion Plate 0 / .49 / .16 / .44, return .48; Clock Echo .27 (111 ms) / .46 / .52 / .21, return .53) on 0..127; the
+ * delay's time a tempo division, 1/16 (125 ms at 120 BPM) by default; LEVEL 85 is the preset's return gain */
+static const char *const DIV_N[13] = {"1/32", "1/16T", "1/16", "1/8T", "1/16.", "1/8", "1/4T", "1/8.", "1/4", "1/2T",
+                                      "1/4.", "1/2", "1/2."};
+static const float DIV_BEATS[13] = {0.125f, 1.0f / 6.0f, 0.25f, 1.0f / 3.0f, 0.375f, 0.5f, 2.0f / 3.0f, 0.75f, 1.0f,
+                                    4.0f / 3.0f, 1.5f, 2.0f, 3.0f};
+static const char *const MODE_N[2] = {"PLATE", "HALL"};
+static const char *const RSV_N[1] = {"-"};
+static const x0x_param_t SEND_P[12] = {
+    {"Decay", 127, 62, 0}, {"Damp", 127, 56, 0}, {"PreDly", 127, 20, 0}, {"RvLvl", 127, 85, 0},
+    {"DlTime", 12, 2, DIV_N}, {"Regen", 127, 58, 0}, {"Tone", 127, 66, 0}, {"DlLvl", 127, 85, 0},
+    {"Mode", 1, 0, MODE_N}, {"Drive", 127, 27, 0}, {"-", 0, 0, RSV_N}, {"-", 0, 0, RSV_N},
+};
+#define RV_GAIN 0.48f                     /* the returns' gains at LEVEL 85 */
+#define DL_GAIN 0.53f
+
+static void retime(void)                  /* the division at this tempo, into BongDelay's 45..950 ms */
+{
+    float ms = DIV_BEATS[send_pot[FXP_DL_TIME] % 13] * 60000.0f / (bpm_now > 20.0f ? bpm_now : 120.0f);
+    while (ms > 950.0f)                   /* longer than its line: half of it, still on the beat */
+        ms *= 0.5f;
+    bongdelay_set(&dly, BD_TIME, bongdelay_time_value(ms));
+}
+
+static void send_set(int i, int v)
+{
+    const float x = (float)v * (1.0f / 127.0f);
+    send_pot[i] = (uint8_t)v;
+    switch (i) {
+    case FXP_RV_DECAY: bongverb_set(&verb, BV_DECAY, x); break;
+    case FXP_RV_DAMP: bongverb_set(&verb, BV_DAMP, x); break;
+    case FXP_RV_PREDELAY: bongverb_set(&verb, BV_PREDELAY, x); break;
+    case FXP_RV_LEVEL: gain_rv = RV_GAIN * (float)v * (1.0f / 85.0f); break;
+    case FXP_DL_TIME: retime(); break;
+    case FXP_DL_FDBK: bongdelay_set(&dly, BD_REGEN, x); break;
+    case FXP_DL_TONE: bongdelay_set(&dly, BD_TONE, x); break;
+    case FXP_DL_LEVEL: gain_dl = DL_GAIN * (float)v * (1.0f / 85.0f); break;
+    case FXP_RV_MODE: bongverb_set(&verb, BV_MODE, (float)v); break;
+    case FXP_DL_DRIVE: bongdelay_set(&dly, BD_DRIVE, x); break;
+    default: break;
+    }
+}
+
 void fx_init(int16_t *dly_line, int dly_len)
 {
+    int i;
     line = dly_line;
-    line_len = dly_len;
-    fxbus_init(&fxb, dly_line, dly_len);
-    fxbus_set(&fxb, FX_VOLUME, 127);      /* the bus at unity: the master has the volume */
-    fxbus_set(&fxb, FX_DIST, 0);
-    fxbus_set(&fxb, FX_COMP, 0);
-    fxbus_set(&fxb, FX_DL_WIDTH, 0);      /* centred echoes until WIDTH is turned */
+    line_len = dly_len;                   /* (>= BD_RING: the delay's ring is its first BD_RING samples) */
+    for (i = 0; i < dly_len; i++)
+        dly_line[i] = 0;
+    bongverb_init(&verb);
+    bongdelay_init(&dly, dly_line);
+    dl_off = 0;
+    for (i = 0; i < 12; i++)
+        send_set(i, SEND_P[i].def);
     master_init(&mst);
     master_set(&mst, MST_PUMPSRC, PUMP_BOTH);   /* PUMP follows the kick of either kit */
     master_set(&mst, MST_THRESH, 79);     /* the compressor on, gently: -18 dB (on the bus's level: after BUS_TRIM) */
@@ -95,7 +146,6 @@ void fx_init(int16_t *dly_line, int dly_len)
     mbus_init(&mb);
     own[0] = own[1] = 0;
     master_bypass(&mst, 0);
-    fxb.dl_off = 0;
 }
 
 const x0x_param_t *fx_param(int i)
@@ -103,7 +153,7 @@ const x0x_param_t *fx_param(int i)
     if (i < 0 || i >= FXP_NUM)
         return 0;
     switch (MAP[i].sec) {
-    case S_BUS: return fxbus_param(MAP[i].idx);
+    case S_BUS: return &SEND_P[MAP[i].idx];
     case S_MST: return master_param(MAP[i].idx);
     case S_MB: return mbus_param(MAP[i].idx);
     default: return &OWN_P[MAP[i].idx];
@@ -115,7 +165,7 @@ int fx_get(int i)
     if (i < 0 || i >= FXP_NUM)
         return 0;
     switch (MAP[i].sec) {
-    case S_BUS: return fxbus_get(&fxb, MAP[i].idx);
+    case S_BUS: return send_pot[MAP[i].idx];
     case S_MST: return master_get(&mst, MAP[i].idx);
     case S_MB: return mbus_get(&mb, MAP[i].idx);
     default: return own[MAP[i].idx];
@@ -129,7 +179,7 @@ void fx_set(int i, int v)
         return;
     v = v < 0 ? 0 : v > p->max ? p->max : v;
     switch (MAP[i].sec) {
-    case S_BUS: fxbus_set(&fxb, MAP[i].idx, v); return;
+    case S_BUS: send_set(MAP[i].idx, v); return;
     case S_MST: master_set(&mst, MAP[i].idx, v); return;   /* (COMP and FILTER set their own pots: master.c) */
     case S_MB: mbus_set(&mb, MAP[i].idx, v); return;
     default:                               /* PRESET only names what was loaded (the app sets its knobs); BYPASS */
@@ -151,13 +201,30 @@ void fx_format(int i, char *buf)
         mbus_format(&mb, MAP[i].idx, buf);
 }
 
-void fx_bpm(float bpm) { fxbus_set_bpm(&fxb, bpm); }
-
-void fx_process(const float *dry_l, const float *dry_r, const float *rev, const float *dly, float *out_l, float *out_r,
-                int n)
+void fx_bpm(float bpm)
 {
-    fxbus_process_st(&fxb, dry_l, dry_r, rev, dly, out_l, out_r, n);
+    if (bpm > 20.0f && bpm != bpm_now) {
+        bpm_now = bpm;
+        retime();
+    }
 }
+
+/* the dry mix of the tracks and both returns, summed (the returns from the sends alone: nothing returned is sent) */
+void fx_process(const float *dry_l, const float *dry_r, const float *rev, const float *dly_in, float *out_l,
+                float *out_r, int n)
+{
+    int i;
+    if (out_l != dry_l || out_r != dry_r)
+        for (i = 0; i < n; i++) {
+            out_l[i] = dry_l[i];
+            out_r[i] = dry_r[i];
+        }
+    bongverb_block(&verb, rev, out_l, out_r, gain_rv, n);
+    if (!dl_off)
+        bongdelay_block(&dly, dly_in, out_l, out_r, gain_dl, n);
+}
+
+int fx_returns_asleep(void) { return bongverb_asleep(&verb) | (dl_off || bongdelay_asleep(&dly)) << 1; }
 
 /* (GhettoMachine 0.5, CPU: from RAM with the compressor, the limiter and the volume (gm_ram.h); the trim and the
  * input's peak in one pass) */
@@ -206,7 +273,7 @@ void fx_key(int kit, float vel) { master_key(&mst, kit, vel); }
 void fx_delay_zero(void)                  /* (the main loop, no lock: nothing plays the lent line) */
 {
     int i;
-    if (!fxb.dl_off)
+    if (!dl_off)
         return;
     for (i = 0; i < line_len; i++)        /* what sampling left in it: gone */
         line[i] = 0;
@@ -215,17 +282,16 @@ void fx_delay_zero(void)                  /* (the main loop, no lock: nothing pl
 void fx_delay_line(int on)
 {
     if (!on) {
-        fxb.dl_off = 1;
+        dl_off = 1;
         return;
     }
-    if (!fxb.dl_off)
+    if (!dl_off)
         return;
-    fxb.w = 0;
-    fxb.dl_quiet = line_len;              /* (an all-silent line: the delay idles until something comes) */
-    fxb.dl_off = 0;
+    bongdelay_restart(&dly);              /* (from its zeroed line: asleep until something comes) */
+    dl_off = 0;
 }
 
-int fx_delay_on(void) { return !fxb.dl_off; }
+int fx_delay_on(void) { return !dl_off; }
 
 float fx_gr(void) { return mst.comp_on && !own[1] ? mst.gr : 0.0f; }   /* (bypassed at 1:1 with no PUMP: none) */
 float fx_lgr(void) { return mst.lgr_view; }
@@ -245,8 +311,8 @@ void fx_out_sides(float *l, float *r)
     *r = out_side[1];
     out_side[0] = out_side[1] = 0.0f;
 }
-float fx_delay_ms(void) { return fxb.dl_time_ms; }
-float fx_delay_fb(void) { return fxb.dl_fdbk; }
+float fx_delay_ms(void) { return bongdelay_ms(&dly); }
+float fx_delay_fb(void) { return dly.regen_to; }
 
 int fx_presets(void) { return NPRESET; }
 const char *fx_preset_name(int p) { return p >= 0 && p < NPRESET ? PRESET_N[p] : ""; }

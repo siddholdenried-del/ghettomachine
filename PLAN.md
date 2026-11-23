@@ -36,6 +36,14 @@ tuned and measured independently.
   shared BongDelay via sends. It does not change the FM‑1's four-track scope
   or substitute for hardware evidence.
 
+**Status, 23 Nov (branch `unified-engine`, build FEF35ED4, not on the FM‑1).** In the firmware: the DrumEngine (V6 kit
+with BongDrums 0.4.6's Tone and Drive; each factory sound trimmed to the 808/909 balance; its pads' sends to the shared
+returns), the BongSynth voice (the firmware's own), BongVerb and BongDelay ported from their repositories (`app/dsp/bongfx.c`:
+the delay bit-exact to its kernel, the reverb within -116 dB; both sleep in silence), BongMaster (the repository's sources
+are the firmware's master.c and mbus.c). No Color in any track. Project format 9 migrates the sends' knobs. RAM: pool
+headroom 8.9 KB, ordinary RAM 4.5 KB free, RAM code 26 of 32 KB; undo 6 levels (8 before). Still unmeasured: everything
+on the FM‑1 itself (the acceptance test above).
+
 ## The instrument
 
 - **T1: the drum track.** A 909 or 808 kit, with every pad editable on the FM-1 and a MUTE page.
@@ -54,7 +62,7 @@ tuned and measured independently.
   - Each track has its own length and rate, so tracks can drift against each other.
 - **An LFO on every track**, including drums, where it can move any pad's control. Tempo-synced or free.
 - **A mixer, reverb and delay sends, and a master bus.**
-- **Undo:** 8 levels with redo (EDIT + OCT− / OCT+).
+- **Undo:** 6 levels with redo (EDIT + OCT− / OCT+); 8 until BongVerb's lines needed the pool.
 
 ## What already exists and what we take from it
 

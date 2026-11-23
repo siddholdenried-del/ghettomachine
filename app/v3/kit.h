@@ -7,7 +7,10 @@
 #include "shells.h"
 #include "metal.h"
 #include "perc.h"
-enum { KIT_BLOCK = 256, KIT_PADS = 11 };
+/* KIT_BLOCK: the most a render call takes, and the lanes' stride. GhettoMachine 0.5: 64 on the FM-1 (the adapter's
+   lane storage 2.8 KB rather than 11 KB of its 96 KB of RAM); the voices give the same samples whatever the span
+   (tests: 256, 128, 64 and 32 compared, every pad and recipe) */
+enum { KIT_BLOCK = 64, KIT_PADS = 11 };
 typedef struct {
     Shells shells;
     Metal metal;

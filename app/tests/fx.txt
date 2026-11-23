@@ -1,7 +1,7 @@
 # GhettoMachine's mixer and FX (phase 5) in the host simulator: tools/build.py ../../app --host, then
 #   app/build/host/ghettomachine_host app/tests/fx.txt OUTDIR
-# mixN_K: track N, K 0 level 1 pan 2 reverb send 3 delay send; fxI: dsp/fx.h FXP_* (0..3 reverb, 4..7 delay, 8..11
-# delay 2, 19..20 FILTER: filter reso; on the master bus (tests/master.txt has the rest): 12..15 COMP: threshold ratio
+# mixN_K: track N, K 0 level 1 pan 2 reverb send 3 delay send; fxI: dsp/fx.h FXP_* (0..3 BongVerb, 4..7 BongDelay, 8..11
+# BongVerb's mode and BongDelay's drive (8, 9), 19..20 FILTER: filter reso; on the master bus (tests/master.txt has the rest): 12..15 COMP: threshold ratio
 # attack release, 16..18 COMP 2: makeup mix pump, 21 the limiter's switch, 37 its GAIN);
 # pkl / pkr: each side's peak since the last look, dB x 10; gr: the compressor's reduction now, dB x 10
 expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
@@ -84,7 +84,8 @@ wait 700
 peakreset
 wait 200
 expect peak_db_max -90
-# ---- the delay: T3 all delay, FX > DELAY: TIME 1/4 (500 ms at 120), FEEDBACK 0: one echo, then nothing
+# ---- the delay (BongDelay): T3 all delay, FX > BongDelay: TIME 1/4 (500 ms at 120, from its 1/16), REGEN 0: one echo,
+# then nothing
 spin K3 127
 wait 30
 expect mix3_3 127
@@ -95,8 +96,8 @@ expect fxpage 0
 tap FX
 wait 30
 expect fxpage 1
-expect fx4 7
-spin K1 1
+expect fx4 2
+spin K1 6
 wait 30
 expect fx4 8
 spin K2 -127
@@ -148,11 +149,11 @@ tap SEL
 wait 60
 expect rstate 0
 expect dlyon 1
-# ---- FX > REVERB: DECAY; COMP: on by default, 2:1 over -12 dB; RATIO up to 4:1 and back; MASTER
+# ---- FX > BongVerb: DECAY (62 its default, the Motion Plate preset's .49); COMP: on by default, 2:1 over -12 dB; RATIO up to 4:1 and back; MASTER
 turn SELECT -3
 wait 30
 expect fxpage 0
-spin K1 10
+spin K1 21
 wait 30
 expect fx0 83
 turn SELECT 3

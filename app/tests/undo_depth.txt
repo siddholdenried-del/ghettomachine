@@ -1,4 +1,5 @@
-# Exercise eight undo and redo levels, a full stack swap, and branch discard.
+# Exercise every undo and redo level (NUNDO: 6 since BongVerb's lines went into the pool; 8 before), a full stack
+# swap, and branch discard.
 expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 expect hits0 4
@@ -52,7 +53,7 @@ wait 30
 key 23 up
 wait 30
 expect hits0 14
-expect undo 8
+expect undo 6
 press EDIT
 wait 20
 tap OCT-
@@ -98,34 +99,6 @@ expect hits0 8
 press EDIT
 wait 20
 tap OCT-
-wait 20
-release EDIT
-wait 30
-expect hits0 7
-press EDIT
-wait 20
-tap OCT-
-wait 20
-release EDIT
-wait 30
-expect hits0 6
-press EDIT
-wait 20
-tap OCT-
-wait 20
-release EDIT
-wait 30
-expect hits0 6
-press EDIT
-wait 20
-tap OCT+
-wait 20
-release EDIT
-wait 30
-expect hits0 7
-press EDIT
-wait 20
-tap OCT+
 wait 20
 release EDIT
 wait 30

@@ -27,7 +27,7 @@ key 0 up
 wait 30
 tap SAVE
 wait 400
-expect projfmt 8
+expect projfmt 9
 reboot
 wait 600
 expect gate2_1 1024

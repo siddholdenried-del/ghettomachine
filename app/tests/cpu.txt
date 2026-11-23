@@ -1,4 +1,4 @@
-# Drum Color sleeps after its input and output settle, then wakes on a real drum hit.
+# The shared returns (BongVerb, BongDelay) sleep once their tails have gone under -120 dB, and wake on a send.
 # Stage times use the host clock and the governor receives its separate fixture costs.
 expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
@@ -22,7 +22,7 @@ midi 81 30 00
 midi 82 3C 00
 midi 83 48 00
 expect trk 1
-# Starting on the drums, FX past FILTER opens the drum Color strip.
+# Starting on the drums, FX past FILTER goes home (no Color strip).
 tap FX
 wait 30
 tap FX
@@ -33,19 +33,18 @@ tap FX
 wait 30
 tap FX
 wait 30
-expect page 17
-spin K4 1
-wait 30
-expect color1_5 1
-expect fxsleep1 0
-wait 300
-expect fxsleep1 1
+expect page 0
+# the returns asleep in silence (BongVerb bit 0, BongDelay bit 1: in and out under -120 dB for 0.5 s and 1.1 s), awake
+# while a send comes, not while the default beat (its pads send nothing) plays (the synths' tails above first: the plate's 1.5 s and the echoes, 100 dB down)
+wait 6000
+expect fxasleep 3
 tap PLAY
 wait 1000
-expect fxsleep1 0
-expect fxsleep2 1
-expect fxsleep3 1
-expect fxsleep4 1
+expect fxasleep 3
+midi 92 3C 7F
+wait 100
+expect fxasleep 0
+midi 82 3C 00
 # ---- SETUP, SELECT: the CPU by stage; every stage measured while it plays
 tap HOME
 wait 30
@@ -60,7 +59,7 @@ wait 600
 expect setupview 1
 expect cpu0 >0
 expect cpu1 >0
-expect cpu2 >0
+expect cpu2 0
 expect cpu5 >0
 expect cpu6 >0
 expect cpu3 >0
@@ -74,4 +73,4 @@ wait 30
 expect setupview 0
 tap PLAY
 wait 4000
-expect fxsleep1 1
+expect fxasleep 3
