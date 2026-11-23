@@ -8,10 +8,10 @@ yet. The user's guide is [MANUAL.md](MANUAL.md).
 
 ## Unified engine objective
 
-Bring BongDrums and BongSynth into a single FM‑1 render pipeline: one drum track,
-three instrument tracks, a shared mixer, and one BongVerb and one BongDelay
-reached through per-track sends. Keep mastering as a separate pipeline stage;
-it is being extracted so it can be tuned and measured independently.
+Bring one BongDrums track and three BongSynth tracks into a single FM‑1 render
+pipeline: a shared mixer, one BongVerb and one BongDelay reached through
+per-track sends, then BongMaster at the stereo output. BongMaster is being
+extracted as a separate stage so it can be tuned and measured independently.
 
 - Budget drums, synth voices, sends and returns, mastering, and callback overhead
   together. Reuse calculations only where equivalence is tested. Keep attacks,

@@ -4,7 +4,7 @@ GhettoMachine is **BongWare** custom firmware for the **M‑VAVE FM‑1**, engin
 
 ## Engine goal
 
-Build one efficient audio engine for the FM‑1: BongDrums and BongSynth feed the same mixer, with one shared BongVerb and one shared BongDelay on sends. Mastering is being separated from the instrument engines so it can be profiled and tuned on its own, without giving up drum attack, natural tails, or playable polyphony to make a CPU number look better.
+Build one efficient audio engine for the FM‑1: one BongDrums track and three BongSynth tracks feed the same mixer, with one shared BongVerb and one shared BongDelay on sends, then BongMaster on the stereo output. BongMaster is being separated from the instrument engines so it can be profiled and tuned on its own, without giving up drum attack, natural tails, or playable polyphony to make a CPU number look better.
 
 HTML5 versions are for auditioning sounds and prototyping controls. The acceptance test is the same dense four-track song on the FM‑1: 256 frames at 44.1 kHz gives **5.805 ms** per audio block. See the [engineering plan](PLAN.md#unified-engine-objective).
 
