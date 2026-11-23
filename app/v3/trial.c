@@ -58,7 +58,7 @@ enum { FADE_FRAMES = 64 };
 #define DE_STAGE 5.0f                     /* the kit's scale to the drum track's (1 / FX_BUS_TRIM) */
 #define DE_RAMP 32u                       /* a pad's trim changing (another recipe struck): over 0.7 ms */
 /* each factory recipe's trim, tenths of a dB (presets.c's order; DE_TRIM_RECIPES the most a pad has) */
-enum { DE_TRIM_RECIPES = 8 };
+enum { DE_TRIM_RECIPES = KIT_GENRES };
 static const int16_t DE_TRIM[KIT_PADS][DE_TRIM_RECIPES] = {
 #include "levels.inc"
 };
@@ -178,7 +178,8 @@ void trial_init(void)
     kit_init(&kit);
     patch = kit_default_patch();
     patch_version = 0;
-    V3_CLEAR(cursors, 0, sizeof cursors);
+    for (unsigned i = 0; i < KIT_PADS; ++i)   /* (the factory patch is the ELECTRO kit: each pad's preset in it) */
+        cursors[i] = (unsigned char)kit_genre_recipe(0, (int)i + 1);
     V3_CLEAR(shape, 0, sizeof shape);
     drum_bus_init(&bus);
     mix = bus_default_mix();
@@ -195,6 +196,20 @@ void trial_init(void)
     transition.last_l = transition.last_r = 0.f;
     transition.fade_l = transition.fade_r = 0.f;
     transition.left = transition.rendered = 0;
+}
+
+void trial_kit(int genre)
+{
+    KitPatch p = kit_default_patch();
+    if (!kit_genre_apply(&p, genre)) return;
+    unsigned flags = edit_lock();
+    patch = p;
+    ++patch_version;
+    for (unsigned i = 0; i < KIT_PADS; ++i) {
+        cursors[i] = (unsigned char)kit_genre_recipe(genre, (int)i + 1);
+        trim_goal[i] = pad_trim(i);       /* (the next strike's level: its preset's trim) */
+    }
+    edit_unlock(flags);
 }
 
 void trial_patch(int what, int value)

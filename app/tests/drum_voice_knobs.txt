@@ -44,16 +44,16 @@ expect epage 0
 turn PRESET 1
 wait 100
 said SNARE
-unsaid 808
-# the steps: PRESETS is the kit again
+unsaid HOUSE
+# the steps: PRESETS is the kit again, the DrumEngine's genre kits (ELECTRO first, the factory kit; HOUSE next)
 tap SEQ
 wait 50
 turn PRESET 1
 wait 100
-said 808
+said HOUSE
 turn PRESET -1
 wait 100
-said 909
+said ELECTRO
 # the clap: SPREAD on K1
 tap SEQ
 key 5 down

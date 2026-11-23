@@ -2,7 +2,8 @@
 
 GhettoMachine, part of the BongWare firmware line engineered by BongTech, turns the M-VAVE FM-1 into a four-track groovebox:
 
-- **Drums:** an 808 or a 909 kit, or a Custom kit mixing the two pad by pad.
+- **Drums:** the DrumEngine, with twelve genre kits (ELECTRO, HOUSE, TECHNO, TRAP, BOOM BAP, DRUM & BASS, GARAGE, DISCO, DUB,
+  LO-FI, INDUSTRIAL, MINIMAL) and a preset per genre for every drum. (The stock 808 / 909 engine stays only as a test mode.)
 - **T2, T3, T4:** instrument tracks. Each is a MONO synth or a POLY synth.
 - **One sequencer** of up to 128 steps a track, 16 patterns, and a song chain.
 - **An LFO for every clip** (each track's part of each pattern has its own), an arpeggiator and one optional insert effect on T2–T4, and per-step locks.
@@ -57,7 +58,7 @@ route still works for getting M-VAVE's firmware back.
 | Control | What it does |
 | --- | --- |
 | **ALGORITHM** | Picks the track: DRUMS, T2, T3, T4. Or hold **SEL** and press pad keys 1–4. |
-| **PRESETS** | Presets, wherever you are: an instrument track's sound; on the drums the kit (909, 808, your kits), or, in a drum's editor (EDIT with a pad picked), that drum's own presets. |
+| **PRESETS** | Presets, wherever you are: an instrument track's sound; on the drums the genre kit, or, in a drum's editor (EDIT with a pad picked), that drum's own presets. |
 | **SELECT** | Turns the pages of every editor (the synth's EDIT, ENV, LFO, FX, the master bus, a drum's editor...), moves a cursor, or sets a held step's chance. |
 | **K1–K4** | The four knobs of the page on screen. |
 | **PLAY** | Starts and stops. |
@@ -271,10 +272,13 @@ On STEPS an accented note has a white bar over it and a slide a mark at its end.
   **RING METAL**, **DRIFT PAD**, **CRUSH BASS**, **WOBBLE**. MACRO 1 does something on each.
 - **To keep a sound:** hold **SAVE**, turn **PRESETS** to pick a USER slot (the screen says EMPTY or REPLACE), and let go
   of SAVE.
-- **On the drums**, PRESETS goes through **909**, **808** and your **USER KIT 1–8**. Changing to a kit built on the
-  other machine (the 909 to the 808 or back, by PRESETS or by a scene with its own kit) stops the old kit's sounds:
-  its tails no longer ring on under the new kit. Saving a kit works the same way and
-  keeps the kit's model assignments and every pad's knobs.
+- **On the drums**, PRESETS goes through the **genre kits**: ELECTRO (the factory kit, and what every project saved
+  before them plays), HOUSE, TECHNO, TRAP, BOOM BAP, DRUM & BASS, GARAGE, DISCO, DUB, LO-FI, INDUSTRIAL, MINIMAL. A kit
+  puts every drum on its genre's preset (PERC 2 on another genre's percussion, so the two differ). In a drum's editor
+  PRESETS goes through that drum's own presets, also one per genre, so you can put a TRAP kick in a HOUSE kit. The kit
+  is saved with the project (and with each pattern, with SOUNDS PER PATTERN); a drum's edits on top of it aren't saved
+  yet, and neither are drum kits of your own (SAVE + PRESETS on the drums says NOT SAVED YET). The **909**, **808** and
+  **USER KIT 1–8** are the stock engine's, in its test mode only.
 - Your presets are kept apart from projects, the moment you save them.
 
 ### The sampler is gone (0.5)

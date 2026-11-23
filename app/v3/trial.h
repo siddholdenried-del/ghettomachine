@@ -6,6 +6,8 @@
 /* Audio-thread operations, or main-loop calls made with the render locked.
  * Initialize once while stopped. Native pad IDs are 1 through 11. */
 void trial_init(void);
+/* a genre kit (presets.h KIT_GENRES) as the patch: every drum on its preset (the edits made since gone) */
+void trial_kit(int genre);
 void trial_hit(unsigned pad1, float velocity);
 /* the same hit with one of the pad's controls (presets.h's index) moved by move times its whole range, for this hit
  * alone (the drums' LFO): the patch itself is left as it is */

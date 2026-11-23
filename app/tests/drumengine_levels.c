@@ -15,6 +15,7 @@
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
+#include "presets.h"
 #include <stdlib.h>
 #include <string.h>
 #include "v3/trial.h"
@@ -90,7 +91,7 @@ int main(int argc, char **argv)
     const float vel = 88.0f / 127.0f;
     const char *write = 0;
     int csv = 0, fails = 0, checks = 0;
-    static double meas[12][8];
+    static double meas[12][KIT_GENRES];
     for (int a = 1; a < argc; a++) {
         if (!strcmp(argv[a], "--write") && a + 1 < argc) write = argv[++a];
         else if (!strcmp(argv[a], "--csv")) csv = 1;
@@ -99,7 +100,7 @@ int main(int argc, char **argv)
     for (int pad = 1; pad <= 11; pad++)
         for (int r = 0; r < kit_preset_count(pad); r++) {
             trial_init();
-            if (r) trial_recipe_turn((unsigned)pad, r);
+            if (r != trial_recipe((unsigned)pad)) trial_recipe_turn((unsigned)pad, r - trial_recipe((unsigned)pad));
             if (trial_recipe((unsigned)pad) != r) { printf("FAIL pad %d recipe %d not recalled\n", pad, r); return 1; }
             trial_hit((unsigned)pad, vel);
             m_init();
@@ -136,7 +137,7 @@ int main(int argc, char **argv)
                    " * pad's target); write it again after a recipe's sound changes */\n");
         for (int pad = 1; pad <= 11; pad++) {
             fprintf(f, "    {");
-            for (int r = 0; r < 8; r++) {
+            for (int r = 0; r < KIT_GENRES; r++) {
                 int t = 0;
                 if (r < kit_preset_count(pad)) t = trial_trim_db10((unsigned)pad, (unsigned)r) + (int)lround((TARGET[pad] - meas[pad][r]) * 10.0);
                 if (t > 300) t = 300;

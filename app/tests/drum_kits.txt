@@ -1,0 +1,117 @@
+# The DrumEngine's genre kits (0.5): PRESETS on the drums goes through ELECTRO (the factory kit, every older project's),
+# HOUSE, TECHNO, TRAP, BOOM BAP, DRUM & BASS, GARAGE, DISCO, DUB, LO-FI, INDUSTRIAL, MINIMAL; a kit puts every drum on
+# its genre's preset (PERC 2 on another genre's percussion), and each drum's presets are named after the genres too.
+# The kit is the project's (SAVE, a restart); the stock 808 / 909 only with the stock engine (demode_0).
+listen
+wait 300
+expect demode 1
+turn ALGO -3
+wait 50
+expect dpreset 0
+where
+wait 100
+said KIT ELECTRO
+# the list, in order, stopping at its ends
+turn PRESET -1
+wait 50
+said ELECTRO
+turn PRESET 1
+wait 50
+said HOUSE
+turn PRESET 2
+wait 50
+said TRAP
+turn PRESET 20
+wait 80
+said MINIMAL
+turn PRESET -20
+wait 80
+said ELECTRO
+turn PRESET 3
+wait 80
+said TRAP
+expect dpreset 15
+# its drums: the kick on Trap, PERC 1 Trap, PERC 2 Lo-Fi's percussion (another genre's)
+key 1 down
+wait 20
+key 1 up
+tap EDIT
+wait 100
+where
+wait 100
+said KICK Trap
+tap SEQ
+key 22 down
+wait 20
+key 22 up
+tap EDIT
+wait 100
+where
+wait 100
+said PERC 1 Trap
+tap SEQ
+key 25 down
+wait 20
+key 25 up
+tap EDIT
+wait 100
+where
+wait 100
+said PERC 2 Lo-Fi
+# a drum's own presets, by genre: the kick from Trap to Boom Bap
+tap SEQ
+key 1 down
+wait 20
+key 1 up
+tap EDIT
+wait 100
+turn PRESET 1
+wait 100
+said KICK Boom Bap
+tap SEQ
+wait 50
+# SAVE held + PRESETS: user kits keep the stock engine's knobs, nothing of the DrumEngine's yet
+press SAVE
+turn PRESET 1
+wait 50
+said DRUM KITS NOT SAVED YET
+release SAVE
+wait 100
+# the kit is the project's: saved, back after a restart, every drum on TRAP again
+tap SAVE
+wait 300
+said SAVED
+reboot
+wait 400
+listen
+wait 200
+expect dpreset 15
+turn ALGO -3
+wait 50
+where
+wait 100
+said KIT TRAP
+key 1 down
+wait 20
+key 1 up
+tap EDIT
+wait 100
+where
+wait 100
+said KICK Trap
+tap SEQ
+wait 50
+# the stock engine: its own list (the 808 / 909), the genre kit's stock kit (TRAP's: the 808) in place
+expect demode_0 1
+wait 100
+where
+wait 100
+said KIT 808
+turn PRESET -1
+wait 50
+said 909
+expect demode_1 1
+wait 100
+where
+wait 100
+said KIT ELECTRO

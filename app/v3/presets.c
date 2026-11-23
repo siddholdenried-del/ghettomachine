@@ -64,44 +64,80 @@ static const Param perc_params[] = {
     NUMBER("Sweep","%",-1000,1000,80,1,PercPatch,sweep,1000), PERCENT("Speed",PercPatch,speed), SHAPING
 };
 
-/* Stored in display ticks; recipes are complete and independent of edit order. */
+/* Stored in display ticks; recipes are complete and independent of edit order. Every drum has one preset per genre,
+ * in the genre kits' order (kit_genre_*); the last two ticks of each are its Tone and Drive (0 when left out).
+ * ELECTRO is the factory kit as it was (the 808-style recipes renamed), HOUSE the 909's. */
 static const Recipe kicks[] = {
-    {"808 Round",  {520,1500,110,50,160,680}}, {"909 Punch", {530,880,280,140,540,820}},
-    {"Short Thump",{620,300,75,30,300,480}},   {"Sub Boom",  {370,2050,50,100,80,260}},
-    {"Hard Knock", {700,470,185,80,860,940}},  {"Laser Kick",{460,720,345,580,350,590}}
+    {"Electro",    {520,1500,110,50,160,680}},       {"House",       {530,880,280,140,540,820}},
+    {"Techno",     {520,560,260,110,640,900,0,150}}, {"Trap",        {440,2100,120,90,120,600}},
+    {"Boom Bap",   {600,380,90,40,420,560,-150,0}},  {"Drum & Bass", {580,420,200,70,720,800}},
+    {"Garage",     {560,520,180,90,460,660}},        {"Disco",       {600,640,150,80,340,450}},
+    {"Dub",        {370,2050,50,100,80,260}},        {"Lo-Fi",       {580,420,80,40,220,520,-420,0}},
+    {"Industrial", {700,470,185,80,860,940,0,500}},  {"Minimal",     {620,300,75,30,300,480}}
 };
 static const Recipe snares[] = {
-    {"808 Snare",{0,470,550,600,460}}, {"909 Snare",{1,520,600,740,620}},
-    {"Dry Rim",{2,750,290,250,720}},   {"Wire Snap",{0,680,400,900,840}},
-    {"Deep Shell",{1,240,900,580,290}}
+    {"Electro",    {0,470,550,600,460}},             {"House",       {1,520,600,740,620}},
+    {"Techno",     {1,560,480,800,700,150,0}},       {"Trap",        {0,680,400,900,840}},
+    {"Boom Bap",   {1,240,900,580,290}},             {"Drum & Bass", {1,650,500,850,750,200,0}},
+    {"Garage",     {2,750,290,250,720}},             {"Disco",       {1,480,650,600,500}},
+    {"Dub",        {0,380,700,500,300,-250,0}},      {"Lo-Fi",       {0,420,650,450,350,-450,0}},
+    {"Industrial", {1,300,900,900,900,0,550}},       {"Minimal",     {2,640,320,300,600,100,0}}
 };
 static const Recipe claps[] = {
-    {"808 Clap",{0,460,540,480}}, {"909 Clap",{1,520,670,550}},
-    {"Dry Hands",{2,180,390,120}}, {"Wide Room",{0,860,490,910}}
+    {"Electro",    {0,460,540,480}},                 {"House",       {1,520,670,550}},
+    {"Techno",     {1,600,560,650,100,0}},           {"Trap",        {0,700,620,500,150,0}},
+    {"Boom Bap",   {2,300,450,250,-200,0}},          {"Drum & Bass", {1,450,700,350,200,0}},
+    {"Garage",     {2,180,390,120}},                 {"Disco",       {1,550,600,600}},
+    {"Dub",        {0,860,490,910}},                 {"Lo-Fi",       {0,500,400,450,-400,0}},
+    {"Industrial", {1,800,750,700,0,450}},           {"Minimal",     {2,260,520,180}}
 };
 static const Recipe toms[] = {
-    {"Round Tom",{0,500,500,480}}, {"Hard Tom",{1,550,490,670}},
-    {"Short Wood",{0,720,140,840}}, {"Deep Skin",{0,250,910,210}}
+    {"Electro",    {0,500,500,480}},                 {"House",       {1,550,490,670}},
+    {"Techno",     {1,480,350,720,0,150}},           {"Trap",        {0,420,720,380}},
+    {"Boom Bap",   {0,420,600,450,-150,0}},          {"Drum & Bass", {1,620,380,760}},
+    {"Garage",     {0,720,140,840}},                 {"Disco",       {0,560,650,520}},
+    {"Dub",        {0,250,910,210}},                 {"Lo-Fi",       {0,400,550,350,-400,0}},
+    {"Industrial", {1,380,500,850,0,500}},           {"Minimal",     {0,680,220,800}}
 };
 static const Recipe closed_hats[] = {
-    {"Closed Hat",{0,500,500}}, {"Tight Tick",{1,160,720}},
-    {"Dark Chick",{0,370,180}}, {"Loose Hat",{1,830,580}}
+    {"Electro",    {0,500,500}},                     {"House",       {1,400,650}},
+    {"Techno",     {1,250,700}},                     {"Trap",        {1,160,720}},
+    {"Boom Bap",   {0,370,180}},                     {"Drum & Bass", {1,220,780}},
+    {"Garage",     {1,300,800}},                     {"Disco",       {1,450,600}},
+    {"Dub",        {0,450,300}},                     {"Lo-Fi",       {0,380,200,-350,0}},
+    {"Industrial", {1,200,900,0,450}},               {"Minimal",     {1,140,680}}
 };
 static const Recipe open_hats[] = {
-    {"Open Hat",{0,500,500}}, {"Short Sizzle",{1,220,790}},
-    {"Dark Wash",{0,810,220}}, {"Long Shimmer",{1,920,700}}
+    {"Electro",    {0,500,500}},                     {"House",       {1,600,650}},
+    {"Techno",     {1,450,700}},                     {"Trap",        {1,220,790}},
+    {"Boom Bap",   {0,550,350}},                     {"Drum & Bass", {1,400,720}},
+    {"Garage",     {1,500,780}},                     {"Disco",       {1,920,700}},
+    {"Dub",        {0,810,220}},                     {"Lo-Fi",       {0,600,250,-350,0}},
+    {"Industrial", {1,550,900,0,450}},               {"Minimal",     {1,260,700}}
 };
 static const Recipe cymbals[] = {
-    {"Crash",{0,0,500,500}}, {"Ride",{1,0,500,500}},
-    {"Riser",{2,1,760,730}}, {"Noise Drop",{3,0,650,420}},
-    {"Dark Crash",{0,0,840,220}}, {"Bright Ride",{1,1,350,840}}
+    {"Electro",    {0,0,500,500}},                   {"House",       {1,0,500,500}},
+    {"Techno",     {1,1,350,840}},                   {"Trap",        {2,1,760,730}},
+    {"Boom Bap",   {0,0,840,220}},                   {"Drum & Bass", {1,0,450,700}},
+    {"Garage",     {1,1,400,750}},                   {"Disco",       {0,1,700,650}},
+    {"Dub",        {3,0,650,420}},                   {"Lo-Fi",       {0,0,700,250,-350,0}},
+    {"Industrial", {3,1,700,800,0,500}},             {"Minimal",     {1,0,300,600}}
 };
 static const Recipe percussion[] = {
-    {"Electro Zap",{0,590,440,780,-880,820}},  {"FM Block",{1,420,350,640,-350,640}},
-    {"Twin Bell",{2,760,560,800,0,500}},      {"Velocity Tom",{3,330,530,520,0,500}},
-    {"Metal Sheet",{4,680,420,550,180,500}},   {"Noise Brush",{5,460,780,680,0,500}},
-    {"Round Bongo",{0,290,610,370,-150,560}},  {"High Ping",{1,840,260,780,280,830}}
+    {"Electro",    {0,590,440,780,-880,820}},        {"House",       {1,420,350,640,-350,640}},
+    {"Techno",     {4,680,420,550,180,500}},         {"Trap",        {1,840,260,780,280,830}},
+    {"Boom Bap",   {0,290,610,370,-150,560}},        {"Drum & Bass", {0,700,300,600,-500,700}},
+    {"Garage",     {1,600,300,700,200,700}},         {"Disco",       {3,330,530,520,0,500}},
+    {"Dub",        {2,500,700,700,-200,400}},        {"Lo-Fi",       {5,460,780,680,0,500}},
+    {"Industrial", {4,500,600,800,400,800,0,400}},   {"Minimal",     {2,760,560,800,0,500}}
 };
+
+/* the genre kits: every drum on its genre's preset, but PERC 2 on another genre's percussion so the two differ */
+static const char *const genres[] = {"Electro", "House", "Techno", "Trap", "Boom Bap", "Drum & Bass", "Garage", "Disco",
+                                     "Dub", "Lo-Fi", "Industrial", "Minimal"};
+static const unsigned char perc2_of[] = {2, 4, 0, 9, 1, 3, 11, 4, 11, 4, 2, 1};
+_Static_assert(sizeof genres / sizeof genres[0] == KIT_GENRES, "KIT_GENRES genres");
+_Static_assert(sizeof perc2_of == KIT_GENRES, "a second percussion for every genre");
 
 #define BANK(p,r) {p,r,COUNT(p),COUNT(r)}
 static const Bank banks[] = {
@@ -125,11 +161,6 @@ static const Recipe *recipe(int pad, int index)
 {
     const Bank *b=bank(pad);
     if (!b || index<0 || index>=b->recipe_count) return NULL;
-    /* Both Perc slots expose the same sounds with their factory sound first. */
-    if (pad==11) {
-        if (index==0) index=4;
-        else if (index==4) index=0;
-    }
     return b->recipes+index;
 }
 
@@ -246,4 +277,19 @@ int kit_preset_match(const KitPatch *p, int pad)
         if (i==b->param_count) return n;
     }
     return -1;
+}
+
+int kit_genre_count(void) { return KIT_GENRES; }
+const char *kit_genre_name(int genre) { return genre >= 0 && genre < KIT_GENRES ? genres[genre] : NULL; }
+int kit_genre_recipe(int genre, int pad)
+{
+    if (genre < 0 || genre >= KIT_GENRES || pad < 1 || pad > 11) return -1;
+    return pad == 11 ? perc2_of[genre] : genre;
+}
+int kit_genre_apply(KitPatch *patch, int genre)
+{
+    if (!patch || genre < 0 || genre >= KIT_GENRES) return 0;
+    for (int pad = 1; pad <= 11; ++pad)
+        if (!kit_preset_apply(patch, pad, kit_genre_recipe(genre, pad))) return 0;
+    return 1;
 }

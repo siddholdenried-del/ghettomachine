@@ -93,11 +93,23 @@ static int factory_preset_index(int id) { return id >= PRESET_NEW_FIRST ? id - N
  * 808 (a 606) or the 909 (a 707), project_check */
 #define DPRESET_606 (2 + NUKIT)
 #define DPRESET_707 (DPRESET_606 + 1)
-#define DPRESET_COUNT (2 + NUKIT)
+/* the DrumEngine's genre kits after them (0.5: presets.h KIT_GENRES, ELECTRO first). With the DrumEngine, PRESETS on
+ * the drums goes through these; the stock 808 / 909 and the user kits (their knobs) only with the stock engine. A kit
+ * of either kind is the other engine's too: a genre's stock kit (GENRE_STOCK); a stock or user kit's genre: ELECTRO (the
+ * DrumEngine's factory kit, which every project played until 0.5's genre kits) */
+#define DPRESET_GENRE (DPRESET_707 + 1)
+#define DPRESET_COUNT (DPRESET_GENRE + KIT_GENRES)
+static const uint8_t GENRE_STOCK[KIT_GENRES] = {KIT_808, KIT_909, KIT_909, KIT_808, KIT_808, KIT_909,
+                                                KIT_909, KIT_909, KIT_808, KIT_808, KIT_909, KIT_909};
+static const char *const GENRE_SHORT[KIT_GENRES] = {"ELC", "HSE", "TEC", "TRP", "BMB", "DNB", "GRG", "DSC", "DUB", "LOF",
+                                                    "IND", "MIN"};   /* (the small track labels) */
 static int kit_now(int kit) { return kit == KIT_606 ? KIT_808 : kit == KIT_707 ? KIT_909 : kit; }   /* a cut kit's heir */
 static int dpreset_factory(int i) { return i >= 0 && i < 2 ? i : -1; }
 static int kit_factory(int i) { return kit_now(i); }
 static int dpreset_user(int i) { return i >= 2 && i < DPRESET_606; }
+static int dpreset_genre(int i) { return i >= DPRESET_GENRE && i < DPRESET_COUNT ? i - DPRESET_GENRE : -1; }
+static int dpreset_valid(int i) { return dpreset_factory(i) >= 0 || dpreset_user(i) || dpreset_genre(i) >= 0; }
+static int dpreset_genre_of(int i);       /* the DrumEngine's kit for a kit id (below, by the user kits) */
 static int dpreset_display(int i) { return i; }
 static int dpreset_id(int i) { return i; }
 
@@ -370,7 +382,23 @@ static int kit_is_custom(const uint8_t *map)
                 return 1;
     return 0;
 }
-static const char *drum_kit_title(void) { return kit_is_custom(proj.model) ? "CUSTOM" : drums_kit_name(proj.kit); }
+static const char *drum_kit_title(void)   /* the drums' kit: the DrumEngine's genre kit, or the stock engine's */
+{
+    static char t[16];
+    if (v3_mode) {
+        const char *n = kit_genre_name(dpreset_genre_of(proj.dpreset));
+        int i;
+        for (i = 0; n && n[i] && i < 15; i++)
+            t[i] = (char)(n[i] >= 'a' && n[i] <= 'z' ? n[i] - 32 : n[i]);
+        t[i] = 0;
+        return t;
+    }
+    return kit_is_custom(proj.model) ? "CUSTOM" : drums_kit_name(proj.kit);
+}
+static const char *drum_kit_short(void)   /* the same in three letters (the small track labels) */
+{
+    return v3_mode ? GENRE_SHORT[dpreset_genre_of(proj.dpreset)] : drum_kit_title();
+}
 static uint8_t dirty;                     /* changed since the last save: SAVE is lit */
 
 /* the screen's meters, written where the sound is made (the audio interrupt), read and let go by the screen */
@@ -1053,7 +1081,7 @@ static void project_check(void)           /* a loaded project's values kept in r
             proj.pkit[i] = KIT_808 + 1;
         else if (proj.pkit[i] == DPRESET_707 + 1)
             proj.pkit[i] = KIT_909 + 1;
-        if (proj.pkit[i] > DPRESET_COUNT)
+        if (proj.pkit[i] && !dpreset_valid(proj.pkit[i] - 1))
             proj.pkit[i] = 0;
         drum_map_clean(-1, proj.pattern_model[i]);
         if ((proj.follow[i] & 7u) > 4u)
@@ -1063,7 +1091,7 @@ static void project_check(void)           /* a loaded project's values kept in r
     proj.kit = (uint8_t)kit_now(proj.kit);   /* (saved on the 606 or the 707: the 808 or the 909 now) */
     drum_map_clean(proj.kit, proj.model);
     proj.version = PROJ_VERSION;
-    if (proj.dpreset >= DPRESET_COUNT)
+    if (!dpreset_valid(proj.dpreset))
         proj.dpreset = (uint8_t)kit_factory(proj.kit);
     if (proj.song_n > NSONG)
         proj.song_n = 0;
@@ -1293,6 +1321,7 @@ static int project_load(void)
         pots_from_engines();
         tracks_to_voices();
         clips_raw(proj.pat);
+        trial_kit(dpreset_genre_of(proj.dpreset));   /* the DrumEngine's kit: the project's */
         return 0;
     }
     if (fmt < 7) {
@@ -1308,6 +1337,7 @@ static int project_load(void)
     for (i = 0; i < NTRK; i++)            /* every track on the focused pattern: its clip's LFO */
         proj.lfo[i] = proj.plfo[proj.pat][i];
     psnd_fetch_all();                     /* SOUNDS PER PATTERN: the focused pattern's, before they reach the engines */
+    trial_kit(dpreset_genre_of(proj.dpreset));   /* the DrumEngine's kit: the project's (an older one's: ELECTRO) */
     pots_to_engines();
     tracks_to_voices();
     return 1;
@@ -1368,6 +1398,12 @@ typedef struct {
 _Static_assert(sizeof(user_t) <= 3840u, "the user presets fit one store object");
 _Static_assert(sizeof(user_t) > sizeof(user_v1_t), "0.2's user presets convert in place, from the end");
 static user_t user PLAT_POOL;
+
+static int dpreset_genre_of(int i)        /* a genre kit itself; a stock or user kit: ELECTRO, the DrumEngine's factory
+                                           * kit, which every project played until the genre kits (none sounds new) */
+{
+    return dpreset_genre(i) >= 0 ? dpreset_genre(i) : 0;
+}
 
 static void user_load(void)
 {
@@ -1450,6 +1486,8 @@ static void kit_raw(int i, const uint8_t *scene, int use_slot_pots)
 {
     int base = dpreset_factory(i), r, c;
     const uint8_t *map = 0;
+    if (dpreset_genre(i) >= 0)            /* a genre kit: its stock kit for the stock engine */
+        base = GENRE_STOCK[dpreset_genre(i)];
     if (dpreset_user(i)) {
         const ukit_t *u = &user.kit[i - 2];
         if (!u->used || !drums_kit_present(u->kit))   /* (a user kit made on a cut kit: not there any more) */
@@ -1466,6 +1504,8 @@ static void kit_raw(int i, const uint8_t *scene, int use_slot_pots)
     if (base < 0)
         return;
     drum_map_apply(base, scene ? scene : map);
+    if (dpreset_genre_of(i) != dpreset_genre_of(proj.dpreset) || dpreset_genre(i) >= 0)
+        trial_kit(dpreset_genre_of(i));   /* the DrumEngine's kit with it (its edits since gone, as a kit's knobs) */
     proj.dpreset = (uint8_t)i;
     if (use_slot_pots && dpreset_user(i))  /* the pads the kit set (above), not every kit's: a pattern switch in the
                                             * interrupt (SOUNDS PER PATTERN) takes a quarter of the time */
@@ -4990,15 +5030,26 @@ static void preset_name(int i, char *t)
     int_text(s + 1, u);
     text_cat(t, u);
 }
-static int dpreset_ok(int display)
+static int dpreset_ok(int display)       /* in PRESETS' list now: the genre kits with the DrumEngine, else the stock
+                                           * kits and the user kits saved */
 {
     int i = dpreset_id(display);
+    if (v3_mode)
+        return dpreset_genre(i) >= 0;
     return dpreset_factory(i) >= 0 || (dpreset_user(i) && user.kit[i - 2].used && drums_kit_present(user.kit[i - 2].kit));
 }
 static void dpreset_name(int i, char *t)
 {
     char u[4];
     t[0] = 0;
+    if (dpreset_genre(i) >= 0) {
+        const char *n = kit_genre_name(dpreset_genre(i));
+        int k;
+        for (k = 0; n[k] && k < 15; k++)
+            t[k] = (char)(n[k] >= 'a' && n[k] <= 'z' ? n[k] - 32 : n[k]);
+        t[k] = 0;
+        return;
+    }
     if (dpreset_factory(i) >= 0) {
         text_cat(t, drums_kit_name(dpreset_factory(i)));
         return;
@@ -5096,7 +5147,9 @@ static void preset_bank_turn(int32_t e)
 
 static void kit_turn(int32_t e)
 {
-    const int from = dpreset_display(proj.dpreset);
+    const int from = v3_mode ? DPRESET_GENRE + dpreset_genre_of(proj.dpreset)   /* (a stock id: its genre's place) */
+                   : dpreset_genre(proj.dpreset) >= 0 ? GENRE_STOCK[dpreset_genre(proj.dpreset)]   /* (its stock kit's) */
+                   : dpreset_display(proj.dpreset);
     const int i = dpreset_id(preset_step(from, e, DPRESET_COUNT, dpreset_ok));
     char t[16];
     uint32_t f = plat_lock();
@@ -5114,6 +5167,10 @@ static void kit_turn(int32_t e)
 static void save_target(int32_t e)        /* SAVE held + PRESETS: the user slot that letting go of SAVE saves to */
 {
     int inst = ui.trk != TR_DRUM, n = inst ? NUSER : NUKIT, s = ui.save_slot, k, used;
+    if (!inst && v3_mode) {               /* a user kit keeps the stock engine's knobs: nothing of the DrumEngine's yet */
+        app_say("DRUM KITS", "NOT SAVED YET");
+        return;
+    }
     char t[16], u[4];
     int current = inst ? user_preset_slot(tset(ui.trk)->preset) : -1;
     if (s < 0) {                          /* the first turn: where the sound came from, else the first empty slot */
@@ -5952,7 +6009,8 @@ static void reload_sound(void)            /* SAVE + OCT-: the track's sound (the
         }
         if (fmt >= 7) {
             drum_map_apply(saved_kit, saved_map);
-            proj.dpreset = saved_preset >= DPRESET_COUNT ? (uint8_t)kit_factory(saved_kit) : saved_preset;
+            proj.dpreset = !dpreset_valid(saved_preset) ? (uint8_t)kit_factory(saved_kit) : saved_preset;
+            trial_kit(dpreset_genre_of(proj.dpreset));
         }
         plat_unlock(f);
         pots_to_engines();                /* (a pad at a time under the lock) */
@@ -9332,7 +9390,7 @@ static void page_home(void)               /* the scene grid: 16 patterns across 
         uint16_t tc = trk_rgb(t);
         /* the track: its name, muted or stopped, its level */
         rrect(1, y, 29, 27, 4, muted || clip[t] < 0 ? C_PANEL : tc);
-        text_c(15, y + 1, &FONT_S, t == TR_DRUM ? drum_kit_title() : TRK_NAME[t],
+        text_c(15, y + 1, &FONT_S, t == TR_DRUM ? drum_kit_short() : TRK_NAME[t],
                muted ? TH_RED : C_INK);
         h = db_h(lvl[t], 23, 48.0f);
         cv_rect(4, y + 21, 23, 3, muted || clip[t] < 0 ? C_GRID : mix565(tc, C_INK, 90));
@@ -9502,7 +9560,7 @@ static void page_mix(void)                /* the mixer: a strip a track, its met
         if (t == ui.trk)                  /* the track picked: selected */
             frame(x, 2, 56, 128, C_VIOLET);
         rrect(x + 4, 6, 48, 18, 4, muted ? C_GRID : col);
-        text_c(x + 28, 7, &FONT_S, t == TR_DRUM ? drum_kit_title() : TRK_NAME[t],
+        text_c(x + 28, 7, &FONT_S, t == TR_DRUM ? drum_kit_short() : TRK_NAME[t],
                muted ? TH_RED : C_INK);
         h = db_h(lvl[t], 92, 48.0f);      /* the meter, -48..0 dBFS */
         rrect(x + 6, 30, 8, 92, 3, C_GRID);
@@ -10076,7 +10134,7 @@ static void speak_line(int which, char *t)
         int_text((int32_t)plat_cpu2_stack(), u);
         text_cat(t, u);
         text_cat(t, " KIT ");
-        text_cat(t, drums_kit_name(proj.kit));
+        text_cat(t, drum_kit_title());
         ann_say(t, 0, 0);
     } else if (which == 2) {             /* the synth's parts, us a block; what a voice is measured to cost */
         text_cat(t, "SYNTH US PREP ");
