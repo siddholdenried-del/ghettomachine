@@ -53,3 +53,17 @@ wait 3000
 expect stemreset 1
 wait 200
 expect stem1 -1200
+# ---- CC 109 on channel 16 (measuring on the FM-1): 1 the second core, as drums2set_1; 0 chosen again. The count
+# stays where the forced runs above left it (71) until the CC forces it again
+wait 3000
+midi 99 31 7F
+wait 200
+expect drums2 <80
+midi BF 6D 01
+midi 99 31 7F
+wait 200
+expect drums2 >95
+midi BF 6D 00
+midi 99 31 7F
+wait 200
+expect drums2 <110

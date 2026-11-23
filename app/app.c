@@ -2725,6 +2725,8 @@ static void mclk_tick(void)               /* every 6th clock (a 16th): its time 
     }
 }
 
+static void drums2_force(unsigned v);     /* (below, by the drums' second-core state) */
+
 static void midi_in(void)                 /* audio interrupt */
 {
     uint32_t pkt;
@@ -2736,6 +2738,10 @@ static void midi_in(void)                 /* audio interrupt */
             else if (d1 == 111u) { if (d2 == 1u) trial_metrics_reset(); }
             else if (d1 <= 115u) trial_patch((int)d1 - 111, (int)d2);
             else trial_macro(d1 - 116u, d2);
+            continue;
+        }
+        if (ch == 15u && st == 0xBFu && d1 == 109u) {   /* measuring: the drums' core, 0 chosen, 1 the second, 2 the first */
+            drums2_force(d2);
             continue;
         }
         if (ch == 15u && st == 0x9Fu && d1 >= 36u && d1 <= 46u) {
@@ -3469,6 +3475,8 @@ static void drum_job(uint32_t arg)        /* the second core's */
     d2.fin = 1;
     plat_cpu2_sync();
 }
+
+static void drums2_force(unsigned v) { d2.force = (uint8_t)(v <= 2u ? v : 0u); }   /* (CC 109 on channel 16) */
 
 static void drum_offer(void)              /* a chunk's drums to the second core, if it is free now */
 {
