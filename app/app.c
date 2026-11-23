@@ -2740,7 +2740,8 @@ static void midi_in(void)                 /* audio interrupt */
             else trial_macro(d1 - 116u, d2);
             continue;
         }
-        if (ch == 15u && st == 0xBFu && d1 == 109u) {   /* measuring: the drums' core, 0 chosen, 1 the second, 2 the first */
+        if (ch == 15u && st == 0xBFu && d1 == 109u) {   /* measuring: the drums' core, 0 as built (the second whenever it
+                                                         * runs), 1 the second, 2 the first, 3 drums2_pick's choice */
             drums2_force(d2);
             continue;
         }
@@ -3421,7 +3422,8 @@ static struct {
     uint8_t due;                          /* a chunk's drums wait for the second core */
     uint8_t mode;                         /* this block: the drums are the second core's */
     uint8_t ran2;                         /* this block: it rendered them */
-    uint8_t force;                        /* 0: chosen (the simulator: never); 1 always; 2 never (the tests) */
+    uint8_t force;                        /* 0: there whenever it runs (the simulator: never); 1 always; 2 never;
+                                           * 3 as drums2_pick chooses (the tests, CC 109) */
     float est_d, est_v, est_c;            /* running means, us a block: the drums and their Color; the voices'
                                            * rendering on both cores; the synth's control ticks and mix */
     float share;                          /* blocks the second core rendered the drums, % (a running mean) */
@@ -3478,7 +3480,7 @@ static void drum_job(uint32_t arg)        /* the second core's */
     plat_cpu2_sync();
 }
 
-static void drums2_force(unsigned v) { d2.force = (uint8_t)(v <= 2u ? v : 0u); }   /* (CC 109 on channel 16) */
+static void drums2_force(unsigned v) { d2.force = (uint8_t)(v <= 3u ? v : 0u); }   /* (CC 109 on channel 16) */
 
 static void drum_offer(void)              /* a chunk's drums to the second core, if it is free now */
 {
@@ -3500,16 +3502,21 @@ static int drums2_pick(float d, float p, float v, float c, int now)
     return there + (now ? 100.0f : 300.0f) < usual;
 }
 
+/* The drums go to the second core in every block it is running (0.5's CPU pass, measured on the FM-1 against the
+ * pick above, CC 109): with 8 of the heaviest voices over the dense drums the pick's worst block was 5.7 ms dry and
+ * 6.2 ms (one overrun) with the DrumEngine's bus, always here 5.7 and 6.1 (16 overruns, 104 voices shed), always there
+ * 4.5 and 4.7 ms with nothing shed; with 10 light voices or the four-track score there was also the best worst block
+ * (3.8 to 4.3 ms against 4.2 to 5.0). The pick's estimates lag the load and its switches cost a spike. With the drums
+ * alone the first core waits for them a little longer than it would take them itself: no risk there (under 4 ms) */
 static int drums2_mode(void)              /* this block: the drums to the second core */
 {
     if (d2.force)
-        return d2.force == 1;
+        return d2.force == 1 ? 1 : d2.force == 2 ? 0
+               : drums2_pick(d2.est_d, cs_us[CS_FX] + cs_us[CS_MASTER], d2.est_v, d2.est_c, d2.mode);
 #ifdef PLAT_HOST
     return 0;                             /* (the simulator's times are the Mac's: the tests force it) */
 #else
-    if (!cpu2 || !plat_cpu2_on())
-        return 0;
-    return drums2_pick(d2.est_d, cs_us[CS_FX] + cs_us[CS_MASTER], d2.est_v, d2.est_c, d2.mode);
+    return cpu2 && plat_cpu2_on();
 #endif
 }
 
@@ -11142,8 +11149,9 @@ int app_expect(const char *what, int *got)
             v = v * 10 + (*q++ - '0');
         gov_fake[what[7] - '0'] = (float)v;
         *got = 1;
-    } else if (!strncmp(what, "drums2set_", 10) && what[10] >= '0' && what[10] <= '2' && !what[11]) {
-        /* drums2set_N: the drums' place: 0 chosen (the simulator: the first core), 1 the second core, 2 the first */
+    } else if (!strncmp(what, "drums2set_", 10) && what[10] >= '0' && what[10] <= '3' && !what[11]) {
+        /* drums2set_N: the drums' place: 0 as built (the simulator: the first core), 1 the second core, 2 the first,
+         * 3 drums2_pick's choice */
         d2.force = (uint8_t)(what[10] - '0');
         *got = 1;
     } else if (!strcmp(what, "drums2")) { /* the blocks the second core rendered the drums, so far */
