@@ -265,8 +265,8 @@
       "sha256": "c4fc02bbe685f3161e16c6233e7f7f1fb3a36f4de9c8a874103030b6751bcfa9"
     },
     "emu/app.wasm": {
-      "bytes": 668697,
-      "sha256": "1ca994415b124cf83a0405eb51c0e2b5079c5adc584b21d3f3b28cc534339a2b"
+      "bytes": 668773,
+      "sha256": "2cb94e6c02040dba15577e200756c59c0ae1120651eeeea7cc939942929dd60d"
     },
     "emu/app_worklet.js": {
       "bytes": 210,
@@ -274,7 +274,7 @@
     },
     "emu/index.html": {
       "bytes": 46290,
-      "sha256": "4c8301e0841fe08efdd9d903f968e8e8cf288ba3dc70297a4b5925451364872c"
+      "sha256": "30c7df16aed56f5f11877464a81b93d2e58b3d0b90f22cb5d3a98113f52b3e1f"
     },
     "emu/parts/midi.js": {
       "bytes": 4429,
@@ -317,8 +317,8 @@
       "sha256": "e205d8b375cf94cef107f04849f7d326db70aa8ea9f0882b0ff569e7084dddbd"
     },
     "guide/beats/index.html": {
-      "bytes": 31762,
-      "sha256": "34017908da8148dcb81eb7cd639596014085e43577b49541651db902d4b823ba"
+      "bytes": 32110,
+      "sha256": "5ad508017fd6f811353cb063bf45bc0078db59449b940b66f543dd32ae12aac1"
     },
     "guide/index.html": {
       "bytes": 28146,
@@ -341,12 +341,12 @@
       "sha256": "4c373598ac930ea341a958d7898f334a3aa3c4263e1d169118a058ad86b58e1d"
     },
     "guide/reference/index.html": {
-      "bytes": 56718,
-      "sha256": "19f711007559c298dde70b578047abf6e90ef1f97e44393677b8cfed5aef70eb"
+      "bytes": 56827,
+      "sha256": "de522c0c912fa7c2ac42f046a220495de78c9a2bc331d3fe2712e1d9193e0532"
     },
     "guide/setup/index.html": {
-      "bytes": 32934,
-      "sha256": "c8fb223a2eb7d1eda173803252f6957a8562e679a15c5fcae4414130cfb08b96"
+      "bytes": 32953,
+      "sha256": "dd72a70bd6b4d88bae10bf34609ba43c0c840c55f252342a782a336affe4a64b"
     },
     "guide/sounds/index.html": {
       "bytes": 28142,
@@ -366,20 +366,20 @@
   "site": "https://ghettomachine.bongcult.com",
   "source": {
     "emscripten": "7.0.0+777e6e5db7b4990bcaeb1b9998ed642cc84e6629",
-    "emulator_build_commit": "de668b2233aabb87807c0e55a0428010f9c6fa0e",
-    "feature_source": "de668b2233aabb87807c0e55a0428010f9c6fa0e",
+    "emulator_build_commit": "86ad2b3cd0ecdd1bd5b9f115f5d7a853b4b9b8a9",
+    "feature_source": "86ad2b3cd0ecdd1bd5b9f115f5d7a853b4b9b8a9",
     "felucca_bsp": "2a5af3dfc8bccb92e37d48a3e7e0bf9a5827e51f",
     "fm1_base": "7337375c15e9db26f23b0c68a1db61429add2f48",
-    "provenance": "Browser development build from the exact clean source with the tracks' mix (inserts and Color in it) shared between the FM-1's two cores (one core in the browser: the same samples), on the per-clip LFO, the budgets with their guard and the clip-change fix.",
-    "remote_main_predecessor": "b913141c6a16d83a3088abffe45990614f1b2841",
+    "provenance": "Browser development build from the exact clean source with the ACID generator's OCT+ rolling a random seed out of all 65535 (never the one playing), LINE's SEED knob scrolling the whole range, and saved seeds above 999 kept.",
+    "remote_main_predecessor": "5bb2f6df8f4ac1a63bed8b0519a756a9cb8c7842",
     "repository": "https://github.com/siddholdenried-del/ghettomachine",
-    "runtime_tree": "afbd61ab5a85e0aa192c0ba25570e10d055f5ecc"
+    "runtime_tree": "e9a2a35a181ef42cdfd36a37fd05ec44101279d2"
   },
   "targets": {
     "device": {
-      "application_bytes": 530776,
-      "build_from": "de668b2233aabb87807c0e55a0428010f9c6fa0e",
-      "build_id": "E1CE7A8A",
+      "application_bytes": 530860,
+      "build_from": "86ad2b3cd0ecdd1bd5b9f115f5d7a853b4b9b8a9",
+      "build_id": "203659DD",
       "build_status": "linked-and-packaged",
       "downloads": [],
       "flashed": false,
@@ -392,7 +392,7 @@
       "hardware_tested": false,
       "package_bytes": 616099,
       "package_identity": "FM-1_800",
-      "package_sha256": "1197795e6b4c246fdc68317d67ba9c157e5193eff7bd3e1498d8e656212787c3",
+      "package_sha256": "dfcabbb1ae3ba9a7f4168c93fd7d6ffa4b7badadc66cfdab8c4f6eecb52efc66",
       "pool_guard_bytes": 8192,
       "pool_limit_bytes": 344064,
       "pool_used_bytes": 331736,
@@ -426,7 +426,7 @@
       "identity": "GHETTOMACHINE DEV",
       "path": "emu/app.wasm",
       "platform": "browser",
-      "sha256": "1ca994415b124cf83a0405eb51c0e2b5079c5adc584b21d3f3b28cc534339a2b"
+      "sha256": "2cb94e6c02040dba15577e200756c59c0ae1120651eeeea7cc939942929dd60d"
     }
   ]
 }
