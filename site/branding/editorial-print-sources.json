@@ -1,0 +1,167 @@
+{
+  "work": "Sound, John Tyndall. P. F. Collier & Son, New York, 1902 (MCMII on title page).",
+  "source": "https://www.gutenberg.org/ebooks/54969",
+  "rights": "Public-domain 1902 US publication; Project Gutenberg digital edition 54969.",
+  "treatment": "Scanned ink retained. Instrument cutouts remove the exterior paper only. Companion engravings are duotoned, preserving their original trace.",
+  "routes": {
+    "technical": {
+      "instrument": {
+        "title": "Sensitive flame and acoustic tunnel",
+        "scan": "i_334.jpg",
+        "source": "https://raw.githubusercontent.com/GITenberg/Sound_54969/094a18734ce33182e20f2d2c22e8459f05022fff/54969-h/images/i_334.jpg",
+        "sha256": "6685c16af5326c40ff3894d7b4c1232fa59cf1f2d5a5edfc47df0526c806b3f1"
+      },
+      "field": {
+        "title": "Intersecting waves in a circular vessel",
+        "scan": "i_379.jpg",
+        "source": "https://raw.githubusercontent.com/GITenberg/Sound_54969/094a18734ce33182e20f2d2c22e8459f05022fff/54969-h/images/i_379.jpg",
+        "sha256": "a6dff27d9405b3405b92b8984dfa6cb90352c7b581683b3c93e4575db76ee054"
+      },
+      "accent": "sage"
+    },
+    "quick": {
+      "instrument": {
+        "title": "Striking a tuning fork",
+        "scan": "i_092.jpg",
+        "source": "https://raw.githubusercontent.com/GITenberg/Sound_54969/094a18734ce33182e20f2d2c22e8459f05022fff/54969-h/images/i_092.jpg",
+        "sha256": "2ecc2fa5645d01e72606c7697f0a7079acfa31a28b5b85872d3f4df6d426d564"
+      },
+      "field": {
+        "title": "Perforated siren disc",
+        "scan": "i_089.jpg",
+        "source": "https://raw.githubusercontent.com/GITenberg/Sound_54969/094a18734ce33182e20f2d2c22e8459f05022fff/54969-h/images/i_089.jpg",
+        "sha256": "520ff23440f9723e36cad2561b42f8debe79cbdfee3e35916fb5eb8a580cdaf1"
+      },
+      "accent": "plum"
+    },
+    "beats": {
+      "instrument": {
+        "title": "Double siren of Helmholtz",
+        "scan": "i_111.jpg",
+        "source": "https://raw.githubusercontent.com/GITenberg/Sound_54969/094a18734ce33182e20f2d2c22e8459f05022fff/54969-h/images/i_111.jpg",
+        "sha256": "92a1c23e95b55b94a7a5d2e439c3b403704dec3876f03e74d79392742dcc6929"
+      },
+      "field": {
+        "title": "Oscillations of a tuning fork",
+        "scan": "i_095a.jpg",
+        "source": "https://raw.githubusercontent.com/GITenberg/Sound_54969/094a18734ce33182e20f2d2c22e8459f05022fff/54969-h/images/i_095a.jpg",
+        "sha256": "3d6feceb47a7263daf68c7c1dcf4070122d30acf3e2732058a6381def24016ea"
+      },
+      "accent": "rose"
+    },
+    "sounds": {
+      "instrument": {
+        "title": "Rows of sounding wooden rods",
+        "scan": "i_205.jpg",
+        "source": "https://raw.githubusercontent.com/GITenberg/Sound_54969/094a18734ce33182e20f2d2c22e8459f05022fff/54969-h/images/i_205.jpg",
+        "sha256": "24bac6fbdbfea6e0f02fccf66a72d445ef6094bc5e9c15ec4f768fa4860402f9"
+      },
+      "field": {
+        "title": "Wheatstone’s scrolls from a vibrating rod",
+        "scan": "i_173.jpg",
+        "source": "https://raw.githubusercontent.com/GITenberg/Sound_54969/094a18734ce33182e20f2d2c22e8459f05022fff/54969-h/images/i_173.jpg",
+        "sha256": "3202883a4312051fe99959884e950bc90dbdfd2f0f3ee165c4b611f92982b5c3"
+      },
+      "accent": "amber"
+    },
+    "modulation": {
+      "instrument": {
+        "title": "Wheatstone’s instrument for combining rectangular vibrations",
+        "scan": "i_448.jpg",
+        "source": "https://raw.githubusercontent.com/GITenberg/Sound_54969/094a18734ce33182e20f2d2c22e8459f05022fff/54969-h/images/i_448.jpg",
+        "sha256": "edb7a914d31f03208e3950895ce318f6b19b9a82bfc8548bc47c88bcfe44a1de"
+      },
+      "field": {
+        "title": "Lissajous figures for the ratio eight to nine",
+        "scan": "i_446a.jpg",
+        "source": "https://raw.githubusercontent.com/GITenberg/Sound_54969/094a18734ce33182e20f2d2c22e8459f05022fff/54969-h/images/i_446a.jpg",
+        "sha256": "7551795ba6f670a3e7fbd25359c88f911e8a580dcf1030e87b476989a23fc32b"
+      },
+      "accent": "plum"
+    },
+    "recording": {
+      "instrument": {
+        "title": "Vibrating stylus tracing a line on smoked glass",
+        "scan": "i_093.jpg",
+        "source": "https://raw.githubusercontent.com/GITenberg/Sound_54969/094a18734ce33182e20f2d2c22e8459f05022fff/54969-h/images/i_093.jpg",
+        "sha256": "bd5244a9632fcd83e03ed2d4d73472e130edebf583d0526d2cd9eea2d1ed046c"
+      },
+      "field": {
+        "title": "Thomas Young’s recorded observations of a vibrating string",
+        "scan": "i_161.jpg",
+        "source": "https://raw.githubusercontent.com/GITenberg/Sound_54969/094a18734ce33182e20f2d2c22e8459f05022fff/54969-h/images/i_161.jpg",
+        "sha256": "46904136a47be86f11676db9025de6a1ad99e395638e5329951dbdccc9688b13"
+      },
+      "accent": "sage"
+    },
+    "performance": {
+      "instrument": {
+        "title": "Two hands playing the wooden bars of a claque-bois",
+        "scan": "i_175.jpg",
+        "source": "https://raw.githubusercontent.com/GITenberg/Sound_54969/094a18734ce33182e20f2d2c22e8459f05022fff/54969-h/images/i_175.jpg",
+        "sha256": "caee89bd6d3cc4d3137630519edf62f1960f8d266cd33ad85f434d11a47b7916"
+      },
+      "field": {
+        "title": "Nodal pattern in a vibrating plate",
+        "scan": "i_189d.jpg",
+        "source": "https://raw.githubusercontent.com/GITenberg/Sound_54969/094a18734ce33182e20f2d2c22e8459f05022fff/54969-h/images/i_189d.jpg",
+        "sha256": "10e0e30b9da077ec2e2c4a9ac78fb6fbb7f7a33c6135a0e83ca68a546493c8fa"
+      },
+      "accent": "rose"
+    },
+    "mixer": {
+      "instrument": {
+        "title": "Pair of pipes feeding a common flame",
+        "scan": "i_388.jpg",
+        "source": "https://raw.githubusercontent.com/GITenberg/Sound_54969/094a18734ce33182e20f2d2c22e8459f05022fff/54969-h/images/i_388.jpg",
+        "sha256": "55089eb8457c586869e82512dd1a05dd16a1d310d4e541e541ef7dcc7bdb04ea"
+      },
+      "field": {
+        "title": "Interference produced by two tuning forks",
+        "scan": "i_382.jpg",
+        "source": "https://raw.githubusercontent.com/GITenberg/Sound_54969/094a18734ce33182e20f2d2c22e8459f05022fff/54969-h/images/i_382.jpg",
+        "sha256": "76648a3da0d2b8a855861c05513d33af2252ea2040a8c00dbc8aeca11ca4da81"
+      },
+      "accent": "amber"
+    },
+    "setup": {
+      "instrument": {
+        "title": "Optical bench with a polarizer and analyser",
+        "scan": "i_210.jpg",
+        "source": "https://raw.githubusercontent.com/GITenberg/Sound_54969/094a18734ce33182e20f2d2c22e8459f05022fff/54969-h/images/i_210.jpg",
+        "sha256": "ecc2d0f862c3ec61af618d1b0dfed607093f75705a3aba105f767e730d08a0a0"
+      },
+      "field": {
+        "title": "Three divisions of a vibrating bar",
+        "scan": "i_183.jpg",
+        "source": "https://raw.githubusercontent.com/GITenberg/Sound_54969/094a18734ce33182e20f2d2c22e8459f05022fff/54969-h/images/i_183.jpg",
+        "sha256": "e7ff699acd97a2998850ec41583f802415c817fe68e6911624835806da8ee852"
+      },
+      "accent": "sage"
+    },
+    "reference": {
+      "instrument": {
+        "title": "Graduated series of pipes",
+        "scan": "i_223.jpg",
+        "source": "https://raw.githubusercontent.com/GITenberg/Sound_54969/094a18734ce33182e20f2d2c22e8459f05022fff/54969-h/images/i_223.jpg",
+        "sha256": "4975de04617ebccac4e00131033a11baf63c9d37e8382f1071a3bf99318fdb7b"
+      },
+      "field": {
+        "title": "Catalogue of vibrational modes in a square plate",
+        "scan": "i_182.jpg",
+        "source": "https://raw.githubusercontent.com/GITenberg/Sound_54969/094a18734ce33182e20f2d2c22e8459f05022fff/54969-h/images/i_182.jpg",
+        "sha256": "d683382a2e517aee03d109c26eabe3453b6836667a343a2fa63e31c7dcf746b2"
+      },
+      "accent": "plum"
+    },
+    "home": {
+      "instrument": "Approved Four Registers diptych, existing windchest assets",
+      "field": {
+        "title": "Fog-siren, frontispiece",
+        "scan": "i_010_fp.jpg",
+        "source": "https://raw.githubusercontent.com/GITenberg/Sound_54969/094a18734ce33182e20f2d2c22e8459f05022fff/54969-h/images/i_010_fp.jpg",
+        "sha256": "3c64a189e645b59a71d5d67f0d69c00e61d4ac01a19f8cd84cd078f781087406"
+      }
+    }
+  }
+}

@@ -4,13 +4,169 @@
       "bytes": 83,
       "sha256": "6afe4d32493a69d2e19d9813fd2975f66f7a6b7dd9332e8d9b421cd737288b13"
     },
+    "_redirects": {
+      "bytes": 96,
+      "sha256": "669af4b65b186a3af558c151748bb3af40368e52583060bdb351155034bd3901"
+    },
     "bong-cult-logo.svg": {
       "bytes": 130438,
       "sha256": "1f41ff7770b55d1a465a3ece6d23b970bf0e6b049e41559f5f9ed4a87b9a2224"
     },
     "bong-cult-shell.css": {
-      "bytes": 13238,
-      "sha256": "486eabc3204db05494e5b93c19d6caeaf6ce41f3733ad6a873e6ce285a0c588e"
+      "bytes": 15874,
+      "sha256": "f92f3a9e009c98a04cceffe7ab91b834ac543b07c5caa24d1358ef827a19ba8e"
+    },
+    "bongcult-frame/editorial/OFL-barlow.txt": {
+      "bytes": 6235,
+      "sha256": "56027070a748db90a33c074bf7b9b7f0df66dd38a8a0d3e3a951f79035f9c4a0"
+    },
+    "bongcult-frame/editorial/beats-field.webp": {
+      "bytes": 23144,
+      "sha256": "369a9a5042a87aa32fce6cae7ce18fa0f2a7f427630337b52f2cbe29435301d1"
+    },
+    "bongcult-frame/editorial/beats-frame.webp": {
+      "bytes": 2922,
+      "sha256": "e299530af757abad243d44234d71a8b6caa769e943104e2eb49bbcdc880a79b2"
+    },
+    "bongcult-frame/editorial/beats-instrument.webp": {
+      "bytes": 76194,
+      "sha256": "7896c22585d9afd944db2e055093b8ce848d3a58cbf79e43f0e98f1829e283e7"
+    },
+    "bongcult-frame/editorial/directory-small.png": {
+      "bytes": 1469,
+      "sha256": "ab6c0e78b35d2b54f7472a9a21b318db0cf57999f095e1a08348d827fec8db78"
+    },
+    "bongcult-frame/editorial/display.woff2": {
+      "bytes": 23244,
+      "sha256": "fb958c8c20a05552ac8a85d925d96028d52565792650e941a5fe96b6997aa5cb"
+    },
+    "bongcult-frame/editorial/guestbook-small.png": {
+      "bytes": 1893,
+      "sha256": "d94f7a487277abae4ccd317ea4be83e8a11ac4b51ce42e86caaa24ab6a6f00f1"
+    },
+    "bongcult-frame/editorial/harbour-field.webp": {
+      "bytes": 63510,
+      "sha256": "96aa57e331d7476fa53ef149981e190d97830635e93135a0ba70e08d9c04062b"
+    },
+    "bongcult-frame/editorial/journal-small.png": {
+      "bytes": 2351,
+      "sha256": "84206306c0eabcb85c386069b03b5f37facb1733c5a0d2d966809d0add95270d"
+    },
+    "bongcult-frame/editorial/mast.css": {
+      "bytes": 2523,
+      "sha256": "cd6552e352fdf1690243e18cdbb7fed8affbdbc51f78a5416a055ceb88fbf1ca"
+    },
+    "bongcult-frame/editorial/mixer-field.webp": {
+      "bytes": 6584,
+      "sha256": "d17e6fd497dc720a1043f55f1263e36dab772c2201767d524e45caa08707783d"
+    },
+    "bongcult-frame/editorial/mixer-frame.webp": {
+      "bytes": 1986,
+      "sha256": "0474c4f6fcfa44b587475bb6fc3681344d8bf46f2c5a93212f449060a3268d9e"
+    },
+    "bongcult-frame/editorial/mixer-instrument.webp": {
+      "bytes": 35822,
+      "sha256": "21e192f72d3dbf807fcb1878e7ae40c79906437c165c12e5e52dfbdacb051bcb"
+    },
+    "bongcult-frame/editorial/modulation-field.webp": {
+      "bytes": 6946,
+      "sha256": "6de27e24f1515f3869c5297312c757b9c93ec8f803f3964f5d33ba995a561700"
+    },
+    "bongcult-frame/editorial/modulation-frame.webp": {
+      "bytes": 2542,
+      "sha256": "cb4ba48aa78935ba1e401cb3b3bfb0244555f58e92f1bda8f17c49ddbe014cc2"
+    },
+    "bongcult-frame/editorial/modulation-instrument.webp": {
+      "bytes": 35154,
+      "sha256": "795af1be632954dfba4852fa21be200f29c1b3da74fdba2ae52e277442b03c2b"
+    },
+    "bongcult-frame/editorial/performance-field.webp": {
+      "bytes": 6288,
+      "sha256": "38d1fdb3fad3ac3e4adf1169b3867a1ee9203c8bb177508e16516f3383d506ec"
+    },
+    "bongcult-frame/editorial/performance-frame.webp": {
+      "bytes": 2602,
+      "sha256": "1e10d7c3eb1b4cc1a38a31b39b753fd04697f543a0bbce15bedef0005d8c12ad"
+    },
+    "bongcult-frame/editorial/performance-instrument.webp": {
+      "bytes": 20362,
+      "sha256": "e9594677034c6a9039457adcfad3f3636beebd494ca8928ed28f9c67d1d890d9"
+    },
+    "bongcult-frame/editorial/quick-field.webp": {
+      "bytes": 14836,
+      "sha256": "535fa854c40b388377a4aa4133c2fed46f0fc246fcfbd01fae3b334a15ec8a73"
+    },
+    "bongcult-frame/editorial/quick-frame.webp": {
+      "bytes": 2734,
+      "sha256": "379b6098a382b4558c46aed5db97398f31ec2776ae1ed3caac503ae463b53033"
+    },
+    "bongcult-frame/editorial/quick-instrument.webp": {
+      "bytes": 20540,
+      "sha256": "90538032ff4480f3090397bf0c9fb42dbad31f40032a85ab3fd45d422a9a5c2e"
+    },
+    "bongcult-frame/editorial/reader.css": {
+      "bytes": 10821,
+      "sha256": "7ce7e371e3b6033d925c810a8b03a38d9015334354068a49a37fdadd99dffbb0"
+    },
+    "bongcult-frame/editorial/recording-field.webp": {
+      "bytes": 32646,
+      "sha256": "38071e7629f114859255953115ce7f115426372f5005cb02f29054301cf6ac60"
+    },
+    "bongcult-frame/editorial/recording-frame.webp": {
+      "bytes": 2868,
+      "sha256": "4ff643e1a9dfb27911cd6d03418f9b94659016f0c9b194b9c6939cb8ba0ac6bf"
+    },
+    "bongcult-frame/editorial/recording-instrument.webp": {
+      "bytes": 12104,
+      "sha256": "a4fbcaece6dcfd09dbe9749440f46a03883d67afcccfb89b5966f8d6300719d2"
+    },
+    "bongcult-frame/editorial/reference-field.webp": {
+      "bytes": 146620,
+      "sha256": "893a4e5eb6a1c000815c29a19d5dd25a8e59f222f365452f376a8fd820dc2387"
+    },
+    "bongcult-frame/editorial/reference-frame.webp": {
+      "bytes": 3072,
+      "sha256": "8e26179edf93a64121e238c8a0026c0001a3e49f6198a1b2bc5846a75cda7919"
+    },
+    "bongcult-frame/editorial/reference-instrument.webp": {
+      "bytes": 12804,
+      "sha256": "dd3a80aabe8e938c97479414de82bd06400754e2ebdaef268daeb5f4b66f049b"
+    },
+    "bongcult-frame/editorial/setup-field.webp": {
+      "bytes": 4782,
+      "sha256": "161120646ee7c87bdf1a3b03394ba43424d8959ff20965eca807375c1db8560b"
+    },
+    "bongcult-frame/editorial/setup-frame.webp": {
+      "bytes": 2238,
+      "sha256": "691cffe5fc479c4b361648e94259955a79e84dc90030e72fda74806ba57546c7"
+    },
+    "bongcult-frame/editorial/setup-instrument.webp": {
+      "bytes": 27726,
+      "sha256": "c471020e2cc52fc4571c75698b8f0241b61e7261b68aa451296e39e78dd62367"
+    },
+    "bongcult-frame/editorial/sounds-field.webp": {
+      "bytes": 86630,
+      "sha256": "c90c88e4c0344dd5e858bfcc574fd6f8c9da6f8d43d9cc9a07bede5a8f75e008"
+    },
+    "bongcult-frame/editorial/sounds-frame.webp": {
+      "bytes": 2496,
+      "sha256": "ae04572d86cf3da59724527eb1a0481cb15476fbded6b747be310531d02f5f9f"
+    },
+    "bongcult-frame/editorial/sounds-instrument.webp": {
+      "bytes": 33614,
+      "sha256": "833368df86c1677e9b4613ccacb513d5b8f4497a7682876569f4850c65c633c6"
+    },
+    "bongcult-frame/editorial/technical-field.webp": {
+      "bytes": 60568,
+      "sha256": "d1c601d09e0150ab8ab33767fa5387091f46afa86e64a810506e4c6f041754ba"
+    },
+    "bongcult-frame/editorial/technical-frame.webp": {
+      "bytes": 2816,
+      "sha256": "1c83d102dfa87f53d01d6d0c351881d09dfbc316f81ad5942b74c3dc2d142780"
+    },
+    "bongcult-frame/editorial/technical-instrument.webp": {
+      "bytes": 50452,
+      "sha256": "2d4edb87b5f9620a870f4164debfe987a01fef7738e4fdf422a014cc2f72018d"
     },
     "bongcult-frame/frame.css": {
       "bytes": 1455,
@@ -24,9 +180,81 @@
       "bytes": 1358,
       "sha256": "abef9fa0a59dbce27415b79f1c679aea618ca6126bf35d2a3896ac916beccc41"
     },
+    "bongcult-frame/windchest/four-registers-540.webp": {
+      "bytes": 122768,
+      "sha256": "53f45394db24c7b200c7e2aad11ba32c23ed85faaf7daa9e37f464727d96208c"
+    },
+    "bongcult-frame/windchest/four-registers.webp": {
+      "bytes": 414206,
+      "sha256": "b198187092ee5b7da0a952b27e7879639fc5d45db2c56b26a17b4b2ac545a2e0"
+    },
+    "bongcult-frame/windchest/keys-small.png": {
+      "bytes": 2501,
+      "sha256": "f3c80ae3af19d3875247668706fe8e0bc111cfed6f6939d330a9f99736fc15f0"
+    },
+    "bongcult-frame/windchest/keys.png": {
+      "bytes": 48845,
+      "sha256": "f0ac2c4acc3df5dd9be24834b40c77aa2d29f206b7deb367d5bb7709d89ae15a"
+    },
+    "bongcult-frame/windchest/manual-small.png": {
+      "bytes": 1892,
+      "sha256": "df43101623d9f8c5f8795900adc3ca68520719b7683e862b25122f7e61cd958c"
+    },
+    "bongcult-frame/windchest/manual.png": {
+      "bytes": 25159,
+      "sha256": "7fdd61697290cc9ccba1947789975668623829915461ff4c90be142e128e52e8"
+    },
+    "bongcult-frame/windchest/tracks-small.png": {
+      "bytes": 2083,
+      "sha256": "314a171169c15076c60b12a53b6b853f00d2b7198512e7e52b43da4a95138971"
+    },
+    "bongcult-frame/windchest/tracks.png": {
+      "bytes": 26339,
+      "sha256": "27629b66327bbb9e2491253bbd84825aa1e206320d24766aae0fb83df036b6f7"
+    },
+    "bongcult-frame/windchest/windchest-frame.png": {
+      "bytes": 83072,
+      "sha256": "f4ad2d91c4310dcc54852dc265311c8758c79003b543710fb891c3e83d8395bd"
+    },
+    "bongdrums/bongdrums.css": {
+      "bytes": 6021,
+      "sha256": "c58a5a195f52ae33f1fd83305927f5e59d2bfd18cab59007731a0439b6d14265"
+    },
+    "bongdrums/field.webp": {
+      "bytes": 23418,
+      "sha256": "0300e8193b6967afd4bb2a0c6e3107210d8080c35d33bf6bd1e16925b9513743"
+    },
+    "bongdrums/index.html": {
+      "bytes": 9493,
+      "sha256": "b4c69607d4addf0ce85e8fcfa612bb4cacabbbc3622f37d6f7f29c5fce9fb31e"
+    },
+    "bongdrums/instrument.webp": {
+      "bytes": 58022,
+      "sha256": "64e4972d31536bb62b1488b557d1520d6870a209fb1b2feaae2bc71f2b6750f7"
+    },
+    "bongdrums/print-sources.json": {
+      "bytes": 1425,
+      "sha256": "e7966284349baaf41ca38dbcfb2ea4441d80ed03271f4bc7ca24111c6d24864c"
+    },
+    "bongdrums/trim.webp": {
+      "bytes": 842,
+      "sha256": "2cab525420316deedd5737517e949574cb3c4d2fa1e4d317e7d5bee60d27d628"
+    },
+    "bongsynth/index.html": {
+      "bytes": 8956,
+      "sha256": "a8dfb39cefc687547f9f3f07aecab4d8addcc3eb2714760b4915c268aebb8657"
+    },
+    "bongsynth/instrument.webp": {
+      "bytes": 53512,
+      "sha256": "76d20ade6a27eb21eee900f000582b2b465fa109b7461c41a89cdc5402136dc7"
+    },
     "chapter-redirect.js": {
       "bytes": 460,
       "sha256": "54224b06a8ffe51621547e0b1a8081811fcf06bff9614e829c5d1f1a86a3a969"
+    },
+    "drumengine/index.html": {
+      "bytes": 496,
+      "sha256": "a8cb22913727e46f619e853d9d60c74fc535c7505181db6d706cf55dd1b1a70b"
     },
     "dungeon-bbs-tokens.css": {
       "bytes": 1052,
@@ -45,8 +273,8 @@
       "sha256": "9bfc501df0336e45a25ee43e2f1f54b9126c95197a1c253346cf3a8fce55082e"
     },
     "emu/index.html": {
-      "bytes": 45764,
-      "sha256": "1597c06d661284902b4f03dfbc6fdebbffc73411f498159629f4d3f484d22659"
+      "bytes": 46290,
+      "sha256": "4c8301e0841fe08efdd9d903f968e8e8cf288ba3dc70297a4b5925451364872c"
     },
     "emu/parts/midi.js": {
       "bytes": 4429,
@@ -89,48 +317,48 @@
       "sha256": "e205d8b375cf94cef107f04849f7d326db70aa8ea9f0882b0ff569e7084dddbd"
     },
     "guide/beats/index.html": {
-      "bytes": 30906,
-      "sha256": "5444da6f02a2600d1a550f21d9f922a83675ee050f1de40dc0436f81afe9b956"
+      "bytes": 31762,
+      "sha256": "34017908da8148dcb81eb7cd639596014085e43577b49541651db902d4b823ba"
     },
     "guide/index.html": {
-      "bytes": 27225,
-      "sha256": "41c62114493d01306a4129d36deed583990ac62f67fa21086685e37a8a3dfeb1"
+      "bytes": 28146,
+      "sha256": "dbf29e9e206d9713d1abd4a509b33815d797f386cf89379a191dd07e1a4e85ec"
     },
     "guide/mixer/index.html": {
-      "bytes": 22495,
-      "sha256": "9abc67386b20cebcbae7dc572d6176f57610e1662f378a3f6fda1064a545c1d1"
+      "bytes": 23362,
+      "sha256": "54d11ee09d8012ec3d188148b79c909540afe3f77c37743563fef785f9bf0556"
     },
     "guide/modulation/index.html": {
-      "bytes": 38441,
-      "sha256": "5d0a12469aa85102dc8001cbe238d798a6e0364d90fc7b649c60a05796075344"
+      "bytes": 39344,
+      "sha256": "e34407b572bdfdec76bc822b156650600f27ed55eb633bf9bba614f12ff6b59a"
     },
     "guide/performance/index.html": {
-      "bytes": 22036,
-      "sha256": "912f94e4003ec95e2c666170de02fe4828a597eba3ba9d697314a437262a49dd"
+      "bytes": 22929,
+      "sha256": "5a325ca810655f22d9e8184a7be21d9117d53e57993ccfffba300b67957373e0"
     },
     "guide/recording/index.html": {
-      "bytes": 25679,
-      "sha256": "ca1b7fd69b20176cb63e4f7b58ad3616ac547f52bfac50dd91a2da996b301ee2"
+      "bytes": 26565,
+      "sha256": "4c373598ac930ea341a958d7898f334a3aa3c4263e1d169118a058ad86b58e1d"
     },
     "guide/reference/index.html": {
-      "bytes": 55854,
-      "sha256": "82b18fa3442b468c92ceeaf150677cea48e318b1267490b38de7184239fc5eb3"
+      "bytes": 56718,
+      "sha256": "19f711007559c298dde70b578047abf6e90ef1f97e44393677b8cfed5aef70eb"
     },
     "guide/setup/index.html": {
-      "bytes": 32060,
-      "sha256": "26f39ad54ff0220e69db8919944b5f19bca3cc911b2feffb69631d12732ec984"
+      "bytes": 32934,
+      "sha256": "c8fb223a2eb7d1eda173803252f6957a8562e679a15c5fcae4414130cfb08b96"
     },
     "guide/sounds/index.html": {
-      "bytes": 27281,
-      "sha256": "f711c2bc5d1c2aa4676b403aff092bfa59d855a6c65c585b601d89a375d8023a"
+      "bytes": 28142,
+      "sha256": "811a12ff7cd381f89902dc39178b90a62bf3e6b5e0542ada10d12f4cba97494f"
     },
     "index.html": {
-      "bytes": 13923,
-      "sha256": "50f880e93536b262471748f547df05db76db829b1b191315a0d3661cb4e6269a"
+      "bytes": 15017,
+      "sha256": "856a01e2677d4186a31439f25cc62e3f370fe7fa57cfc2c1274559e7ebf2dd84"
     },
     "technical/index.html": {
-      "bytes": 74424,
-      "sha256": "f664162c10ec01c9508c72888ec524bea0e9b8037766a6bb35e7d9c4c57fdd59"
+      "bytes": 75137,
+      "sha256": "8b1e1138b82b7669d6830fcdad0c8b21040f4e0975198fddb86729541cdc25ba"
     }
   },
   "project": "GhettoMachine",

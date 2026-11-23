@@ -6,6 +6,36 @@ Working name only (it started as 8 tracks); rename it any time. Plan drafted 19 
 4 tracks the same day. **Version 0.2: phases 1 to 7 are built** and pass their simulator tests; none has run on the FM-1
 yet. The user's guide is [MANUAL.md](MANUAL.md).
 
+## Unified engine objective
+
+Bring one BongDrums track and three BongSynth tracks into a single FM‑1 render
+pipeline: a shared mixer, one BongVerb and one BongDelay reached through
+per-track sends. Sum the dry mix and both returns before BongMaster at the
+stereo output. BongMaster is being extracted as a separate stage so it can be
+tuned and measured independently.
+
+- Budget drums, synth voices, sends and returns, mastering, and callback overhead
+  together. Reuse calculations only where equivalence is tested. Keep attacks,
+  drum and FX tails, polyphony and timing intact rather than globally capping
+  the instruments to make a benchmark pass.
+- Accept against a reproducible four-track song on the FM‑1: dense drum hits,
+  all three instrument tracks active, and both sends exercised. At 44.1 kHz and
+  256 frames, every block has **5.805 ms**. Instrument every block with a
+  bounded timing record; measure end-to-end callback time, stage costs, the
+  retained worst block, missed DMA deadlines, and guard or voice cuts as
+  separate counters. Test guard-off and guard-on runs separately. A guard
+  trip is not a missed deadline, and a low average does not prove that
+  transients or tails fit.
+- Exercise the delay-memory handoff to sampler recording, STUTTER and TAPE
+  STOP, and its return to normal sends. Clear borrowed memory outside the audio
+  lock; verify THROW feedback and WASH decay mappings, pool high-water and
+  worst callback across the transitions.
+- Audition and prototype in HTML5, but only measurements and listening on the
+  FM‑1 count toward the hardware release gate. **GhettoComputer** is a proposed
+  HTML5 sibling with up to eight engine tracks, one shared BongVerb and one
+  shared BongDelay via sends. It does not change the FM‑1's four-track scope
+  or substitute for hardware evidence.
+
 ## The instrument
 
 - **T1: the drum track.** A 909 or 808 kit, with every pad editable on the FM-1 and a MUTE page.
@@ -50,7 +80,7 @@ keep their headers. No Bluetooth.
 | **RAM** | About 464 KB, no external RAM. Phase 5 uses 64 KB of the 96 KB for code data and 282 KB of the app's 344 KB pool: the project (31 KB), 8 levels of undo and redo (30 KB), the reverb (17 KB) and one 132 KB buffer that is the recording's while sampling and the delay's line (1.5 s) otherwise. | 62 KB are free. |
 | **Flash for your data** | 276 KiB of the data area is the app's (0x97000–0xDBFFF; the panel calibration sits above it), plus a 92 KiB window with a rule of its own. Samples can be played **straight from flash** (fm1-base's `plat_data` reads it in place), so they need no RAM. | **The project file takes 64 KiB** (two copies of 32 KiB). **Samples get the other 212 KiB**, plus the 92 KiB window if the bank keeps to its rule. |
 
-**Estimated CPU, as shares of one core.** These are estimates; the voice is measured once it's built.
+**Historical CPU estimates, as shares of one core.** These are not measured acceptance results; use the FM‑1 test above for the combined engine.
 
 | Part | Share |
 | --- | --- |

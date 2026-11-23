@@ -424,3 +424,86 @@ body.gm-bong-cult {
   .gm-bong-cult .hero h1 .logo { font-size: clamp(1.65rem, 8.3vw, 2.25rem); }
   .bc-badge { padding-inline: .3rem; font-size: .63rem; }
 }
+
+/* Carved organ mouldings and register strips from Kircher, with Ribot’s drawn hand. */
+.gm-bong-cult .gm-home .screen,
+.gm-guide > h1 {
+  position: relative;
+  border: 0;
+  padding: 2.1rem clamp(1.5rem, 4vw, 3.25rem);
+}
+.gm-home .screen::after,
+.gm-guide > h1::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: 46px solid transparent;
+  border-image: url("/bongcult-frame/windchest/windchest-frame.png") 96 round;
+}
+.gm-home .screen .top { flex-wrap: wrap; }
+.gm-home .gm-actions .gm-button {
+  display: inline-flex;
+  gap: .65rem;
+  align-items: center;
+}
+.gm-home .gm-button[href="/guide/"] {
+  --gm-cut: image-set(url("/bongcult-frame/windchest/manual-small.png") 1x, url("/bongcult-frame/windchest/manual.png") 2x);
+}
+.gm-home .gm-button[href="/emu/"] {
+  --gm-cut: image-set(url("/bongcult-frame/windchest/keys-small.png") 1x, url("/bongcult-frame/windchest/keys.png") 2x);
+}
+.gm-technical-topics a[href="/technical/#sequencer"],
+.gm-book-index a[href="/guide/beats/"] {
+  --gm-cut: image-set(url("/bongcult-frame/windchest/tracks-small.png") 1x, url("/bongcult-frame/windchest/tracks.png") 2x);
+}
+.gm-home .gm-button::before,
+.gm-technical-topics a[href="/technical/#sequencer"]::before,
+.gm-book-index a[href="/guide/beats/"]::before {
+  content: "";
+  display: inline-block;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  background: var(--gm-cut) center / contain no-repeat;
+}
+.gm-home .gm-primary::before { background-color: #171418; }
+.gm-technical-topics a[href="/technical/#sequencer"]::before,
+.gm-book-index a[href="/guide/beats/"]::before {
+  vertical-align: middle;
+  margin-inline-end: .4rem;
+}
+@media (max-width: 540px) {
+  .gm-bong-cult .gm-home .screen, .gm-guide > h1 {
+    padding: 1.7rem 1.1rem;
+  }
+  .gm-home .screen::after, .gm-guide > h1::after { border-width: 30px; }
+}
+@media (forced-colors: active) {
+  .gm-home .screen::after, .gm-guide > h1::after {
+    border: 1px solid CanvasText;
+    border-image: none;
+  }
+}
+
+/* Four Registers shares the engraved frame with the landing-page title. */
+.gm-home { container-type: inline-size; }
+.gm-home .gm-hero-copy { display: grid; gap: 10px; min-width: 0; }
+.gm-bong-cult .gm-home .screen { gap: 1.25rem; }
+.gm-four-registers {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 34rem;
+  justify-self: center;
+}
+@container (min-width: 44rem) {
+  .gm-bong-cult .gm-home .screen {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    align-items: center;
+    column-gap: clamp(1.25rem, 3cqw, 2.25rem);
+  }
+  .gm-home .gm-hero-copy h1 .logo {
+    font-size: clamp(1.85rem, 5.2cqw, 3.6rem);
+  }
+}
