@@ -52,10 +52,11 @@ expect genpage 0
 expect gen2_0 0
 expect nsteps2 0
 expect undo 0
-# ---- OCT+: a line (the defaults: seed 1, the next is 2; C2 MINOR, 4 notes, 75 % of the steps, 20 % WHOLE)
+# ---- OCT+: a line (the defaults: C2 MINOR, 4 notes, 75 % of the steps, 20 % WHOLE; 0.5: a random seed out of all
+# 65535, never the one it starts from, seed 1; the moment of the press decides it, the same in every run of this script)
 tap OCT+
 wait 30
-expect gen2_0 2
+expect gen2_0 >1
 expect gen2_1 0
 expect gen2_2 36
 expect gen2_3 0
@@ -201,24 +202,34 @@ expect gen2_3 7
 spin K2 -7
 wait 30
 expect gen2_3 0
-# ---- LINE: the SEED knob back to seed 2's line; a new seed, a new line; back again, the same
+# ---- LINE: the SEED knob steps from the dice's seed in order: its neighbour another line, back again the same;
+# OCT+ again and again: a new line each press, and undo (EDIT + OCT-) the one before
 turn SELECT 1
 wait 30
 expect genpage 2
-spin K1 -1
-wait 30
-expect gen2_0 1
+expect linemark2 0
 spin K1 1
 wait 30
-expect gen2_0 2
-expect linemark2 0
-tap OCT+
-wait 30
-expect gen2_0 3
 expect linesame2 0
 spin K1 -1
 wait 30
-expect gen2_0 2
+expect linesame2 1
+tap OCT+
+wait 30
+expect gen2_0 >0
+expect linesame2 0
+expect linemark2 0
+tap OCT+
+wait 30
+expect linesame2 0
+expect linemark2 0
+tap OCT+
+wait 30
+expect linesame2 0
+press EDIT
+tap OCT-
+release EDIT
+wait 30
 expect linesame2 1
 # ---- OCT-: MUTATE changes a few steps; undo (EDIT + OCT-) takes the steps and the generator back; redo again
 tap OCT-
@@ -402,6 +413,13 @@ wait 300
 expect playing 1
 tap PLAY
 wait 100
+# ---- the SEED knob reaches every seed OCT+ draws, 65535 at the top (0.4 stopped at 999); the save keeps it
+turn SELECT 2
+wait 30
+expect genpage 2
+spin K1 70000
+wait 30
+expect gen2_0 65535
 # ---- saved: format 3; after a power cycle the generator and its line (marks and all) are there
 tap SAVE
 wait 400
@@ -410,6 +428,7 @@ expect projfmt 8
 expect linemark2 0
 reboot
 wait 600
+expect gen2_0 65535
 expect gen2_6 10
 expect gen2_2 43
 expect linesame2 1

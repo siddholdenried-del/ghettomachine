@@ -165,9 +165,9 @@
 <tbody>
 <tr><th scope="row">ACID</th><td>DENSITY 0–100% (75): how many steps play. Step 1 always plays unless DENSITY is 0</td><td>WHOLE 0–100% (20): notes held to the next</td><td>SLIDE 0–100% (25)</td><td>ACCENT 0–100% (30)</td></tr>
 <tr><th scope="row">NOTES</th><td>ROOT C1–B4 (C2)</td><td>SCALE: MINOR, PHRYGIAN, DORIAN, PENTA, BLUES, HARM MIN, MAJOR, MIXOLYD</td><td>NOTES: how many of the scale's notes, root and fifth first (4)</td><td>OCTAVE 0–100% (20): octave jumps</td></tr>
-<tr><th scope="row">LINE</th><td>SEED 1–999</td><td>LENGTH, as on STEPS (makes a new line for the length)</td><td>RATE, as on STEPS</td><td>SWING, as on STEPS</td></tr>
+<tr><th scope="row">LINE</th><td>SEED 1–65535: steps through the lines in order</td><td>LENGTH, as on STEPS (makes a new line for the length)</td><td>RATE, as on STEPS</td><td>SWING, as on STEPS</td></tr>
 </tbody></table>
-<p>OCT+ is NEW (the next seed). OCT− is MUTATE (re-roll about an eighth of the steps; the seed shows as, say, SEED 42 M3). The ACID and NOTES knobs and SEED rewrite the part up to its LENGTH at once. On LINE, LENGTH writes a new line for the new length only once the part has one; RATE and SWING don't rewrite it. Numbers in brackets are where a part starts the first time; after that, a new part starts from the track's last settings.</p>
+<p>OCT+ is NEW: a random seed out of all 65,535, never the one playing, decided by the moment you press. OCT− is MUTATE (re-roll about an eighth of the steps; the seed shows as, say, SEED 42 M3). The ACID and NOTES knobs and SEED rewrite the part up to its LENGTH at once. On LINE, LENGTH writes a new line for the new length only once the part has one; RATE and SWING don't rewrite it. Numbers in brackets are where a part starts the first time; after that, a new part starts from the track's last settings.</p>
 
 <h2 id="mixer-fx">Mixer and FX pages</h2>
 <table>

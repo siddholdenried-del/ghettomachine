@@ -175,13 +175,15 @@ line: one note a step, each one **HALF** (a 303's short note), **WHOLE** (held t
 rests: a 303's tie) or a **SLIDE** into the next, some of them **accented**. Every change makes the line again at once,
 also while it plays. It works with **any sound**: MONO, POLY or SAMPLER, any preset.
 
-- **OCT+ NEW:** a new line. **OCT− MUTATE:** a few steps change (about one in eight); the rest stay.
+- **OCT+ NEW:** a new line from a random seed, any of 65,535, decided by the moment you press (never the seed
+  playing). **OCT− MUTATE:** a few steps change (about one in eight); the rest stay. **EDIT + OCT−** takes back a roll.
 - **The ACID page:** **K1 DENSITY** (how many steps play), **K2 WHOLE** (how many notes are held whole instead of
   half), **K3 SLIDE** (how many slide into the next), **K4 ACCENT**.
 - **SELECT** turns to the **NOTES** page: **K1 ROOT** (C1 to B4; C2 to start), **K2 SCALE** (MINOR, PHRYGIAN, DORIAN,
   PENTA, BLUES, HARM MIN, MAJOR, MIXOLYD), **K3 NOTES** (how many of the scale's notes it uses, the root and the fifth
   first: 1 is a one-note line), **K4 OCTAVE** (how many notes jump an octave, mostly up).
-- **SELECT** again: the **LINE** page: **K1 SEED** (the line's number: turn back to find an earlier one), **K2 LENGTH**
+- **SELECT** again: the **LINE** page: **K1 SEED** (the line's number, 1 to 65535: turn it to step through the lines in order from where
+  the dice landed, and back to find an earlier one), **K2 LENGTH**
   (the part's steps; the line is made again to fit), **K3 RATE**, **K4 SWING** (as on STEPS).
 - **The knobs don't reshuffle.** Each step keeps its own dice; the knobs only set how many of them come up. Turning
   DENSITY up adds notes and keeps the ones there, and a knob or SEED turned back gives back exactly the line it gave.

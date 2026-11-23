@@ -173,7 +173,8 @@ typedef struct {                          /* a track's LFO */
 
 enum { GS_MINOR, GS_PHRYG, GS_DORIAN, GS_PENTA, GS_BLUES, GS_HARM, GS_MAJOR, GS_MIXO, NGSCALES };   /* its scales */
 typedef struct {                          /* a part's 303 generator (the ACID pages, 0.4) */
-    uint16_t seed;                        /* the line, 1..999; 0: never generated (it starts from the track's last) */
+    uint16_t seed;                        /* the line, 1..65535 (0.4: 1..999); 0: never generated (it starts from the
+                                           * track's last) */
     uint8_t mut;                          /* MUTATEs since the seed */
     uint8_t root;                         /* the root, MIDI 24..71 */
     uint8_t scale;                        /* GS_* */
@@ -1003,10 +1004,11 @@ static void project_check(void)           /* a loaded project's values kept in r
                 if (p->lk[s].param >= SP_NUM || p->lk[s].step >= NSTEPS)
                     p->lk[s].param = 0, p->lk[s].step = 0, p->lk[s].val = (int8_t)syn_param(0)->def;
         }
-    for (i = 0; i < NPAT; i++)            /* the generators: one never used (seed 0) all zero */
+    for (i = 0; i < NPAT; i++)            /* the generators: one never used (seed 0) all zero (every other seed, 1..65535,
+                                           * is OCT+'s since 0.5; 0.4 drew 1..999) */
         for (t = 0; t < NINST; t++) {
             gen_t *g = &proj.gen[i][t];
-            if (!g->seed || g->seed > 999) {
+            if (!g->seed) {
                 uint32_t k;
                 for (k = 0; k < sizeof *g; k++)
                     ((uint8_t *)g)[k] = 0;
@@ -6480,14 +6482,30 @@ static void seed_text(const gen_t *g, char *t)   /* "SEED 42", "SEED 42 M3" */
     }
 }
 
-static void gen_new(void)                 /* OCT+: the next seed's line */
+/* OCT+'s dice (0.5): a seed drawn at random from all 65535, never the one playing. The moment of the press, in samples
+ * rendered (render_t: a human's timing lands anywhere in 44100 a second), stirred into a state kept from press to press;
+ * the simulator's scripts run the same each time, so its tests stay repeatable. The line is still its seed's: shown,
+ * saved, undone, and the SEED knob steps on from it in order */
+static uint32_t gen_rng = 0x2545F491u;
+
+static uint16_t gen_random_seed(uint16_t now)
+{
+    uint32_t s;
+    gen_rng = gen_hash(gen_rng ^ render_t, plat_ms());
+    s = gen_rng % 65535u + 1u;
+    if (s == now)
+        s = s % 65535u + 1u;
+    return (uint16_t)s;
+}
+
+static void gen_new(void)                 /* OCT+: a random seed's line */
 {
     int tr = ui.trk;
     gen_t *g;
     char t[16];
     undo_mark(0);
     g = gen_begin(tr);
-    g->seed = (uint16_t)(g->seed % 999u + 1u);
+    g->seed = gen_random_seed(g->seed);
     g->mut = 0;
     gen_write(tr);
     seed_text(g, t);
@@ -6545,9 +6563,9 @@ static int gen_value(int tr, const gen_t *g, int i, int *lo, int *hi, char *t)  
         *hi = gen_scale_n(g->scale);
         int_text(gen_ndeg(g), t);
         return gen_ndeg(g);
-    case 8:
+    case 8:                               /* SEED: every one of OCT+'s, a step at a time */
         *lo = 1;
-        *hi = 999;
+        *hi = 65535;
         int_text(g->seed, t);
         return g->seed;
     case 9:
@@ -6597,7 +6615,7 @@ static void gen_knob(int k, int32_t e)    /* the ACID pages' knobs: the part mad
     case 6: g->notes = (uint8_t)clamp(gen_ndeg(g) + e, 1, gen_scale_n(g->scale)); break;
     case 7: g->oct = (uint8_t)clamp(g->oct + e, 0, 100); break;
     default:
-        g->seed = (uint16_t)clamp(g->seed + e, 1, 999);
+        g->seed = (uint16_t)clamp(g->seed + e, 1, 65535);
         g->mut = 0;
         break;
     }
