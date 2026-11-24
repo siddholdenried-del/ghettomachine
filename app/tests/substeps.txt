@@ -1,0 +1,66 @@
+# Substeps (0.5): a step held + ALGORITHM: it plays 2, 3 or 4 times in its own length (a lock: the drums' LK_SUB on
+# the pad's step, an instrument part's IL_SUB); 1 takes the lock away. ALGORITHM with no step held: the track, as ever.
+# subfires: the substeps played since last asked
+listen
+wait 200
+expect trk 1
+expect hit0_1 1
+expect nlk 0
+key 0 down
+wait 30
+expect held 1
+turn ALGO 2
+wait 30
+said SUBSTEPS 3
+expect trk 1
+expect nlk 1
+key 0 up
+wait 30
+expect held 0
+expect hit0_1 1
+shot substeps_drums.png
+expect subfires 0
+tap PLAY
+wait 600
+expect subfires 2
+tap PLAY
+wait 200
+# T3: a note on step 1, 4 substeps (no more than 4)
+turn ALGO 2
+wait 30
+expect trk 3
+tap SEQ
+wait 30
+expect page 0
+key 0 down
+wait 30
+key 0 up
+wait 30
+expect nsteps3 1
+key 0 down
+wait 30
+turn ALGO 5
+wait 30
+said SUBSTEPS 4
+expect trk 3
+expect inlk3 1
+expect nsteps3 1
+key 0 up
+wait 30
+shot substeps_roll.png
+expect subfires 0
+tap PLAY
+wait 600
+expect subfires 5
+tap PLAY
+wait 200
+# back to 1: the lock gone
+key 0 down
+wait 30
+turn ALGO -5
+wait 30
+said SUBSTEPS 1
+expect inlk3 0
+key 0 up
+wait 30
+expect nsteps3 1

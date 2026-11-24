@@ -127,6 +127,7 @@ you're turning. Purple draws the grids, the empty steps and the boxes. Top to bo
   page, glow dimly while they're empty, and the screen's grid gives them a darker column, so a bar is easy to count.
   - Hold **SEQ** and press steps: accents.
   - Hold a step and turn **SELECT**: its chance (100 % to 5 %).
+  - Hold a step and turn **ALGORITHM**: its substeps. The step plays 2, 3 or 4 times within its own length (a ratchet); 1 takes it away. It uses one of the part's locks. Works on drum hits and on synth steps (not while the track's arpeggiator is on). The grid shows a drum hit cut into as many pieces, a synth step as many yellow dots.
 - **EDIT:** the pad's knobs: tune, tone, decay, its reverb and delay sends, and so on. SELECT for more; EDIT again goes
   back to where you were. The last page is the kit's own knobs (accent, velocity).
 - **The two kits play at the same level:** each 808 sound is as loud as the 909 pad that plays its part (until 21 Nov

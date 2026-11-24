@@ -61,6 +61,8 @@ static const char *trial_pad_name(int kit, int pad)
 #define LK_707_CB 0xD0u                   /* no historic 707 knob used bit 4 or 5 */
 #define LK_707_TB 0xE0u
 #define LK_PROB 0x7Fu                     /* lock_t.param: the step's chance, either kit */
+#define LK_SUB 0x7Eu                      /* lock_t.param: the step's substeps (0.5), 2..4: it plays that many times */
+#define IL_SUB 0x7Fu                      /* ilock_t.param: an instrument step's substeps (not a sound parameter) */
 #define NTRK 4                            /* tracks: the drums, then T2..T4 */
 #define NINST 3                           /* instrument tracks */
 #define TR_DRUM 0
@@ -1041,7 +1043,7 @@ static void project_check(void)           /* a loaded project's values kept in r
             if (p->nlk > NILOCKS)
                 p->nlk = 0;
             for (s = 0; s < p->nlk; s++)
-                if (p->lk[s].param >= SP_NUM || p->lk[s].step >= NSTEPS)
+                if ((p->lk[s].param >= SP_NUM && p->lk[s].param != IL_SUB) || p->lk[s].step >= NSTEPS)
                     p->lk[s].param = 0, p->lk[s].step = 0, p->lk[s].val = (int8_t)syn_param(0)->def;
         }
     for (i = 0; i < NPAT; i++)            /* the generators: one never used (seed 0) all zero (every other seed, 1..65535,
@@ -2159,6 +2161,52 @@ static int rec_target(int st, float fr, int len)
 }
 
 static void pump_key(int kit, float vel); /* (a kick for PUMP: at the block's tail, post_job) */
+
+/* substeps (0.5): a step that plays 2, 3 or 4 times in its own length (a held step + ALGORITHM): a drum's hit again,
+ * an instrument step's notes again (each half a substep long). One slot a pad and a track; the audio interrupt's */
+static struct {
+    float to, len;                        /* samples to the next, between them */
+    uint8_t left, a;                      /* still to play; a pad's accent, an instrument's step */
+} sub[NPADS + NINST];
+static uint32_t sub_on;                   /* a bit per slot with some left */
+
+static void sub_arm(int i, int n, float dur, int a)
+{
+    if (n < 2 || n > 4)
+        return;
+    sub[i].len = dur / (float)n;
+    sub[i].to = sub[i].len;
+    sub[i].left = (uint8_t)(n - 1);
+    sub[i].a = (uint8_t)a;
+    sub_on |= 1u << i;
+}
+
+#ifdef PLAT_HOST
+static int sub_fires;
+#endif
+static void sub_fire(int i)
+{
+#ifdef PLAT_HOST
+    sub_fires++;
+#endif
+    if (i < NPADS) {
+        float v = sub[i].a ? 1.0f : DRUMS_VEL_NORMAL;
+        if ((perf.rmask | proj.tmute) & 1u)
+            return;
+        pad_fire(i, v);
+        if (i == 0)
+            pump_key(drum_model(0), v);
+    } else {
+        int tr = i - NPADS + 1, k;
+        const nstep_t *s = &ipart(tr)->st[sub[i].a & (NSTEPS - 1)];
+        if (((perf.rmask | proj.tmute) >> tr & 1u) || clip[tr] < 0)
+            return;
+        for (k = 0; k < NCHORD && s->note[k]; k++)
+            syn_note_on_f(tr, s->note[k], (float)ns_vel(s) / 127.0f, (int32_t)(sub[i].len * 0.5f),
+                          tset(tr)->type == TY_MONO, (s->vel & NS_ACC) ? SN_ACCENT : 0);
+    }
+}
+
 static void click_stretch(float r);       /* (the click's beat stretched by r: at the block's tail) */
 static void seq_drum(void)                /* audio interrupt: the drum part's next step, and its hits */
 {
@@ -2167,6 +2215,7 @@ static void seq_drum(void)                /* audio interrupt: the drum part's ne
     if (next >= p->len)
         next = 0;
     sq.t[TR_DRUM].step = next;
+    sq.t[TR_DRUM].dur = step_samples(TR_DRUM, next);
     for (pad = 0; pad < NPADS && !(perf.rmask & 1u); pad++) {   /* (ROLL: silent underneath) */
         if (!bit_get(p->hit[pad], next) || (!v3_mode && (p->mute >> pad & 1u)))   /* (DrumEngine: audio, drum_hits_off) */
             continue;
@@ -2180,8 +2229,12 @@ static void seq_drum(void)                /* audio interrupt: the drum part's ne
         pad_fire(pad, bit_get(p->acc, next) ? 1.0f : DRUMS_VEL_NORMAL);
         if (pad == 0)                     /* the bass drum: the master's PUMP ducks to it */
             pump_key(drum_model(0), bit_get(p->acc, next) ? 1.0f : DRUMS_VEL_NORMAL);
+        {
+            int j = lock_find(p, next, pad, LK_SUB);
+            if (j >= 0)
+                sub_arm(pad, p->lk[j].val, sq.t[TR_DRUM].dur, bit_get(p->acc, next));
+        }
     }
-    sq.t[TR_DRUM].dur = step_samples(TR_DRUM, next);
     sq.t[TR_DRUM].to_next += sq.t[TR_DRUM].dur;
 }
 
@@ -2217,6 +2270,11 @@ static void seq_inst(int tr)              /* audio interrupt: an instrument part
         return;
     ilocks_apply(tr, p, ps);
     gate = note_gate_samples(tr, ps, p->len, s->gate);
+    if (!ts->arp_mode && (i = ilock_find(p, ps, IL_SUB)) >= 0) {   /* substeps: this note as short as theirs */
+        sub_arm(NPADS + tr - 1, p->lk[i].val, sq.t[tr].dur, ps);
+        if (sub_on >> (NPADS + tr - 1) & 1u)
+            gate = (int32_t)(sub[NPADS + tr - 1].len * 0.5f);
+    }
     marks = (s->vel & NS_ACC) ? SN_ACCENT : 0;   /* a 303's marks: on any sound (a slide: the chord's first note) */
     for (i = 0; i < NCHORD && s->note[i]; i++) {
         if (ts->arp_mode)                 /* arpeggiated: the notes are the arpeggiator's, for the gate */
@@ -2315,6 +2373,7 @@ static void fill_pos_follow(void)         /* audio interrupt, a block's start: F
 static void seq_reset_tracks(void)
 {
     int t;
+    sub_on = 0;
     for (t = 0; t < NTRK; t++) {
         sq.t[t].step = -1;
         sq.t[t].to_next = 0.0f;
@@ -2434,6 +2493,7 @@ static void seq_stop(void)
     if (sq.playing && (proj.recq >> 2 & 3u) == 1u)   /* MIDI CLOCK sent: Stop */
         plat_midi_send(0x0Fu | 0xFCu << 8, TO_USB);
     sq.playing = 0;
+    sub_on = 0;
     srt.pos = -1;
     for (t = 0; t < NTRK; t++)
         sq.t[t].step = -1;
@@ -3633,6 +3693,23 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
                 }
             }
             m = sq.bar_left;
+            if (sub_on) {                 /* substeps: theirs */
+                int i;
+                for (i = 0; i < NPADS + NINST; i++) {
+                    if (!(sub_on >> i & 1u))
+                        continue;
+                    if (sub[i].to < 0.5f) {
+                        sub_fire(i);
+                        sub[i].to += sub[i].len;
+                        if (--sub[i].left == 0) {
+                            sub_on &= ~(1u << i);
+                            continue;
+                        }
+                    }
+                    if (sub[i].to < m)
+                        m = sub[i].to;
+                }
+            }
             for (t = 0; t < NTRK; t++)
                 if (sq.t[t].to_next < m)
                     m = sq.t[t].to_next;
@@ -3688,6 +3765,11 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         if (sq.playing) {
             sq.bar_left -= (float)chunk;
             perf.roll_to -= (float)chunk;
+            if (sub_on) {
+                int i;
+                for (i = 0; i < NPADS + NINST; i++)
+                    sub[i].to -= (float)chunk;
+            }
             for (t = 0; t < NTRK; t++) {
                 sq.t[t].to_next -= (float)chunk;
                 sq.t[t].frac = sq.t[t].dur > 0.0f ? 1.0f - sq.t[t].to_next / sq.t[t].dur : 0.0f;
@@ -4363,6 +4445,39 @@ static void held_chance(int32_t e)        /* a step held + SELECT: its chance, 1
     int_text(c, t);
     text_cat(t, "%");
     app_say("CHANCE", t);
+}
+
+static void held_sub(int32_t e)           /* a step held + ALGORITHM: its substeps, 1 (no lock) to 4 */
+{
+    int tr = ui.trk, s = ui.held_step, i, n, r = 0;
+    dpart_t *d = dcur();
+    ipart_t *p = tr == TR_DRUM ? 0 : ipart(tr);
+    char t[4];
+    uint32_t f;
+    if (p ? !p->st[s].note[0] : !bit_get(d->hit[ui.pad], s))
+        return;
+    i = p ? ilock_find(p, s, IL_SUB) : lock_find(d, s, ui.pad, LK_SUB);
+    n = clamp((i >= 0 ? (p ? p->lk[i].val : d->lk[i].val) : 1) + e, 1, 4);
+    if (!ui.held_used)
+        undo_mark(0);
+    ui.held_used = 1;
+    f = plat_lock();
+    if (n < 2) {
+        if (i >= 0 && p)
+            p->lk[i] = p->lk[--p->nlk];
+        else if (i >= 0)
+            lock_del(d, i);
+    } else {
+        r = p ? ilock_put(p, s, IL_SUB, n) : lock_put(d, s, ui.pad, LK_SUB, n);
+    }
+    plat_unlock(f);
+    if (r) {
+        app_say("NO LOCK LEFT", "");
+        return;
+    }
+    int_text(n, t);
+    app_say("SUBSTEPS", t);
+    ui.redraw = 1;
 }
 
 static void held_lock(int i, int32_t e)   /* EDIT, a step held + a knob: that knob locked for the step */
@@ -7594,8 +7709,12 @@ static void input(void)
             kit_turn(e);
         }
     }
-    if ((e = plat_enc(EN_ALGO)) != 0)     /* ALGORITHM: the track */
-        track_pick(ui.trk + e);
+    if ((e = plat_enc(EN_ALGO)) != 0) {   /* ALGORITHM: the track; a step held: its substeps */
+        if (ui.held_step >= 0)
+            held_sub(e);
+        else
+            track_pick(ui.trk + e);
+    }
     inst = ui.trk != TR_DRUM;
     if ((e = plat_enc(EN_SELECT)) != 0 && ui.page != PG_PICK) { /* SELECT: the editor's pages (every editor's), a held
                                            * step's chance, the cursor */
@@ -9163,8 +9282,13 @@ static void page_steps(void)              /* the drums' grid: 11 pads and the ac
                 cv_rect(x - 1, y, 13, 11, PLAYHEAD);
             if (bit_get(bits, s)) {       /* (an accented hit: orange) */
                 rrect(x, y + 1, 11, 9, 2, row < NPADS && !muted && bit_get(p->acc, s) ? gradc(GR_HEAT, 40, 47) : on);
-                if (row < NPADS && step_locked(p, s, row))
-                    cv_rect(x + 7, y + 1, 4, 3, C_WHITE2);
+                if (row < NPADS && step_locked(p, s, row)) {
+                    int j = lock_find(p, s, row, LK_SUB), q;
+                    if (j < 0)
+                        cv_rect(x + 7, y + 1, 4, 3, C_WHITE2);
+                    for (q = 1; j >= 0 && q < p->lk[j].val; q++)   /* substeps: the hit cut in as many */
+                        cv_rect(x + q * 11 / p->lk[j].val, y + 1, 1, 9, C_CANVAS);
+                }
                 if (row == ui.pad && s == ui.held_step)
                     cv_rect(x + 3, y + 3, 5, 5, C_WHITE2);
             } else {
@@ -9251,6 +9375,11 @@ static void page_roll(void)               /* an instrument part: its notes, pitc
         if (!ns->note[0]) {
             cv_rect(x + 4, H + 1, 3, 3, (k & 3) ? C_GRID : C_TXT2);
             continue;
+        }
+        {   /* substeps: as many yellow dots under it */
+            int j = ilock_find(p, s, IL_SUB), q;
+            for (q = 0; j >= 0 && q < p->lk[j].val; q++)
+                cv_rect(x + q * 3, H + 1, 2, 3, C_NOW);
         }
         for (i = 0; i < NCHORD && ns->note[i]; i++) {
             int nn = ns->note[i], w = ns->gate * 13 / 8 - 1;
@@ -11402,6 +11531,11 @@ int app_expect(const char *what, int *got)
         *got = trial_lane_gate((unsigned)atoi(what + 8));
     else if (!strncmp(what, "lanepk", 6))     /* lanepkN: drum pad N's lane peak out since last asked, dB (-200 silent) */
         *got = trial_lane_peak((unsigned)atoi(what + 6));
+    else if (!strcmp(what, "subfires"))   /* substeps played since last asked */
+    {
+        *got = sub_fires;
+        sub_fires = 0;
+    }
     else if (!strcmp(what, "specn"))      /* the EQ page's spectrum: its updates (a half each) since last asked */
     {
         *got = spec_n;
