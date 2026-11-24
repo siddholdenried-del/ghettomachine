@@ -563,6 +563,56 @@ void syn_perform(int t, int cut, float rev, float dly, int oct)
     mix[t].db_to = dly < 0.0f ? 0.0f : dly > 1.0f ? 1.0f : dly;
 }
 
+/* (0.5, the screen) Track t's sounding voices, up to max: what 0 the amp envelope, 1 the filter's, 2 MOD ENV (stage:
+ * 1 attack, 2 decay / sustain, 3 release; a its level 0..1), 3 LFO 2 (a its phase 0..1, b its value -1..1) */
+int syn_voice_view(int t, int what, uint8_t *stage, float *a, float *b, int max)
+{
+    int i, n = 0;
+    for (i = 0; i < NVOICE && n < max; i++) {
+        const vx_t *x = &vx[i];
+        if (x->trk != t || !x->astage)
+            continue;
+        stage[n] = what == 0 ? x->astage : what == 1 ? x->fstage : what == 2 ? x->mstage : 1;
+        a[n] = what == 0 ? x->aenv : what == 1 ? x->fenv : what == 2 ? x->menv : x->l2ph;
+        b[n] = what == 3 ? x->l2out : 0.0f;
+        n++;
+    }
+    return n;
+}
+
+/* (0.5, the screen) Matrix slot k's move now on track t's newest voice: its source times its amount, -1..1-ish (0:
+ * no voice, or the slot off) */
+float syn_slot_now(int t, int k)
+{
+    const int8_t *s;
+    const vx_t *x;
+    int i, best = -1, src, amt;
+    float sv;
+    if (t < 1 || t >= SYN_TRACKS || k < 0 || k >= SYN_SLOTS)
+        return 0.0f;
+    for (i = 0; i < NVOICE; i++)
+        if (vx[i].trk == t && vx[i].astage && (best < 0 || (int32_t)(vv[i].age - vv[best].age) > 0))
+            best = i;
+    s = tk[t].v;
+    src = s[SP_XM + 3 * k];
+    amt = s[SP_XM + 3 * k + 2];
+    if (best < 0 || !src || !amt || src >= MS_NUM)
+        return 0.0f;
+    x = &vx[best];
+    switch (src) {
+    case MS_LFO1: sv = tk[t].mlfo; break;
+    case MS_LFO2: sv = x->l2out; break;
+    case MS_MENV: sv = x->menv; break;
+    case MS_FENV: sv = x->fenv; break;
+    case MS_AENV: sv = x->aenv; break;
+    case MS_VEL: sv = x->velr; break;
+    case MS_NOTE: sv = ((float)vv[best].note - 60.0f) * (1.0f / 60.0f); break;
+    case MS_RND: sv = x->rnd; break;
+    default: sv = (float)s[SP_M1 + src - MS_M1] * (1.0f / 127.0f); break;
+    }
+    return sv * (float)amt * (1.0f / 64.0f);
+}
+
 int syn_perform_now(int t, int what)       /* a held move now (the tests): 0 the cutoff offset in steps, 1 2 the boosts x 1000 */
 {
     if (t < 1 || t >= SYN_TRACKS)

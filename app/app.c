@@ -2923,6 +2923,42 @@ static void stems_send(uint32_t n)        /* the block before's stems, into this
         stem_hold[k] = 0;
 }
 
+/* ---- the screen's scope (0.5): one capture at a time of what the page on screen shows: a track's sound (its mono sum,
+ * every dec'th sample: where the stems are put) or the master's (after the master bus; left and right in pairs). The
+ * page asks (scope_take); the audio fills it; full, it waits until the page has drawn it and asks again (scope_again),
+ * so the page never draws one half filled. 256 int16: 512 B, shared with a drum's hit (trial_capture) */
+enum { SC_MASTER = 8, SC_NONE = 9 };
+#define SC_N 256
+static struct {
+    volatile uint8_t src, state;          /* what's asked (a track 0..3, SC_MASTER); 0 idle, 1 filling, 2 full */
+    uint8_t dec, pairs, k;
+    uint16_t n;
+    int16_t buf[SC_N];
+} sc = {SC_NONE, 0, 1, 0, 0, 0, {0}};
+
+static void scope_feed(int src, const float *l, const float *r, uint32_t n, float scale)
+{
+    uint32_t i;
+    if (sc.state != 1 || sc.src != (uint8_t)src)
+        return;
+    for (i = 0; i < n; i++) {
+        float a;
+        if (++sc.k < sc.dec)
+            continue;
+        sc.k = 0;
+        a = (sc.pairs ? l[i] : (l[i] + r[i]) * 0.5f) * scale;
+        sc.buf[sc.n++] = (int16_t)(a >= 1.0f ? 32767 : a <= -1.0f ? -32767 : (int)(a * 32767.0f));
+        if (sc.pairs) {
+            a = r[i] * scale;
+            sc.buf[sc.n++] = (int16_t)(a >= 1.0f ? 32767 : a <= -1.0f ? -32767 : (int)(a * 32767.0f));
+        }
+        if (sc.n >= SC_N) {
+            sc.state = 2;
+            return;
+        }
+    }
+}
+
 /* n frames of track s (l, r: the mix's scale) into its stem, from the frame off into the block being rendered */
 static void stem_put(int s, const float *l, const float *r, uint32_t off, uint32_t n)
 {
@@ -2985,6 +3021,11 @@ static void synth_add(float *l, float *r, float *rv, float *dl, uint32_t n, uint
                 if (a && b)
                     stem_put(t, a + syn_at, b + syn_at, off + i, m);
             }
+        }
+        if (sc.state == 1 && sc.src >= 1 && sc.src < NTRK) {   /* the screen's scope: a track */
+            const float *a = syn_track(sc.src, 0), *b = syn_track(sc.src, 1);
+            if (a && b)
+                scope_feed(sc.src, a + syn_at, b + syn_at, (uint32_t)m, STEM_GAIN);
         }
         syn_at += m;
         i += m;
@@ -3146,6 +3187,7 @@ static void post_job(uint32_t which)      /* a block's tail (the second core's j
         PLAT_FAR(fx_master)(l, r, (int)n, j->gain);   /* compressor, filter, MASTER (gliding), limiter (RAM) */
         j->t_master = plat_ticks24() - t0;
     }
+    scope_feed(SC_MASTER, l, r, n, 1.0f); /* (the screen's scope: the master) */
     if ((j->want & (1u << PF_STUT | 1u << PF_TAPE | 1u << PF_CRUSH)) || perf.fade < 1.0f)
         pf_output(l, r, n, j->want);
     {
@@ -3343,6 +3385,7 @@ static void drum_chunk(uint32_t done, uint32_t chunk)   /* either core: a chunk'
     drum_mix(buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, chunk);
     if (STEMS && stems_on)                /* (the mix holds the drums alone until the synth comes in) */
         stem_put(TR_DRUM, buf_l + done, buf_r + done, done, chunk);
+    scope_feed(TR_DRUM, buf_l + done, buf_r + done, chunk, STEM_GAIN);   /* (the screen's scope: the drums) */
     {   /* the drums' level, for the screen */
         float pk = drum_pk;
         for (i = done; i < done + chunk; i++) {
@@ -8026,6 +8069,125 @@ static void gline(int x0, int y0, int x1, int y1, int ytop, int ybot)   /* a 2-p
         if (e2 <= dx) { err += dx; y0 += sy; }
     }
 }
+
+/* ---- live pictures (0.5): the scope's capture asked and taken; a history of one reading; a yellow dot (now) */
+static int scope_take(int src, int dec, int pairs)   /* 1: a full capture of src is in sc.buf (draw it, then again) */
+{
+    if (sc.src != src || sc.dec != dec || sc.pairs != pairs) {
+        sc.state = 0;
+        sc.src = (uint8_t)src;
+        sc.dec = (uint8_t)dec;
+        sc.pairs = (uint8_t)pairs;
+        sc.n = sc.k = 0;
+        sc.state = 1;
+        return 0;
+    }
+    if (sc.state == 2)
+        return 1;
+    if (sc.state == 0) {
+        sc.n = sc.k = 0;
+        sc.state = 1;
+    }
+    return 0;
+}
+
+static void scope_again(void)
+{
+    sc.n = sc.k = 0;
+    sc.state = 1;
+}
+
+/* the history: one reading (0..255) of the page on screen, every `every` ms, the newest at the right; another page's
+ * reading starts it again. 216 B, one for all the pages that draw one */
+#define HN 216
+static struct {
+    uint8_t v[HN];
+    uint16_t n;
+    uint8_t src;
+    uint32_t t;
+} hist;
+
+static void hist_feed(int src, int v, uint32_t every)
+{
+    uint32_t now = plat_ms();
+    int i;
+    if (hist.src != src) {
+        hist.src = (uint8_t)src;
+        hist.n = 0;
+        hist.t = now - every;
+    }
+    if (now - hist.t < every)
+        return;
+    hist.t = now;
+    v = v < 0 ? 0 : v > 255 ? 255 : v;
+    if (hist.n < HN) {
+        hist.v[hist.n++] = (uint8_t)v;
+        return;
+    }
+    for (i = 1; i < HN; i++)
+        hist.v[i - 1] = hist.v[i];
+    hist.v[HN - 1] = (uint8_t)v;
+}
+
+static void hist_draw(int x, int y, int w, int h)   /* an area HEAT by height, its edge in TRACE */
+{
+    int i, n = hist.n < w ? hist.n : w, x0 = x + w - n;
+    for (i = 0; i < n; i++) {
+        int v = hist.v[hist.n - n + i], hh = v * h / 255;
+        vheat(x0 + i, y, 1, h, hh);
+        if (hh > 0)
+            cv_pset(x0 + i, y + h - hh, gradc(GR_TRACE, hh, h));
+    }
+    cv_rect(x, y + h, w, 1, C_GRID);
+}
+
+static void now_dot(int x, int y)         /* a voice or a reading where it is now: a yellow ring */
+{
+    rrect(x - 4, y - 4, 9, 9, 4, C_NOW);
+    rrect(x - 2, y - 2, 5, 5, 2, C_INK);
+}
+
+/* the track's own sound now, triggered on a rising zero, 170 samples of every 5th (19 ms) across: 0 if it's quiet (the
+ * page draws its picture of the settings instead) */
+static int track_scope(int tr, const char *what)
+{
+    static uint8_t live;
+    int i, trig = 0, pk = 0, py = 0, mid = 62, amp = 46;
+    char t[24];
+    if (!scope_take(tr, 5, 0) && !live)
+        return 0;
+    for (i = 0; i < SC_N; i++) {
+        int a = sc.buf[i] < 0 ? -sc.buf[i] : sc.buf[i];
+        pk = a > pk ? a : pk;
+    }
+    if (pk < 300) {                       /* quiet: the picture */
+        live = 0;
+        scope_again();
+        return 0;
+    }
+    live = 1;
+    for (i = 1; i < SC_N / 3; i++)
+        if (sc.buf[i - 1] < 0 && sc.buf[i] >= 0) {
+            trig = i;
+            break;
+        }
+    grid_bg();
+    cv_rect(10, mid, 220, 1, C_GRID);
+    for (i = 0; i < 220; i++) {
+        int y = mid - sc.buf[trig + i * 169 / 219] * amp / pk;
+        if (i) {
+            glow_col(10 + i, y, mid);
+            gline(10 + i - 1, py, 10 + i, y, mid - amp, mid + amp);
+        }
+        py = y;
+    }
+    t[0] = 0;
+    text_cat(t, "LIVE ");
+    text_cat(t, what);
+    cv_text(12, 8, &FONT_XS, t, C_NOW);
+    scope_again();
+    return 1;
+}
 static void playflag(int x, int w)        /* the playhead's flag on top of its column: a small yellow triangle */
 {
     int j, c = x + w / 2;
@@ -8655,6 +8817,22 @@ static void pic_filter(int tr)
     }
     syn_param_text(SP_CUT, snd_value(tr, SP_CUT), t);
     cv_text(xc + 4 > 180 ? xc - 50 : xc + 4, 24, &FONT_S, t, TH_TXT);
+    {   /* (0.5) the newest voice's cutoff now, as the envelope, the LFOs and the matrix move it: yellow, its trail
+         * fading behind */
+        static uint8_t trail[24], tn;
+        int k;
+        if (syn_voices(tr) > 0) {
+            int st = syn_probe(tr, 1) / 256, xl = x_of_hz(cut_hz(st < 0 ? 0 : st > 127 ? 127 : st), 10, 220);
+            for (k = 23; k > 0; k--)
+                trail[k] = trail[k - 1];
+            trail[0] = (uint8_t)xl;
+            tn = tn < 24 ? tn + 1 : 24;
+        } else {
+            tn = 0;
+        }
+        for (k = tn - 1; k >= 0; k--)
+            cv_rect(trail[k], 10, k ? 1 : 2, 112, k ? mix565(C_BODY, C_NOW, 200 - k * 8) : C_NOW);
+    }
 }
 
 static void pic_env(int tr, int pg)       /* the envelope's shape: attack, decay, sustain, release (ENV page pg) */
@@ -8685,6 +8863,20 @@ static void pic_env(int tr, int pg)       /* the envelope's shape: attack, decay
         for (i = 0; i < 4; i++) {
             cv_rect(xs[i + 1], top - 4, 1, bot - top + 8, C_GRID);
             text_c((xs[i] + xs[i + 1]) / 2, bot + 1, &FONT_XS, N[i], C_TXT2);
+        }
+    }
+    {   /* (0.5) the voices sounding: each a yellow dot where it is (attack, decay, held, release) */
+        uint8_t st[8];
+        float lv[8], b[8], sus = (float)s / 127.0f;
+        int n = syn_voice_view(tr, pg, st, lv, b, 8), k;
+        for (k = 0; k < n; k++) {
+            float l = lv[k];
+            int xx = st[k] == 1 ? x0 + (int)(l * (float)(x1 - x0))
+                     : st[k] == 2 ? (l > sus + 0.01f ? x1 + (int)((1.0f - l) / (1.0f - sus + 1e-6f) * (float)(x2 - x1))
+                                                      : (x2 + x3) / 2)
+                                  : x3 + (int)((sus > 0.01f ? 1.0f - l / sus : 1.0f - l) * (float)(x4 - x3));
+            xx = xx < x0 ? x0 : xx > x4 ? x4 : xx;
+            now_dot(xx, bot - (int)(l * (float)(bot - top)));
         }
     }
 }
@@ -8859,8 +9051,17 @@ static void pic_matrix(int tr)            /* MATRIX: its six slots, the one on t
             rrect(8, y, 224, 18, 4, C_VIOLET);
         cv_text(14, y + 3, &FONT_XS, n, me ? C_INK : C_TXT2);
         slot_text(tr, k, t);
-        fit(&FONT_XS, t, 196, u);
+        fit(&FONT_XS, t, 158, u);
         cv_text(30, y + 3, &FONT_XS, u, me ? C_INK : on ? TH_TXT : C_TXT2);
+        {   /* (0.5) its move now, on the newest voice: a bar either way from the middle, yellow */
+            int bw = (int)(syn_slot_now(tr, k) * 30.0f);
+            bw = bw > 30 ? 30 : bw < -30 ? -30 : bw;
+            cv_rect(200, y + 3, 1, 12, me ? C_INK : C_GRID);
+            if (bw > 0)
+                cv_rect(201, y + 6, bw, 6, me ? C_INK : C_NOW);
+            else if (bw < 0)
+                cv_rect(200 + bw, y + 6, -bw, 6, me ? C_INK : C_NOW);
+        }
     }
 }
 
@@ -8941,6 +9142,8 @@ static void page_steps(void)              /* the drums' grid: 11 pads and the ac
             rrect(1, y + 1, 22, 9, 2, mix565(sel ? C_VIOLET : C_BODY, C_WHITE2, (int)(hit[row] * 230.0f)));
         cv_text(3, y - 2, &FONT_XS, row < NPADS ? trial_pad_name(drum_model(row), row) : "AC",
                 muted ? TH_RED : sel || (row < NPADS && hit[row] > 0.4f) ? C_INK : C_TXT2);
+        if (row < NPADS)                  /* (0.5) its level now: a thin meter, HEAT */
+            vheat(23, y + 1, 2, 9, (int)(hit[row] * 9.0f + 0.5f));
         for (k = 0; k < 16; k++) {
             int s = ui.spage * 16 + k, x = 27 + k * 13;
             if (s >= p->len)
@@ -8949,8 +9152,8 @@ static void page_steps(void)              /* the drums' grid: 11 pads and the ac
                 cv_rect(x - 1, y, 13, 11, mix565(sel ? C_PANEL : C_BODY, TH_INK, 22));
             if (sq.playing && s == st)
                 cv_rect(x - 1, y, 13, 11, PLAYHEAD);
-            if (bit_get(bits, s)) {
-                rrect(x, y + 1, 11, 9, 2, on);
+            if (bit_get(bits, s)) {       /* (an accented hit: orange) */
+                rrect(x, y + 1, 11, 9, 2, row < NPADS && !muted && bit_get(p->acc, s) ? gradc(GR_HEAT, 40, 47) : on);
                 if (row < NPADS && step_locked(p, s, row))
                     cv_rect(x + 7, y + 1, 4, 3, C_WHITE2);
                 if (row == ui.pad && s == ui.held_step)
@@ -9358,6 +9561,24 @@ static void v6_label(const char *in, char *out)   /* a knob's name for its cell:
         }
 }
 
+static void cap_set(int pad, uint8_t *env, int len, int step)   /* the drums' capture (trial_capture), when it changes */
+{
+    static int lp = -1;
+    static uint8_t *le;
+    uint32_t f;
+    if (pad == lp && env == le)
+        return;
+    lp = pad;
+    le = env;
+    if (env) {                            /* (the scope's buffer lent to it) */
+        sc.state = 0;
+        sc.src = SC_NONE;
+    }
+    f = plat_lock();
+    trial_capture(pad, env, len, step);
+    plat_unlock(f);
+}
+
 static void page_v6(void)
 {
     int pad = ui.pad + 1, total = kit_param_count(pad), first, k, recipe, fine = (int)(ui.btn >> B_SEL & 1u);
@@ -9400,8 +9621,22 @@ static void page_v6(void)
             upper(value);
         card_put(&cards[k], label, value, tick, spec->min_tick, spec->max_tick, -1);
     }
-    v6_voice_art(pad, &current);
-    foot("LANE VOICE", fine ? "FINE ON" : "SEL: FINE", fine);
+    cap_set(pad, (uint8_t *)sc.buf, 216, 160);   /* (0.5) its next hit captured: 216 peaks, 0.78 s */
+    {
+        int n = trial_capture_pos(), i;
+        const uint8_t *env = (const uint8_t *)sc.buf;
+        if (n > 0) {                      /* the last hit as it sounded: -48..0 dB, mirrored, HEAT by time */
+            grid_bg();
+            for (i = 0; i < n && i < 216; i++) {
+                int h = db_h((float)env[i] * (1.0f / 255.0f), 46, 48.0f);
+                cv_rect(12 + i, 56 - h, 1, 2 * h + 1, gradc(GR_HEAT, 215 - i, 215));
+            }
+            foot("LAST HIT", fine ? "FINE ON" : "SEL: FINE", fine);
+        } else {
+            v6_voice_art(pad, &current);
+            foot("LANE VOICE: STRIKE IT", fine ? "FINE ON" : "SEL: FINE", fine);
+        }
+    }
 }
 
 static void page_dedit(void)              /* the drums' EDIT page: the pad, its steps and hits, all its knobs */
@@ -9507,14 +9742,17 @@ static void page_iedit(int env)           /* an instrument track's EDIT (or ENV)
             if (h > 0)
                 rrect(208, 118 - h, 14, h, 3, TH_FG);
         }
-    } else if (page == 1) {
-        pic_osc(tr);
+    } else if (page == 1) {               /* (sounding: the track's own sound, live; quiet: the settings drawn) */
+        if (!track_scope(tr, "OSC"))
+            pic_osc(tr);
     } else if (page == 3) {
         pic_filter(tr);
     } else if (page == EP_OSC2) {
-        pic_osc2(tr);
+        if (!track_scope(tr, "OSC 1 + 2"))
+            pic_osc2(tr);
     } else if (page == EP_SHAPER) {
-        pic_shaper(tr);
+        if (!track_scope(tr, "SHAPED"))
+            pic_shaper(tr);
     } else if (page == EP_MACRO) {
         pic_macro(tr);
     } else {
@@ -9560,6 +9798,13 @@ static void page_lfo(void)                /* the track's LFO: its shape, where i
                 if (c)
                     thick(10 + c - 1, py, 10 + c, y, n ? TH_FG : C_GRID);
                 py = y;
+            }
+            {                             /* (0.5) each voice's LFO 2 now: a yellow dot in the first cycle */
+                uint8_t st2[8];
+                float ph2[8], val2[8];
+                int nv = syn_voice_view(tr, 3, st2, ph2, val2, 8), k2;
+                for (k2 = 0; k2 < nv; k2++)
+                    now_dot(10 + (int)(ph2[k2] * 110.0f), 64 - (int)(val2[k2] * 50.0f));
             }
             if (v[SP_L2FADE]) {           /* FADE IN: a ramp under the first cycle */
                 int fw = 10 + v[SP_L2FADE] * 100 / 127;
@@ -9674,7 +9919,12 @@ static void page_arp(void)                /* an instrument track's arpeggiator: 
         int v = mode == AM_UP ? i % 4 * 2 : mode == AM_DOWN ? 6 - i % 4 * 2 : mode == AM_UPDOWN ? (i % 6 < 4 ? i % 6 : 6 - i % 6) * 2
               : mode == AM_RANDOM ? RN[i] : PL[i];
         int x = 14 + i * 18, h = 12 + v * 7;
-        rrect(x, 120 - h, 14, h, 3, mode ? (i == (int)(arp[tr].idx % 12u) ? TH_HI : mix565(C_PANEL, TH_INK, 150)) : C_GRID);
+        if (!mode)
+            rrect(x, 120 - h, 14, h, 3, C_GRID);
+        else if (i == (int)(arp[tr].idx % 12u))   /* the step now: yellow */
+            rrect(x, 120 - h, 14, h, 3, C_NOW);
+        else
+            vheat(x, 66, 14, 54, h);
     }
     for (i = 0; i < n && i < 6; i++) {    /* the notes it has */
         note_text(arp[tr].note[i], u);
@@ -9817,7 +10067,7 @@ static void page_cpu(void)
     band_set(C_CREAM, "ALL", "CPU BY STAGE", t, 0, 0);
     rrect(3, 2, 234, BODY_H - 4, 6, C_PANEL);
     for (i = 0; i < CS_NUM; i++) {
-        int y = 6 + i * 17, pct = (int)(cs_us[i] * per + 0.5f), w = pct > 100 ? 100 : pct;
+        int y = 4 + i * 13, pct = (int)(cs_us[i] * per + 0.5f), w = pct > 100 ? 100 : pct;
         cv_text(8, y - 2, &FONT_XS, NM[i], i == CS_TOTAL ? TH_TXT : C_TXT2);
         cv_rect(104, y + 3, 100, 8, C_GRID);
         if (w > 0)
@@ -9826,7 +10076,7 @@ static void page_cpu(void)
             int pk = (int)(cs_pk[i] * per + 0.5f);
             pk = pk > 99 ? 99 : pk;
             if (pk > w)
-                cv_rect(104 + pk, y + 1, 2, 12, pk >= 99 ? TH_RED : TH_TXT);
+                cv_rect(104 + pk, y + 2, 2, 10, pk >= 99 ? TH_RED : TH_TXT);
         }
         {   /* its budget: a notch under the bar (the effects': the two rows together); the number red for a second
              * after the budget gave something up (a drum sound cut, a voice shed, an effect out), and while one is out */
@@ -9842,6 +10092,11 @@ static void page_cpu(void)
             text_cat(u, "%");
             text_r(232, y - 2, &FONT_XS, u, hot ? TH_RED : TH_TXT);
         }
+    }
+    {   /* (0.5) the total over the last 22 s */
+        hist_feed(4, (int)(cs_us[CS_TOTAL] * per * 2.55f), 100);
+        cv_text(8, 96, &FONT_XS, "TOTAL, 22 S", C_TXT2);
+        hist_draw(104, 96, 128, 30);
     }
     cards_of(KD_SETUP, 0);
 }
@@ -9978,11 +10233,19 @@ static void page_mix(void)                /* the mixer: a strip a track, its met
             int i = RET_P[k], v = proj.fx[i], mx = fx_param(i)->max, ret = !(k & 1), w = ret ? 40 : 16;
             int x = 30 + k * 60 - w / 2, h = v * 92 / mx;
             char u[16];
-            text_c(30 + k * 60, 4, &FONT_B, NM[k], TH_TXT);
+            text_c(30 + k * 60, 4, &FONT_B, k == 3 && v >= 115 ? "RUNAWAY" : NM[k],
+                   k == 3 && v >= 100 ? gradc(GR_HEAT, v >= 115 ? 47 : 40, 47) : TH_TXT);   /* (feedback near self-oscillation) */
             fx_text(i, u);
             text_c(30 + k * 60, 17, &FONT_XS, u, ret && v > 127 ? C_NOW : C_TXT2);
             rrect(x, 30, w, 92, 4, C_GRID);
             vheat(x, 30, w, 92, h);       /* HEAT up its range: a return's boost goes orange, then pink */
+            if (ret) {                    /* (0.5) what it puts out now, beside it */
+                static float rm[2];
+                float o = fx_return_now(k >> 1) * STEM_GAIN * 2.0f;   /* (a sample: x2 toward its peak) */
+                rm[k >> 1] = o > rm[k >> 1] ? o : rm[k >> 1] * 0.85f;
+                rrect(x + w + 2, 30, 4, 92, 1, C_GRID);
+                vheat(x + w + 2, 30, 4, 92, db_h(rm[k >> 1], 92, 60.0f));   /* (-60..0 dBFS: returns sit low) */
+            }
             if (ret) {
                 cv_rect(x - 4, 122 - 85 * 92 / mx, w + 8, 1, TH_TXT);    /* 0 dB: the preset's return */
                 cv_rect(x - 2, 122 - 127 * 92 / mx, w + 4, 1, C_RULE);   /* the old top: past it, the boost */
@@ -10072,6 +10335,9 @@ static void page_fx(void)                 /* the sends' FX: what they do, drawn 
             cv_text(220, 10, &FONT_XS, "L", C_TXT2);
             cv_text(220, 106, &FONT_XS, "R", C_TXT2);
         }
+        if (proj.fx[FXP_DL_FDBK] >= 100)  /* (0.5) feedback near self-oscillation */
+            text_r(214, 8, &FONT_XS, proj.fx[FXP_DL_FDBK] >= 115 ? "FEEDBACK: RUNS AWAY" : "FEEDBACK: HOT",
+                   gradc(GR_HEAT, proj.fx[FXP_DL_FDBK] >= 115 ? 47 : 40, 47));
     } else {                              /* the DJ filter: low-pass to the left, high-pass to the right */
         int v = proj.fx[FXP_FILTER];
         float q = 0.5f + (float)proj.fx[FXP_F_RESO] * (11.5f / 127.0f);
@@ -10152,16 +10418,11 @@ static void mst_chain(void)
     } else {
         db1(lu, s);
         cv_text(44, 99, &FONT_M, s, TH_TXT);
-        {   /* the momentary loudness, a bar over -36..0 */
-            int w = lm <= -36.0f ? 0 : (int)((lm + 36.0f) * 100.0f / 36.0f);
-            if (w > 100)
-                w = 100;
-            cv_text(124, 101, &FONT_XS, "M", C_TXT2);
-            rrect(134, 106, 100, 7, 3, C_GRID);
-            if (w > 0)
-                rrect(134, 106, w, 7, 3, TH_FG);
+        {   /* (0.5) the momentary loudness over the last 22 s (-48..0 LUFS), HEAT; now in numbers */
+            hist_feed(3, (int)((lm + 48.0f) * 255.0f / 48.0f), 100);
+            hist_draw(122, 101, 112, 26);
             db1(lm, s);
-            cv_text(134, 113, &FONT_XS, s, C_TXT2);
+            text_r(234, 99, &FONT_XS, s, TH_TXT);
         }
     }
 }
@@ -10183,6 +10444,8 @@ static void mst_comp(int pg)              /* COMP: the curve, in and out over -4
         text_cat(u, t);
         text_cat(u, " DB");
         cv_text(12, 24, &FONT_L, u, gr >= 0.05f ? TH_RED : C_GRID);
+        hist_feed(1, (int)(gr * 20.0f), 30);   /* (0.5) the last 6.5 s of it, 0..12.75 dB down */
+        hist_draw(150, 14, 80, 54);
         rrect(10, 76, 220, 16, 4, C_GRID);
         if (w > 220)
             w = 220;
@@ -10268,11 +10531,31 @@ static void mst_stereo(void)              /* STEREO: the image's width as a fan,
         int x = 120 + (int)(um_sin(a) * 100.0f), y = 120 - (int)(um_sin(a + 1.5708f) * 100.0f);
         if (a > 1.5f || a < -1.5f)
             continue;
-        cv_line(120, 120, x, y, gradc(GR_HEAT, i < 0 ? -i : i, 20));
+        cv_line(120, 120, x, y, mix565(C_BODY, gradc(GR_HEAT, i < 0 ? -i : i, 20), 80));   /* (dim: the scope over it) */
     }
     if (proj.fx[FXP_ST_BASS])             /* BASS MONO: the lows centred */
         rrect(114, 70, 13, 50, 4, TH_FG);
     cv_rect(120, 20, 1, 100, C_GRID);
+    if (scope_take(SC_MASTER, 2, 1)) {    /* (0.5) the master now: a vectorscope, the mid up, the sides across */
+        int pk = 0, k;
+        for (k = 0; k < SC_N; k++) {
+            int a = sc.buf[k] < 0 ? -sc.buf[k] : sc.buf[k];
+            pk = a > pk ? a : pk;
+        }
+        if (pk > 300)
+            for (k = 0; k < SC_N; k += 2) {
+                int m = (sc.buf[k] + sc.buf[k + 1]) / 2, sd = (sc.buf[k] - sc.buf[k + 1]) / 2, x, y, r;
+                if (m < 0) {
+                    m = -m;
+                    sd = -sd;
+                }
+                x = 120 + sd * 96 / pk;
+                y = 120 - m * 96 / pk;
+                r = (sd < 0 ? -sd : sd) + m;
+                cv_rect(x - 1, y - 1, 3, 3, gradc(GR_TRACE, r, pk));
+            }
+        scope_again();
+    }
 }
 
 static void mst_limit(void)               /* LIMIT: the reduction and the output against the ceiling */
@@ -10286,8 +10569,51 @@ static void mst_limit(void)               /* LIMIT: the reduction and the output
     xc = 40 + 150 + (int)(ce * 150.0f / 24.0f);
     cv_rect(xc, 46, 2, 24, TH_FG);
     cv_text(xc - 30, 74, &FONT_XS, "CEILING", TH_TXT);
-    cv_text(10, 96, &FONT_XS, proj.fx[FXP_LIMIT] ? "GAIN IN, NOTHING PAST THE CEILING" : "OFF: IT CLIPS",
-            proj.fx[FXP_LIMIT] ? C_TXT2 : TH_RED);
+    if (proj.fx[FXP_LIMIT]) {             /* (0.5) its reduction over the last 6.5 s */
+        hist_feed(2, (int)(fx_lgr() * 20.0f), 30);
+        cv_text(10, 88, &FONT_XS, "REDUCTION, LAST 6 S", C_TXT2);
+        hist_draw(10, 102, 220, 24);
+    } else {
+        cv_text(10, 96, &FONT_XS, "OFF: IT CLIPS", TH_RED);
+    }
+}
+
+/* (0.5) The master's spectrum behind the EQ's curve: 24 bands, 40 Hz to 16 kHz in even octaves, by Goertzel on the
+ * scope's capture (Welch window); in turn the highs (every sample) and the lows (every 4th: 43 Hz apart), falling 3 dB a
+ * frame; -66..0 dB, HEAT */
+static float spec_db[24];
+static void mst_spectrum(int x0, int y0, int w, int h)
+{
+    static uint8_t phase, ready;
+    int lo = phase & 1, b, i;
+    if (!ready) {                         /* (from silence) */
+        for (b = 0; b < 24; b++)
+            spec_db[b] = -120.0f;
+        ready = 1;
+    }
+    if (scope_take(SC_MASTER, lo ? 4 : 1, 0)) {
+        const float fs = lo ? 11025.0f : 44100.0f;
+        for (b = 0; b < 24; b++) {
+            float hz = 40.0f * um_exp2((float)b * (8.64f / 23.0f)), c, s1 = 0.0f, s2 = 0.0f, pw, db;
+            if ((hz < 1000.0f) != lo)
+                continue;
+            c = 2.0f * um_sin(6.2831853f * hz / fs + 1.5707963f);
+            for (i = 0; i < SC_N; i++) {
+                float u = (float)(2 * i - SC_N) / (float)SC_N, s0 = (float)sc.buf[i] * (1.0f - u * u) + c * s1 - s2;
+                s2 = s1;
+                s1 = s0;
+            }
+            pw = s1 * s1 + s2 * s2 - c * s1 * s2;
+            db = 0.5f * um_db(pw > 1.0f ? pw : 1.0f) - 132.3f;   /* (a full-scale sine: 0 dB) */
+            spec_db[b] = db > spec_db[b] - 3.0f ? db : spec_db[b] - 3.0f;
+        }
+        phase++;
+        scope_again();
+    }
+    for (b = 0; b < 24; b++) {
+        int bh = (int)((spec_db[b] + 66.0f) * (float)h / 66.0f), x = x0 + b * w / 24;
+        vheat(x + 1, y0, w / 24 - 2, h, bh < 0 ? 0 : bh > h ? h : bh);
+    }
 }
 
 static void page_mst(void)
@@ -10317,6 +10643,7 @@ static void page_mst(void)
         grid_hz(x0, y0, w, h);
         for (i = -12; i <= 12; i += 6)
             cv_rect(x0, mid - i * h / 30, w, 1, i ? mix565(C_PANEL, TH_INK, 30) : C_GRID);
+        mst_spectrum(x0, y0, w, h);       /* (0.5) the master's spectrum behind it */
         fx_eq_curve(db, 112);
         for (i = 0; i < 112; i++) {
             float d = db[i] < -15.0f ? -15.0f : db[i] > 15.0f ? 15.0f : db[i];
@@ -10430,11 +10757,26 @@ static void page_v3_bus(void)
         char text[12], num[] = "K1";
         int x = 4 + (k % 2) * 117, y = 36 + (k / 2) * 31;
         num[1] += (char)k;
-        cv_rect(x, y, 114, 27, C_PANEL);
-        cv_text(x + 5, y + 6, &FONT_XS, num, C_MUTED);
-        cv_text(x + 23, y + 5, &FONT_S, V3_BUS_LABEL[k], C_BONE);
+        (void)x;
+        (void)y;
+        (void)num;
         v3_bus_percent(k, raw[k], text);
         card_put(&cards[k], short_label[k], text, raw[k], 0, 127, k == 2 ? 64 : -1);
+    }
+    {   /* (0.5) SAT's curve (in across, out up, 1:1 the diagonal); the compressor's and the limiter's reduction now */
+        float d = 1.0f + (float)raw[0] * (8.0f / 127.0f), nt = um_tanh(d);
+        int i, py = 0;
+        frame(8, 34, 100, 66, C_GRID);
+        cv_line(8, 99, 107, 34, C_GRID);
+        for (i = 0; i < 100; i++) {
+            int yy = 67 - (int)(um_tanh(d * ((float)i / 49.5f - 1.0f)) / nt * 32.0f);
+            if (i)
+                gline(8 + i - 1, py, 8 + i, yy, 35, 99);
+            py = yy;
+        }
+        cv_text(12, 36, &FONT_XS, "SAT", C_TXT2);
+        gr_bar(118, 50, 54, 10, "COMP", trial_bus_gr(0));
+        gr_bar(118, 82, 54, 10, "LIMIT", trial_bus_gr(1));
     }
     cv_text(7, 106, &FONT_XS, "FX: DRY/BUS", C_BONE);
     text_r(233, 106, &FONT_XS, "SEL + FX: EXIT", C_BONE);
@@ -10468,6 +10810,8 @@ static void page_color(void)
 static void page(void)
 {
     int inst = ui.trk != TR_DRUM;
+    if (!(ui.page == PG_EDIT && v6_voice_page()))
+        cap_set(0, 0, 0, 0);              /* (the scope's buffer back) */
     if (rec_page()) {
         page_rec();
         return;
@@ -10517,10 +10861,15 @@ static int page_moves(void)               /* a page whose picture moves by itsel
     switch (ui.page) {
     case PG_HOME: case PG_QMIX: case PG_MIX: case PG_MUTE: case PG_LFO: case PG_KEYS: case PG_ARP: return 1;
     case PG_SEQ: return !inst;
-    case PG_EDIT: return v6_voice_page() ? 0 : !inst || ui.epage == 0;   /* (a voice's page: when changed) */
+    case PG_EDIT:                         /* (a drum's page while its hit is captured; the synth's live pictures) */
+        if (v6_voice_page())
+            return trial_capture_pos() >= 0 && trial_capture_pos() < 216;
+        return !inst || ui.epage == 0 || ui.epage == 1 || ui.epage == 3 || ui.epage == EP_OSC2 || ui.epage == EP_SHAPER;
+    case PG_ENV: return inst;
+    case PG_V3_BUS: return 1;
     case PG_SONG: return sq.playing;
     case PG_SETUP: return ui.setup_view;
-    case PG_MST: return ui.mstpage == 0 || ui.mstpage == 3 || ui.mstpage == 4 || ui.mstpage == 6 || ui.mstpage == 7;
+    case PG_MST: return ui.mstpage != 5;    /* (all but TAPE: live now, the EQ's spectrum too) */
     default: return 0;
     }
 }
@@ -11032,6 +11381,8 @@ int app_expect(const char *what, int *got)
         *got = qm.held;
     else if (!strcmp(what, "qmtrk"))
         *got = qm.trk;
+    else if (!strncmp(what, "fxret", 5))  /* fxretN: return N's output now (0 the verb, 1 the delay), millionths */
+        *got = (int)(fx_return_now(atoi(what + 5)) * 1e6f);
     else if (!strcmp(what, "rmask"))      /* the tracks ROLL replays now, a bit each */
         *got = perf.rmask;
     else if (!strcmp(what, "stut"))       /* STUTTER: its slice in steps (0: none) */

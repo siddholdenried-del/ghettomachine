@@ -93,6 +93,7 @@ static const char *const RSV_N[1] = {"-"};
    quarter-dB steps to +12 dB more (175: +15.5 dB over the preset's), for dub: returns louder than the dry. A saved
    project's 0..127 sounds the same. */
 #define LVL_MAX 175
+static float fm_absf_(float x) { return x < 0.0f ? -x : x; }
 static float lvl_gain(int v)              /* LEVEL -> times the preset's return */
 {
     return v <= 127 ? (float)v * (1.0f / 85.0f) : (127.0f / 85.0f) * fm_exp2f((float)(v - 127) * (0.25f / 6.0206f));
@@ -353,6 +354,12 @@ void fx_out_sides(float *l, float *r)
     out_side[0] = out_side[1] = 0.0f;
 }
 float fx_delay_ms(void) { return bongdelay_ms(&dly); }
+float fx_return_now(int which)            /* (the screen) a return's output now, as it joins the mix: 0 the verb, 1 the delay */
+{
+    if (which)
+        return dl_off ? 0.0f : gain_dl_now * fm_absf_(dly.wet);
+    return gain_rv_now * 0.5f * (fm_absf_(verb.new_l) + fm_absf_(verb.new_r));
+}
 float fx_delay_fb(void) { return dly.regen_to; }
 
 int fx_presets(void) { return NPRESET; }

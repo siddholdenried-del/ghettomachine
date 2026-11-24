@@ -124,6 +124,24 @@ static void capture_shaping(unsigned i, const KitPatch *p)
 #ifdef PLAT_HOST
 static float lane_pk[KIT_PADS];           /* each lane's peak out since the tests last asked (lanepkN) */
 #endif
+/* (0.5, the screen) a lane's hit, captured: from its strike, its peak every cap_step samples into cap_env (the drum
+ * page's picture of the real sound) */
+static uint8_t *cap_env;
+static int cap_pad, cap_len, cap_step, cap_pos, cap_k;
+static float cap_pk;
+
+void trial_capture(int pad1, uint8_t *env, int len, int step)
+{
+    if (pad1 != cap_pad || env != cap_env) {
+        cap_env = env;
+        cap_len = len;
+        cap_step = step > 0 ? step : 1;
+        cap_pos = len;                    /* (nothing yet: the next strike) */
+        cap_pad = pad1;
+    }
+}
+
+int trial_capture_pos(void) { return cap_pad ? cap_pos : -1; }
 
 static void render_lanes(float *lanes[KIT_PADS], unsigned span)
 {
@@ -178,6 +196,16 @@ static void render_lanes(float *lanes[KIT_PADS], unsigned span)
             }
             gate[p] = g;
         }
+        if (cap_env && p + 1 == (unsigned)cap_pad && cap_pos < cap_len)   /* the screen's capture of this lane */
+            for (unsigned n = 0; n < span && cap_pos < cap_len; ++n) {
+                const float a = x[n] < 0.f ? -x[n] : x[n];
+                if (a > cap_pk) cap_pk = a;
+                if (++cap_k >= cap_step) {
+                    cap_env[cap_pos++] = (uint8_t)(cap_pk >= 2.f ? 255 : (int)(cap_pk * 127.5f));   /* (0..2: headroom) */
+                    cap_k = 0;
+                    cap_pk = 0.f;
+                }
+            }
 #ifdef PLAT_HOST
         for (unsigned n = 0; n < span; ++n) {
             const float a = x[n] < 0.f ? -x[n] : x[n];
@@ -196,6 +224,8 @@ int trial_lane_peak(unsigned pad)        /* a lane's peak out since last asked, 
     return a > 1e-10f ? (int)(fm_log2f(a) * 6.0206f - .5f) : -200;
 }
 #endif
+
+float trial_bus_gr(int which) { return which ? bus.limiter_gr_db : bus.comp_gr_db; }   /* (the screen) dB down */
 
 int trial_lane_gate(unsigned pad)        /* a lane's gate now, thousandths (the tests) */
 {
@@ -455,6 +485,8 @@ void trial_hit(unsigned pad, float velocity)
         gate_shut[i] = 0;
         if (!lane_mute[i])
             gate[i] = 1.f;
+        if ((int)pad == cap_pad)          /* (the screen's capture starts again) */
+            cap_pos = cap_k = 0, cap_pk = 0.f;
         kit_hit(&kit, (int)pad, velocity, &patch);
     }
 }
@@ -477,6 +509,8 @@ void trial_hit_moved(unsigned pad, float velocity, int param, float move)
         gate_shut[i] = 0;
         if (!lane_mute[i])
             gate[i] = 1.f;
+        if ((int)pad == cap_pad)
+            cap_pos = cap_k = 0, cap_pk = 0.f;
         kit_hit(&kit, (int)pad, velocity, &moved);
     }
 }

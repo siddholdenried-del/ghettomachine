@@ -95,6 +95,19 @@ you're turning. Purple draws the grids, the empty steps and the boxes. Top to bo
   illustration of its sound, its decay and pitch following the lane's DECAY and TUNE). Where there's room, a last
   line gives a hint at the left ("WHITE: SCENE") and a state at the right, yellow when it's happening now ("P01
   PLAYING", "W4 HELD").
+- **Live pictures** (0.5): the pages show what is happening, not only the settings.
+  - **OSC, OSC 2, SHAPER:** while the track sounds, its real waveform, held still on each cycle ("LIVE"); quiet, the
+    settings drawn.
+  - **FILTER:** the newest voice's cutoff now, a yellow line with a fading trail, as the envelope, LFOs and matrix move
+    it. **AMP / FILTER / MOD ENV:** each sounding voice a yellow dot where it is on the shape. **LFO 2:** each voice's
+    own phase. **MATRIX:** each slot's move now, a bar either way. **ARP:** the step playing, yellow.
+  - **A drum's page:** its last hit as it sounded (0.78 s, in dB); before one, an illustration. **DRUM BUS:** SAT's
+    curve and the compressor's and limiter's reduction now. **Drum steps:** each lane's level beside its name,
+    accented hits orange.
+  - **MASTER EQ:** the master's spectrum behind the curve. **COMP 2, LIMIT:** their reduction over the last 6 s.
+    **STEREO:** a vectorscope of the master (the middle up, the sides across). **CHAIN:** the loudness over the last
+    22 s. **RETURNS:** what each return puts out now, beside its fader; FEEDBACK turns orange, then RUNAWAY, near
+    self-oscillation (BONGDELAY says so too). **CPU:** the total over the last 22 s.
 - **The knob strip:** four cells, **K1 to K4 in the order the knobs sit**: the knob's number, what it does, its value
   large. The value you're turning goes acid green with a yellow bar under it; a **locked** value is acid green with
   an **L**; an empty cell shows K3 and a dash; a reading (the compressor's reduction, the stereo phase) is dimmed.

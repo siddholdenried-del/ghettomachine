@@ -120,6 +120,8 @@ void syn_mixer(int trk, int pan, float rev, float dly);
  * All 0: back to the track's own settings, whatever they are by then. Nothing of the sound is changed or saved */
 void syn_perform(int trk, int cut, float rev, float dly, int oct);   /* oct: octaves up / down while held */
 int syn_perform_now(int trk, int what);  /* (the tests) 0 the cutoff offset now in steps; 1, 2 the boosts x 1000; 3 the octaves */
+int syn_voice_view(int trk, int what, uint8_t *stage, float *a, float *b, int max);   /* (the screen) */
+float syn_slot_now(int trk, int slot);  /* (the screen) a matrix slot's move now, on the newest voice */
 void syn_mix_repack(float *l, float *r, float *rev, float *dly); /* merge unmuted cached blocks after a track cut */
 void syn_mix(float *l, float *r, float *rev, float *dly);   /* SYN_CTL samples each, overwritten: the mix and its sends */
 /* the same in parts (0.5: the tracks' mix shared between the two cores): each track once, on either core (its

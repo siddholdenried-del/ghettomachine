@@ -68,6 +68,7 @@ float fx_db(float lin);                   /* 20 log10, -120 for silence */
 void fx_out_sides(float *l, float *r);    /* each side's output peak (before MASTER) since the last look: the band's meter */
 float fx_delay_ms(void);                  /* the delay's time now, and its regeneration (the FX page's picture) */
 float fx_delay_fb(void);
+float fx_return_now(int which);           /* (the screen) a return's output now: 0 the verb, 1 the delay */
 int fx_returns_asleep(void);              /* bit 0 BongVerb, bit 1 BongDelay asleep (silence in and out: not run) */
 /* the chain presets: they set the compressor's, EQ's, TAPE's, STEREO's and the limiter's knobs (not PUMP, the filter,
  * the limiter's switch or the sends) */

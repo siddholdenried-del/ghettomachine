@@ -2,6 +2,7 @@
 #ifndef FM1_V3_TRIAL_H
 #define FM1_V3_TRIAL_H
 #include "kit_patch.h"
+#include <stdint.h>
 
 /* Audio-thread operations, or main-loop calls made with the render locked.
  * Initialize once while stopped. Native pad IDs are 1 through 11. */
@@ -17,6 +18,9 @@ void trial_cut(unsigned pad1);
 /* a lane's audio muted (1) or not (0): its hits go on (the voices sound underneath), the lane fades out and back in */
 void trial_mute(unsigned pad1, int on);
 int trial_lane_gate(unsigned pad1);      /* its gate now, thousandths (the tests) */
+void trial_capture(int pad1, uint8_t *env, int len, int step);   /* (the screen) a lane's next hit: its peaks */
+int trial_capture_pos(void);             /* how many of them so far; -1: none asked */
+float trial_bus_gr(int which);            /* (the screen) the drum bus's reduction, dB: 0 the compressor, 1 the limiter */
 #ifdef PLAT_HOST
 int trial_lane_peak(unsigned pad1);      /* its peak out since last asked, dB, -200 silent (the tests; resets) */
 #endif
