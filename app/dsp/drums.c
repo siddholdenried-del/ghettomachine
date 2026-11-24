@@ -4,9 +4,14 @@
 #include "drum909.h"
 #include "drum808.h"
 
+#ifdef PLAT_HOST
 static drum909_t d909;
 static drum808_t d808;
 static float k8_l[DRUMS_MAX_BLOCK], k8_r[DRUMS_MAX_BLOCK], k8_rev[DRUMS_MAX_BLOCK], k8_dly[DRUMS_MAX_BLOCK];
+#else                                      /* the FM-1 plays the DrumEngine only (0.5): of the stock kits it keeps their
+                                            * knobs' positions, which projects and user kits still carry; no voices */
+static uint8_t stock_pot[2][DRUMS_NPADS + 1][DR_MAX_PARAMS];
+#endif
 
 /* pad -> the engine's own track */
 static const uint8_t PAD808[DRUMS_NPADS] = {D8_BD, D8_SD, D8_LT, D8_MT, D8_HT, D8_RS, D8_CP,
@@ -40,6 +45,7 @@ static int voice(int kit, int pad)        /* (-1: no such pad, or a kit that was
     return kit == KIT_808 ? PAD808[pad] : pad;
 }
 
+#ifdef PLAT_HOST
 void drums_init(void)
 {
     drum909_init(&d909);
@@ -112,6 +118,19 @@ int drums_governor_release_tail(int pad)
     return a || b;
 }
 
+#else
+void drums_init(void)
+{
+    int k, pad, i;
+    for (k = 0; k < 2; k++)
+        for (pad = 0; pad <= DRUMS_NPADS; pad++)
+            for (i = 0; i < DR_MAX_PARAMS; i++) {
+                const x0x_param_t *d = drums_param(k, pad, i);
+                stock_pot[k][pad][i] = d ? d->def : 0;
+            }
+}
+#endif
+
 int drums_nparams(int kit, int pad)
 {
     int v = voice(kit, pad);
@@ -128,6 +147,7 @@ const x0x_param_t *drums_param(int kit, int pad, int i)
     return kit == KIT_808 ? drum808_param(v, i) : drum909_param(v, i);
 }
 
+#ifdef PLAT_HOST
 int drums_get(int kit, int pad, int i)
 {
     int v = voice(kit, pad);
@@ -146,6 +166,20 @@ void drums_set(int kit, int pad, int i, int value)
     else
         drum909_set(&d909, v, i, value);
 }
+
+#else
+int drums_get(int kit, int pad, int i)
+{
+    return drums_param(kit, pad, i) ? stock_pot[kit][pad][i] : 0;
+}
+
+void drums_set(int kit, int pad, int i, int value)
+{
+    const x0x_param_t *d = drums_param(kit, pad, i);
+    if (d)
+        stock_pot[kit][pad][i] = (uint8_t)(value < 0 ? 0 : value > d->max ? d->max : value);
+}
+#endif
 
 const char *drums_pad_name(int kit, int pad)
 {
@@ -167,6 +201,7 @@ int drums_model(int base, const uint8_t *map, int pad)
     return requested;
 }
 
+#ifdef PLAT_HOST
 static void drums_cut_voice(int kit, int pad)
 {
     const int v = voice(kit, pad);
@@ -199,3 +234,4 @@ void drums_trigger_mapped(int base, const uint8_t *map, int pad, float vel)
     }
     drums_trigger(model, pad, vel);
 }
+#endif
