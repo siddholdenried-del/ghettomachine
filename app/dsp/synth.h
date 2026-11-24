@@ -77,6 +77,8 @@ void syn_init(void);
 void syn_sound(int trk, const int8_t *v); /* every parameter of the track's sound */
 void syn_set(int trk, int id, int v);
 void syn_level(int trk, float level);     /* 0..1 */
+void syn_tempo(float bpm);                /* for LFO 2 synced (RESTART: NOTE SYNC, FREE SYNC) */
+void syn_text_track(int trk);             /* the track syn_param_text reads LFO 2's RATE by (a division when synced) */
 void syn_pressure(int trk, float p);      /* the keys' pressure on the track, 0..1 (the matrix's PRESSURE; slewed a block at a time) */
 /* a note: vel 0..1; gate in samples before it lets go by itself, < 0 held until syn_note_off. mono: MONO (one note,
  * SP_VOICES the unison stack, the held keys a stack it goes back down, SP_LEGATO: 1 ON, glide whenever the voice still

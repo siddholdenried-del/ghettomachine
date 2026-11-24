@@ -41,7 +41,13 @@ static const char *const N_WAVE2[] = {"SAME", "SAW", "SQUARE", "TRI", "SINE", "P
 static const char *const N_SHTYPE[] = {"FOLD", "CLIP", "RECTIFY", "CRUSH"};
 static const char *const N_SHPOS[] = {"PRE FLT", "POST FLT"};
 static const char *const N_LSHAPE[] = {"SINE", "TRIANGLE", "SAW UP", "SAW DOWN", "SQUARE", "S&H", "SMOOTH"};
-static const char *const N_L2KEY[] = {"EACH NOTE", "FREE"};
+static const char *const N_L2KEY[] = {"EACH NOTE", "FREE", "NOTE SYNC", "FREE SYNC"};   /* (0.5) + 2: its RATE a division of the tempo */
+#define L2_NDIV 12
+static const char *const N_L2DIV[L2_NDIV] = {"4 BARS", "2 BARS", "1 BAR", "1/2", "1/4.", "1/4", "1/8.", "1/8", "1/8T", "1/16",
+                                             "1/16T", "1/32"};
+static const float L2_BEATS[L2_NDIV] = {16.0f, 8.0f, 4.0f, 2.0f, 1.5f, 1.0f, 0.75f, 0.5f, 0.33333f, 0.25f, 0.16667f, 0.125f};
+static float syn_bpm = 120.0f;
+static int text_sync;                     /* syn_param_text: LFO 2's RATE reads as a division (syn_text_track's track is synced) */
 static const char *const N_MSRC[MS_NUM] = {"OFF", "LFO 1", "LFO 2", "MOD ENV", "FILT ENV", "AMP ENV", "VELOCITY", "NOTE",
                                           "RANDOM", "MACRO 1", "MACRO 2", "MACRO 3", "MACRO 4", "PRESSURE"};
 static const char *const N_MDST[MD_NUM] = {"PITCH", "OSC 2", "DETUNE", "CUTOFF", "RESO", "PWM", "MIX", "SUB", "NOISE",
@@ -94,7 +100,7 @@ static const syn_param_t PARAMS[SP_NUM] = {
     {"SHAPE", 0, 6, 0, SF_ENUM, N_LSHAPE},
     {"RATE", 0, 127, 91, SF_LFOHZ, 0},
     {"FADE IN", 0, 127, 0, SF_FADE, 0},
-    {"RESTART", 0, 1, 0, SF_ENUM, N_L2KEY},
+    {"RESTART", 0, 3, 0, SF_ENUM, N_L2KEY},
     SLOT(1), SLOT(2), SLOT(3), SLOT(4), SLOT(5), SLOT(6),
 };
 _Static_assert(SP_NUM == 64, "a sound's parameters: 64 (the app's lock mask is 64 bits)");
@@ -155,10 +161,17 @@ static char *put_tenths(char *b, float x, const char *unit)   /* 1.2 S */
     return put_str(b, unit);
 }
 
+void syn_tempo(float bpm) { syn_bpm = bpm; }
+
 void syn_param_text(int id, int v, char *buf)
 {
     const syn_param_t *p = syn_param(id);
     char *b = buf;
+    if (id == SP_L2RATE && text_sync && v >= 0 && v <= 127) {
+        b = put_str(b, N_L2DIV[v * L2_NDIV / 128]);   /* LFO 2 synced: the division its RATE picks */
+        *b = 0;
+        return;
+    }
     if (p) {
         switch (p->fmt) {
         case SF_ENUM:
@@ -637,6 +650,8 @@ void syn_mixer(int t, int pan, float rev, float dly)
     mix[t].ds = dly < 0.0f ? 0.0f : dly;
 }
 
+void syn_text_track(int t) { text_sync = t >= 1 && t < SYN_TRACKS && (tk[t].v[SP_L2KEY] & 2); }
+
 void syn_pressure(int t, float p)
 {
     if (t >= 1 && t < SYN_TRACKS)
@@ -748,7 +763,7 @@ static void voice_start(int i, int t, int note, float vel, int32_t gate, int uni
     x->acc = (uint8_t)((nflags & SN_ACCENT) != 0);
     x->accenv = x->acc ? 1.0f : 0.0f;
     x->rnd = rnd1();
-    x->l2ph = s[SP_L2KEY] ? (rnd1() + 1.0f) * 0.5f : 0.0f;   /* LFO 2: from its start each note, or anywhere */
+    x->l2ph = (s[SP_L2KEY] & 1) ? (rnd1() + 1.0f) * 0.5f : 0.0f;   /* LFO 2: from its start each note, or anywhere */
     x->l2a = x->l2b;
     x->l2b = rnd1();
     x->l2fade = s[SP_L2FADE] ? 0.0f : 1.0f;
@@ -1089,7 +1104,8 @@ void syn_prepare(void)
         x->menv = env_step(&x->mstage, x->menv, s, SP_MA, SP_MD, SP_MS, SP_MR);
         {   /* LFO 2: each note's own */
             int ri = clamp(s[SP_L2RATE] + (int32_t)x->l2rate, 0, 127);
-            x->l2ph += L2_INC[ri];
+            x->l2ph += (s[SP_L2KEY] & 2) ? syn_bpm * (1.0f / 60.0f) / L2_BEATS[ri * L2_NDIV / 128] * ((float)SYN_CTL / 44100.0f)
+                                         : L2_INC[ri];
             if (x->l2ph >= 1.0f) {
                 x->l2ph -= (float)(int32_t)x->l2ph;
                 x->l2a = x->l2b;

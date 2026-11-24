@@ -3667,6 +3667,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     }
     midi_in();
     pfx_follow();                         /* MIX PER PATTERN: the focused pattern's FX */
+    syn_tempo((float)proj.bpm10 * 0.1f);
     mo_tick((int32_t)n);                  /* SEQ OUT: the note-offs due */
     render_t += n;
     tempo_stretch();
@@ -8547,6 +8548,7 @@ static void input(void)
     int inst;
     touch_poll();
     keys = touch_keys();
+    syn_text_track(ui.trk);
     {   /* the keys' pressure (0.5): each instrument track's hardest-held key, to its matrix (PRESSURE) and out as
          * channel pressure */
         static uint8_t was[NTRK];
