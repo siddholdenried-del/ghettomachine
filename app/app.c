@@ -288,7 +288,9 @@ typedef struct {
     KitPatch dpatch;
     uint16_t dpatch_size;
     uint8_t dpatch_kit, dpatch_rsv;
+    uint8_t fx2[8];                       /* format 10: the FX's second pages (fx.h FXP_DL_WIDTH ..: FXP_NUM on) */
 } project_t;
+static uint8_t *fxv(int i);               /* an FX knob's place in the project: fx, or fx2 past FXP_NUM */
 /* Freeze the persisted 64-step layouts; legacy files end before the 606 pots. */
 typedef struct {
     uint32_t hit[NPADS][2], acc[2];
@@ -388,6 +390,7 @@ static const plat_file_t PROJ_FILE = {0x97000u, 0x9F000u, 8u * 4096u};
 _Static_assert(PROJ_V3_SIZE == 32120u, "format 3 as 0.4 saved it");
 
 static project_t proj PLAT_POOL;
+static uint8_t *fxv(int i) { return i < FXP_NUM ? &proj.fx[i] : &proj.fx2[(i - FXP_NUM) & 7]; }
 static color_state_t drum_color_rt;
 static color_sends_t color_drums_send;
 static uint8_t (*kit_pots(int k))[NPOTS] { return k == KIT_707 ? proj.pots707 : k == KIT_606 ? proj.pots606 : proj.pots[k]; }
@@ -815,8 +818,8 @@ static void project_default(void)
             proj.mix[i].rev = REV[i];
             proj.mix[i].dly = DLY[i];
         }
-        for (i = 0; i < FXP_NUM; i++)
-            proj.fx[i] = (uint8_t)fx_get((int)i);   /* (fx_init's: X0X's defaults, the delay centred) */
+        for (i = 0; i < FXP_ALL; i++)
+            *fxv((int)i) = (uint8_t)fx_get((int)i);   /* (fx_init's: X0X's defaults, the delay centred) */
     }
     for (i = 0; i < NTRK; i++) {
         lfo_t *l = &proj.lfo[i];
@@ -888,9 +891,9 @@ static void tracks_to_voices(void)        /* (a track, then an FX knob, at a tim
         syn_mixer(t, proj.mix[t].pan, (float)proj.mix[t].rev / 127.0f, (float)proj.mix[t].dly / 127.0f);
         plat_unlock(f);
     }
-    for (t = 0; t < FXP_NUM; t++) {
+    for (t = 0; t < FXP_ALL; t++) {
         uint32_t f = plat_lock();
-        fx_set(t, proj.fx[t]);
+        fx_set(t, *fxv(t));
         plat_unlock(f);
     }
 }
@@ -1060,6 +1063,8 @@ static void project_check(void)           /* a loaded project's values kept in r
     }
     for (t = 0; t < FXP_NUM; t++)
         proj.fx[t] = (uint8_t)clamp(proj.fx[t], 0, fx_param(t)->max);
+    for (t = FXP_NUM; t < FXP_ALL; t++)
+        *fxv(t) = (uint8_t)clamp(*fxv(t), 0, fx_param(t)->max);
     for (i = 0; i < NPAT; i++)
         for (t = 0; t < NINST; t++) {
             ipart_t *p = &proj.p[i].t[t];
@@ -1371,6 +1376,10 @@ static int project_load(void)
     }
     if (fmt < 8)                          /* before each clip had its own LFO: every clip its track's */
         plfo_fill();
+    if (fmt < 10) {                       /* before the FX's second pages: theirs as the effects were (fx.c's defaults) */
+        for (i = FXP_NUM; i < FXP_ALL; i++)
+            *fxv((int)i) = (uint8_t)fx_param((int)i)->def;
+    }
     if (fmt < 9)                          /* the ROOM reverb's and DIGI delay's knobs: BongVerb's and BongDelay's now */
         fx_migrate();
     project_check();
@@ -5940,12 +5949,16 @@ static const char *const MIX_NAME[NMIXPAGE] = {"LEVEL", "PAN", "REVERB", "DELAY"
 #define MIX_RET 4
 static const int8_t RET_P[4] = {FXP_RV_LEVEL, FXP_RV_DECAY, FXP_DL_LEVEL, FXP_DL_FDBK};
 static const char *const RET_LABEL[4] = {"VERB RTN", "VERB DECAY", "DELAY RTN", "FEEDBACK"};
-#define NFXPAGE 4
-static const char *const FX_PAGE_NAME[NFXPAGE] = {"BongVerb", "BongDelay", "FX MODE", "DJ FILTER"};
+#define NFXPAGE 5                         /* (0.5) each effect two pages of its own (FX MODE's two knobs: on them) */
+#define FXPG_VERB 0
+#define FXPG_DELAY 2
+#define FXPG_FILTER 4
+static const char *const FX_PAGE_NAME[NFXPAGE] = {"BongVerb", "BongVerb 2", "BongDelay", "BongDelay 2", "DJ FILTER"};
 static const int8_t FX_PAGE_P[NFXPAGE][4] = {
     {FXP_RV_DECAY, FXP_RV_DAMP, FXP_RV_PREDELAY, FXP_RV_LEVEL},
+    {FXP_RV_SIZE, FXP_RV_MOTION, FXP_RV_LOWCUT, FXP_RV_MODE},
     {FXP_DL_TIME, FXP_DL_FDBK, FXP_DL_TONE, FXP_DL_LEVEL},
-    {FXP_RV_MODE, FXP_DL_DRIVE, -1, -1},  /* BongVerb's PLATE / HALL, BongDelay's DRIVE */
+    {FXP_DL_WIDTH, FXP_DL_WOBBLE, FXP_DL_LOWCUT, FXP_DL_DRIVE},
     {FXP_FILTER, FXP_F_RESO, -1, -1},    /* the DJ filter: on the master bus, after the compressor */
 };
 /* the master bus (GLO after the mixer's pages, or SEL + GLO): its pages and their knobs */
@@ -5961,13 +5974,14 @@ static const int8_t MST_PAGE_P[NMSTPAGE][4] = {
     {FXP_ST_WIDTH, FXP_ST_BASS, FXP_ST_BAL, -1},   /* (the fourth: the correlation) */
     {FXP_L_GAIN, FXP_L_CEIL, FXP_L_REL, FXP_LIMIT},
 };
-static const char *const FX_LABEL[FXP_NUM] = {"DECAY", "DAMP", "PRE-DELAY", "LEVEL", "TIME", "REGEN", "TONE", "LEVEL",
+static const char *const FX_LABEL[FXP_ALL] = {"DECAY", "DAMP", "PRE-DELAY", "LEVEL", "TIME", "REGEN", "TONE", "LEVEL",
                                               "VERB MODE", "DRIVE", "-", "-", "THRESHOLD", "RATIO", "ATTACK",
                                               "RELEASE", "MAKEUP", "MIX", "PUMP", "FILTER", "RESO", "LIMIT",
                                               "LOW", "MID", "HIGH", "LOW CUT", "LOW FREQ", "MID FREQ", "MID Q",
                                               "HIGH FREQ", "DRIVE", "WARMTH", "TONE", "MIX", "WIDTH", "BASS MONO",
-                                              "BALANCE", "GAIN", "CEILING", "RELEASE", "PRESET", "BYPASS"};
-_Static_assert(sizeof FX_LABEL / sizeof FX_LABEL[0] == FXP_NUM, "a label for each FX knob");
+                                              "BALANCE", "GAIN", "CEILING", "RELEASE", "PRESET", "BYPASS",
+                                              "WIDTH", "WOBBLE", "LOW CUT", "SIZE", "MOTION", "LOW CUT"};
+_Static_assert(sizeof FX_LABEL / sizeof FX_LABEL[0] == FXP_ALL, "a label for each FX knob");
 
 static int mix_value(int t, int page)
 {
@@ -6119,7 +6133,7 @@ static void qm_knob(int k, int32_t e)
 static void fx_text(int i, char *s)
 {
     const x0x_param_t *p = fx_param(i);
-    int v = proj.fx[i];
+    int v = *fxv(i);
     s[0] = 0;
     if (i == FXP_PUMP && !v) {
         text_cat(s, "OFF");
@@ -6145,9 +6159,9 @@ static void fx_knob_i(int i, int32_t e)
     uint32_t f;
     if (!p)
         return;
-    proj.fx[i] = (uint8_t)clamp(proj.fx[i] + e, 0, p->max);
+    *fxv(i) = (uint8_t)clamp(*fxv(i) + e, 0, p->max);
     f = plat_lock();
-    fx_set(i, proj.fx[i]);
+    fx_set(i, *fxv(i));
     plat_unlock(f);
     dirty = 1;
     fx_text(i, s);
@@ -9137,7 +9151,7 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
             return 0;
         }
         fx_text(i, t);
-        card_put(c, FX_LABEL[i], t, proj.fx[i], 0, p->max, fx_mid(i));
+        card_put(c, FX_LABEL[i], t, *fxv(i), 0, p->max, fx_mid(i));
         return 1;
     }
     case KD_SETUP: {
@@ -10879,9 +10893,10 @@ static void page_fx(void)                 /* the sends' FX: what they do, drawn 
     int pg = ui.fxpage, i;
     char t[32];
     t[0] = 0;
-    if ((pg == 1 || pg == 2) && !fx_delay_on()) {
+    const int dl = pg == FXPG_DELAY || pg == FXPG_DELAY + 1;
+    if (dl && !fx_delay_on()) {
         text_cat(t, "PAUSED: SAMPLING");
-    } else if (pg == 1 || pg == 2) {      /* the time, in notes and in ms */
+    } else if (dl) {                      /* the time, in notes and in ms */
         char u[12];
         fx_text(FXP_DL_TIME, t);
         text_cat(t, "  ");
@@ -10889,22 +10904,22 @@ static void page_fx(void)                 /* the sends' FX: what they do, drawn 
         text_cat(t, u);
         text_cat(t, " MS");
     } else {
-        text_cat(t, pg == 3 ? "ON THE MASTER BUS" : "FROM THE SENDS");
+        text_cat(t, pg == FXPG_FILTER ? "ON THE MASTER BUS" : "FROM THE SENDS");
     }
     band_set(C_FXCOL, "ALL", FX_PAGE_NAME[pg], t, NFXPAGE, pg);
     grid_bg();                     /* (the atlas: curves on a grid, on black) */
-    if (pg == 0) {                        /* the reverb: its tail, long by DECAY, bright by TONE, loud by LEVEL */
+    if (pg <= FXPG_VERB + 1) {            /* the reverb: its tail, long by DECAY, bright by TONE, loud by LEVEL */
         float decay = 0.2f + (float)proj.fx[FXP_RV_DECAY] / 127.0f * 0.78f, lvlv = (float)proj.fx[FXP_RV_LEVEL] / 127.0f, a = 1.0f;
         cv_rect(10, 118, 220, 1, C_GRID);
         for (i = 0; i < 54; i++) {
             int h = (int)(a * (0.3f + 0.7f * lvlv) * 100.0f);
             if (h > 0)
                 vheat(12 + i * 4, 18, 3, 100, h);
-            a *= decay * 0.12f + 0.86f;
+            a *= (decay * 0.12f + 0.86f) * (0.93f + 0.07f * (float)proj.fx2[FXP_RV_SIZE - FXP_NUM] / 127.0f);   /* (SIZE: a smaller room's shorter) */
         }
-    } else if (pg == 1 || pg == 2) {      /* the delay: the echoes over 2 s, each lower by FEEDBACK; DELAY 2 to the sides */
+    } else if (dl) {                      /* the delay: the echoes over 2 s, each lower by FEEDBACK; DELAY 2 to the sides */
         float ms = fx_delay_ms(), fb = fx_delay_fb(), a = (float)proj.fx[FXP_DL_LEVEL] / 127.0f * 0.8f + 0.2f;
-        int wide = 0, n;                  /* (BongDelay: dual mono) */
+        int wide = proj.fx2[FXP_DL_WIDTH - FXP_NUM] > 0, n;   /* (WIDTH: the echoes side to side) */
         uint16_t c = fx_delay_on() ? TH_FG : C_GRID;
         cv_rect(10, 66, 220, 1, C_GRID);
         rrect(10, 18, 4, 96, 2, TH_HI);  /* the sound */
@@ -12385,9 +12400,9 @@ int app_expect(const char *what, int *got)
         *got = fx_get(i);
     } else if (!strncmp(what, "fx", 2)) {    /* fxI: the FX knob I (dsp/fx.h FXP_*) */
         int i = atoi(what + 2);
-        if (i < 0 || i >= FXP_NUM)
+        if (i < 0 || i >= FXP_ALL)
             return 0;
-        *got = proj.fx[i];
+        *got = *fxv(i);
     } else if (!strcmp(what, "lfopage"))
         *got = ui.lfopage;
     else if (!strcmp(what, "mslot"))      /* MATRIX: the slot on the knobs (1-based) */

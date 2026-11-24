@@ -53,7 +53,7 @@ void bongverb_init(bongverb_t *v)
         int total = 0;
         for (int i = 0; i < BV_LINES; i++) {
             v->off[i] = total;
-            v->len[i] = ((int)(v->rate * .001f * ms[i])) | 1;
+            v->len[i] = v->base_len[i] = ((int)(v->rate * .001f * ms[i])) | 1;
             total += v->len[i];
         }
     }
@@ -65,6 +65,7 @@ void bongverb_init(bongverb_t *v)
     v->param[1] = .58f;
     v->param[2] = 0.f;
     v->param[3] = .45f;
+    v->mscale = 1.f;
     bv_recalc(v);
     v->mode = v->mode_target;
     v->delay = v->delay_target;
@@ -84,6 +85,30 @@ void bongverb_set(bongverb_t *v, int id, float value)
         return;
     v->param[id] = value;
     bv_recalc(v);
+    v->settled = 0;
+}
+
+void bongverb_extra(bongverb_t *v, int id, float value)
+{
+    if (!bf_finite(value))
+        return;
+    const float x = bf_clip(value, 0.f, 1.f);
+    if (id == BVX_SIZE) {                 /* shorter lines: a smaller, denser space (the tail's place in them kept) */
+        for (int i = 0; i < BV_LINES; i++) {
+            int len = ((int)((float)v->base_len[i] * (.35f + .65f * x))) | 1;
+            v->len[i] = len > v->base_len[i] ? v->base_len[i] : len;
+            if (v->pos[i] >= v->len[i])
+                v->pos[i] = 0;
+        }
+        bv_recalc(v);
+    } else if (id == BVX_MOTION) {
+        v->mscale = 1.f + 14.f * x * x;
+    } else {
+        const float w = 6.28318530718f * (20.f + 480.f * x * x) * (1.f / 44100.f);
+        v->lc_coef = x > 0.f ? w / (1.f + w) : 0.f;
+        if (x <= 0.f)
+            v->lc = 0.f;
+    }
     v->settled = 0;
 }
 
@@ -112,13 +137,14 @@ GM_INLINE float bv_allpass(bongverb_t *v, int which, float in, float gain)
 GM_INLINE void bv_step_motion(bongverb_t *v, float mode)
 {
     if (!v->motion_clock) {
-        const float depth = .37f + .35f * mode;
+        const float depth = (.37f + .35f * mode) * v->mscale;
+        const float centre = depth > .87f ? depth + .05f : .92f;   /* (MOTION past the kernel's: the read never behind) */
         for (int j = 0; j < 2; j++) {
             const uint32_t u = v->motion_phase[j] >> 16;
             const float t = (float)u * (1.f / 32768.f) - 1.f;
             const float tri = 1.f - 2.f * fm_fabsf(t);
             const float curved = tri * (1.5f - .5f * tri * tri);
-            const float target = .92f + depth * curved;
+            const float target = centre + depth * curved;
             v->motion_step[j] = (target - v->motion[j]) * (1.f / BV_MOTION_BLOCK);
             v->motion_phase[j] += v->motion_inc[j];
         }
@@ -183,7 +209,13 @@ GM_INLINE void bv_core(bongverb_t *v, float in, float *left, float *right)
 
 GM_INLINE void bv_tick(bongverb_t *v, float in, float *left, float *right)
 {
-    const float input = bf_finite(in) ? bf_clip(in, -4.f, 4.f) : 0.f;
+    float input = bf_finite(in) ? bf_clip(in, -4.f, 4.f) : 0.f;
+    if (v->lc_coef > 0.f) {               /* LOW CUT: the send's lows kept out of the tank */
+        v->lc += v->lc_coef * (input - v->lc);
+        if (fm_fabsf(v->lc) < 1.e-20f)
+            v->lc = 0.f;
+        input -= v->lc;
+    }
     if (!v->half) {
         v->input = input;
         *left = .5f * (v->old_l + v->new_l);
@@ -279,6 +311,8 @@ GM_INLINE void bd_retune(bongdelay_t *d)
     const float capacity = .28f + .72f * (.165f / (seconds + .120f));
     d->alpha = bd_lp(d, (1160.f + 8460.f * d->tone * d->tone) * capacity);
     d->motion = d->hz * (.000025f + (.00037f + .00012f * seconds) * d->drive * d->drive);
+    if (d->wob > 0.f)                     /* WOBBLE: more of the same slow wow, to 3 ms */
+        d->motion += d->hz * .0030f * d->wob * d->wob;
     d->input_gain = 1.f + 3.2f * d->drive * d->drive;
     d->loop_gain = 1.f + 2.15f * d->drive * d->drive;
 }
@@ -294,6 +328,9 @@ void bongdelay_set(bongdelay_t *d, int id, float value)
     case 1: d->regen_to = 1.18f * x * x; if (!d->started) d->regen = d->regen_to; break;
     case 2: d->tone_to = x; if (!d->started) d->tone = x; break;
     case 3: d->drive_to = x; if (!d->started) d->drive = x; break;
+    case BD_WIDTH: d->width = x; break;
+    case BD_WOBBLE: d->wob = x; break;
+    case BD_LOWCUT: d->dc_coef = bd_lp(d, 42.f + 758.f * x * x); break;
     }
 }
 
@@ -320,6 +357,7 @@ void bongdelay_init(bongdelay_t *d, int16_t *ring)
     d->lag_coef = d->inv_hz / .035f;
     d->drift = UINT32_C(0x40000000);
     d->drift_delta = (uint32_t)(4294967296.f * .54f * d->inv_hz);
+    d->gl = d->gr = 1.f;
     bongdelay_set(d, 0, .53f);
     bongdelay_set(d, 1, .62f);
     bongdelay_set(d, 2, .60f);
@@ -344,6 +382,8 @@ GM_INLINE void bd_tick(bongdelay_t *d, float in, float *left, float *right)
     if (!d->phase) {
         d->prev_in = in;
         *left = *right = .5f * (d->prev_wet + d->wet);
+        *left *= d->gl;
+        *right *= d->gr;
     } else {
         d->lag += bf_clip((d->lag_to - d->lag) * d->lag_coef, -.86f, .86f);
         d->regen += (d->regen_to - d->regen) * d->smooth;
@@ -380,7 +420,18 @@ GM_INLINE void bd_tick(bongdelay_t *d, float in, float *left, float *right)
             d->at = 0;
         d->prev_wet = d->wet;
         d->wet = heard;
-        *left = *right = d->prev_wet;
+        if (d->width > 0.f) {             /* WIDTH: the pan changes sides once a delay time: each echo on its own */
+            d->pan_phase += 1.f / (d->lag > 1.f ? d->lag : 1.f);
+            if (d->pan_phase >= 2.f)
+                d->pan_phase -= 2.f;
+            d->pan += .004f * ((d->pan_phase < 1.f ? 1.f : -1.f) - d->pan);
+            d->gl = 1.f - d->width * (d->pan > 0.f ? d->pan : 0.f);
+            d->gr = 1.f + d->width * (d->pan < 0.f ? d->pan : 0.f);
+        } else {
+            d->gl = d->gr = 1.f;
+        }
+        *left = d->prev_wet * d->gl;
+        *right = d->prev_wet * d->gr;
     }
     d->phase ^= 1;
 }

@@ -31,16 +31,29 @@ typedef struct {
         lp[BV_LINES];
     uint32_t quiet;                       /* samples in and out under the floor (the sleep) */
     uint8_t settled;                      /* its glides have stopped moving (the sleep skips them) */
+    /* GhettoMachine's own (0.5; at their defaults the kernel's arithmetic to the bit): */
+    int base_len[BV_LINES];               /* the tank's lines at SIZE's full length */
+    float mscale;                         /* MOTION: times the kernel's modulation depth (1) */
+    float lc, lc_coef;                    /* LOW CUT: a one-pole high-pass on the send (coef 0: none) */
 } bongverb_t;
 
 void bongverb_init(bongverb_t *v);
 void bongverb_set(bongverb_t *v, int id, float value);
+/* GhettoMachine's own controls, 0..1: BVX_SIZE the tank's lines from 35 % to their full length (1: the kernel's);
+ * BVX_MOTION the modulation's depth from the kernel's (0) to 15 times it; BVX_LOWCUT a high-pass on the send, off
+ * (0) to 500 Hz */
+enum { BVX_SIZE, BVX_MOTION, BVX_LOWCUT };
+void bongverb_extra(bongverb_t *v, int id, float value);
 /* n samples of the send in; the return added into l and r times gain (0: not added, the engine still runs) */
 void bongverb_block(bongverb_t *v, const float *in, float *l, float *r, float gain, int n);
 int bongverb_asleep(const bongverb_t *v);
 
 /* ---- BongDelay: mono send in, dual-mono return (wet only) on a lent 16-bit ring of BD_RING samples */
-enum { BD_TIME, BD_REGEN, BD_TONE, BD_DRIVE, BD_NPARAMS };
+enum { BD_TIME, BD_REGEN, BD_TONE, BD_DRIVE, BD_NPARAMS,
+       /* GhettoMachine's own (0.5; 0: the kernel's arithmetic to the bit): WIDTH the echoes from side to side, a pan
+        * that changes sides once a delay time; WOBBLE more of the line's slow wow (to 3 ms); LOWCUT the loop's
+        * high-pass up from 42 Hz to 800 Hz: each repeat thinner (dub) */
+       BD_WIDTH = BD_NPARAMS, BD_WOBBLE, BD_LOWCUT };
 enum { BD_RING = 23040, BD_CONTROL = 32 };
 typedef struct {
     int16_t *ring;                        /* BD_RING samples, zeroed by the lender */
@@ -53,6 +66,7 @@ typedef struct {
     float alpha, input_gain, loop_gain, motion;
     uint32_t quiet;
     uint8_t settled;                      /* 2: its glides have stopped (a retune still due), 1: and retuned */
+    float width, wob, pan, pan_phase, gl, gr;   /* (0.5) WIDTH, WOBBLE; the pan and the sides' gains now */
 } bongdelay_t;
 
 void bongdelay_init(bongdelay_t *d, int16_t *ring);

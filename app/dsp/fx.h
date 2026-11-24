@@ -33,7 +33,11 @@ enum {
     FXP_ST_WIDTH, FXP_ST_BASS, FXP_ST_BAL,
     FXP_L_GAIN, FXP_L_CEIL, FXP_L_REL,
     FXP_M_PRESET, FXP_M_BYPASS,
-    FXP_NUM
+    FXP_NUM,
+    /* (0.5, project format 10) BongDelay's and BongVerb's second pages: past FXP_NUM, which stays the count of the
+     * knobs a project's first block holds (the app keeps these beside it: fx2) */
+    FXP_DL_WIDTH = FXP_NUM, FXP_DL_WOBBLE, FXP_DL_LOWCUT, FXP_RV_SIZE, FXP_RV_MOTION, FXP_RV_LOWCUT,
+    FXP_ALL
 };
 
 /* the delay's line: int16 samples, lent by the caller (it may take it back with fx_delay_line(0)) */

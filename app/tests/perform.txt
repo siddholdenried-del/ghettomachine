@@ -202,9 +202,9 @@ expect arpset3_4 1
 # FX > DELAY 2: WIDTH (ping-pong); the master bus (SEL + GLO) > COMP 2: PUMP; then GLO to its end: T3's keys again
 tap FX
 wait 30
-turn SELECT 2
+turn SELECT 4
 wait 30
-expect fxpage 2
+expect fxpage 4
 spin K3 90
 wait 30
 press SEL

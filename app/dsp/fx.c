@@ -18,6 +18,7 @@
 static bongverb_t verb FX_POOL;           /* its lines: 31 KB */
 static bongdelay_t dly;                   /* its ring is the lent line (fx_init) */
 static uint8_t send_pot[12];              /* the sends' knobs (FXP_RV_DECAY .. FXP_RSV11) */
+static uint8_t send2_pot[FXP_ALL - FXP_NUM];   /* their second pages' (FXP_DL_WIDTH .. FXP_RV_LOWCUT) */
 static uint8_t dl_off;                    /* the line lent out: the delay out of the chain */
 static float bpm_now = 120.0f, gain_rv, gain_dl, gain_rv_now, gain_dl_now;   /* the returns' gains: set; now (gliding) */
 static master_t mst;
@@ -104,6 +105,21 @@ static const x0x_param_t SEND_P[12] = {
     {"DlTime", 12, 2, DIV_N}, {"Regen", 127, 58, 0}, {"Tone", 127, 66, 0}, {"DlLvl", LVL_MAX, 85, 0},
     {"Mode", 1, 0, MODE_N}, {"Drive", 127, 27, 0}, {"-", 0, 0, RSV_N}, {"-", 0, 0, RSV_N},
 };
+/* the second pages': the delay's WIDTH, WOBBLE and LOW CUT, the reverb's SIZE (full), MOTION and LOW CUT; at these
+ * defaults both sound as their kernels do */
+static const x0x_param_t SEND2_P[FXP_ALL - FXP_NUM] = {
+    {"Width", 127, 0, 0}, {"Wobble", 127, 0, 0}, {"DlCut", 127, 0, 0},
+    {"Size", 127, 127, 0}, {"Motion", 127, 0, 0}, {"RvCut", 127, 0, 0},
+};
+static void send2_set(int i, int v)
+{
+    const float x = (float)v * (1.0f / 127.0f);
+    send2_pot[i - FXP_NUM] = (uint8_t)v;
+    if (i <= FXP_DL_LOWCUT)
+        bongdelay_set(&dly, BD_WIDTH + (i - FXP_DL_WIDTH), x);
+    else
+        bongverb_extra(&verb, i - FXP_RV_SIZE, x);
+}
 #define RV_GAIN 0.48f                     /* the returns' gains at LEVEL 85 */
 #define DL_GAIN 0.53f
 
@@ -146,6 +162,8 @@ void fx_init(int16_t *dly_line, int dly_len)
     dl_off = 0;
     for (i = 0; i < 12; i++)
         send_set(i, SEND_P[i].def);
+    for (i = FXP_NUM; i < FXP_ALL; i++)
+        send2_set(i, SEND2_P[i - FXP_NUM].def);
     gain_rv_now = gain_rv;                /* (the glide starts where they're set) */
     gain_dl_now = gain_dl;
     master_init(&mst);
@@ -162,6 +180,8 @@ void fx_init(int16_t *dly_line, int dly_len)
 
 const x0x_param_t *fx_param(int i)
 {
+    if (i >= FXP_NUM && i < FXP_ALL)
+        return &SEND2_P[i - FXP_NUM];
     if (i < 0 || i >= FXP_NUM)
         return 0;
     switch (MAP[i].sec) {
@@ -174,6 +194,8 @@ const x0x_param_t *fx_param(int i)
 
 int fx_get(int i)
 {
+    if (i >= FXP_NUM && i < FXP_ALL)
+        return send2_pot[i - FXP_NUM];
     if (i < 0 || i >= FXP_NUM)
         return 0;
     switch (MAP[i].sec) {
@@ -190,6 +212,10 @@ void fx_set(int i, int v)
     if (!p)
         return;
     v = v < 0 ? 0 : v > p->max ? p->max : v;
+    if (i >= FXP_NUM) {
+        send2_set(i, v);
+        return;
+    }
     switch (MAP[i].sec) {
     case S_BUS: send_set(MAP[i].idx, v); return;
     case S_MST: master_set(&mst, MAP[i].idx, v); return;   /* (COMP and FILTER set their own pots: master.c) */
