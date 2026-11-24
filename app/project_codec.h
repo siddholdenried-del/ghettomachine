@@ -70,7 +70,9 @@ static int project_decode(const uint8_t *in, uint32_t size, int fmt)
     for (j = 0; j < PROJ_PREFIX; j++) raw[j] = in[j];
     for (j = 0; j < meta_bytes; j++) tail[j] = in[PROJ_PREFIX + j];
     for (i = 0; i < NPAT; i++) {
-        uint8_t *out = (uint8_t *)&proj.p[i];
+        /* (up to format 10 a record is a pattern with 16 locks a part: decoded into the packer's buffer, then spread) */
+        const uint32_t want = fmt < 11 ? (uint32_t)sizeof(pattern_v10_t) : (uint32_t)sizeof(pattern_t);
+        uint8_t *out = fmt < 11 ? codec_out : (uint8_t *)&proj.p[i];
         uint32_t end, put = 0;
         if (size - at < 2u) return -1;
         end = (uint32_t)in[at] | (uint32_t)in[at + 1u] << 8;
@@ -79,7 +81,7 @@ static int project_decode(const uint8_t *in, uint32_t size, int fmt)
         end += at;
         while (at < end) {
             uint32_t tag = in[at++], count = (tag & 127u) + (tag >= 128u ? 3u : 1u);
-            if (count > sizeof(pattern_t) - put) return -1;
+            if (count > want - put) return -1;
             if (tag < 128u) {
                 if (count > end - at) return -1;
                 for (j = 0; j < count; j++) out[put++] = in[at++];
@@ -92,7 +94,19 @@ static int project_decode(const uint8_t *in, uint32_t size, int fmt)
                 for (j = 0; j < count; j++, put++) out[put] = out[put - dist];
             }
         }
-        if (put != sizeof(pattern_t)) return -1;
+        if (put != want) return -1;
+        if (fmt < 11) {
+            const pattern_v10_t *o = (const pattern_v10_t *)(const void *)codec_out;
+            pattern_t *p = &proj.p[i];
+            uint32_t t;
+            for (j = 0; j < sizeof *p; j++) ((uint8_t *)p)[j] = 0;
+            for (j = 0; j < offsetof(dpart_t, lk); j++) ((uint8_t *)&p->d)[j] = ((const uint8_t *)&o->d)[j];
+            for (j = 0; j < OLD_LOCKS; j++) p->d.lk[j] = o->d.lk[j];
+            for (t = 0; t < NINST; t++) {
+                for (j = 0; j < offsetof(ipart_t, lk); j++) ((uint8_t *)&p->t[t])[j] = ((const uint8_t *)&o->t[t])[j];
+                for (j = 0; j < OLD_LOCKS; j++) p->t[t].lk[j] = o->t[t].lk[j];
+            }
+        }
     }
     return at == size ? 0 : -1;
 }

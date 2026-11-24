@@ -1,0 +1,60 @@
+# Made once with the last format-10 build (24 Nov 2026, c90d12b, 16 locks a part: format 11 has 32), to keep a project
+# as that build saved it for app/tests/locks32.txt: proj_v10.img. Run from the repository's top with the format-10
+# build only (kept for the record)
+wait 600
+# the drums: BD step 1 a chance (75 %), 3 substeps and its own velocity; step 3 on
+key 0 down
+wait 30
+turn K2 -5
+wait 30
+turn K3 2
+wait 30
+turn K1 -20
+wait 30
+key 0 up
+wait 30
+expect prob0_1 75
+expect nlk 3
+key 4 down
+wait 30
+key 4 up
+wait 30
+expect hit0_3 1
+# T3: a note on step 1 with 4 substeps; the snare's DECAY up; the delay's WIDTH 100
+turn ALGO 2
+wait 30
+key 0 down
+wait 30
+key 0 up
+wait 30
+key 0 down
+wait 30
+turn ALGO 5
+wait 30
+key 0 up
+wait 30
+expect nsteps3 1
+expect inlk3 1
+turn ALGO -2
+wait 30
+key 3 down
+wait 20
+key 3 up
+tap EDIT
+wait 100
+turn SELECT 1
+wait 100
+turn K3 5
+wait 100
+tap FX
+wait 30
+turn SELECT 3
+wait 30
+turn K1 100
+wait 30
+expect fx42 100
+tap SAVE
+wait 400
+expect dirty 0
+expect projfmt 10
+flash_dump app/tests/fixtures/proj_v10.img

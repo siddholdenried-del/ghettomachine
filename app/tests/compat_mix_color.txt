@@ -96,11 +96,11 @@ expect stem1 -1200
 midi 82 3C 00
 tap SAVE
 wait 400
-expect projfmt 10
+expect projfmt 11
 expect dirty 0
 reboot
 wait 600
-expect projfmt 10
+expect projfmt 11
 expect kitcustom 1
 expect model8 0
 expect model7 1

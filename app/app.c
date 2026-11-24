@@ -68,7 +68,8 @@ static const char *trial_pad_name(int kit, int pad)
 #define OLD_STEPS 64
 #define STEP_WORDS (NSTEPS / 32)
 #define NPOTS 12                          /* knob positions kept per pad (the engines have at most 11) */
-#define NLOCKS 16                         /* per drum part: a step's chance or a knob locked for one pad's step */
+#define OLD_LOCKS 16                      /* a part's locks up to format 10, drums and instruments alike */
+#define NLOCKS 32                         /* per drum part: a step's chance or a knob locked for one pad's step */
 #define LK_KIT606 0x40u                    /* 606 locks keep their own pots */
 #define LK_KIT808 0x80u                   /* lock_t.param: the 808's knob (else the 909's) */
 #define LK_KIT707 (LK_KIT606 | LK_KIT808) /* both bits unused by legacy locks */
@@ -88,7 +89,7 @@ static const char *trial_pad_name(int kit, int pad)
 #define NKEYS 27
 #define KEY_NOTE0 53                      /* key 0 (F3) at octave 0 */
 #define PROJ_MAGIC 0x31544745u            /* "EGT1": fm1-eight 0.1's project; another magic loads the default project */
-#define PROJ_VERSION 10                   /* 10: the DrumEngine's patch (the drums' edits) appended (9's layout before
+#define PROJ_VERSION 11                   /* 11: 32 locks a part (10's patterns had 16: pattern_v10_t); 10: the DrumEngine's patch (the drums' edits) appended (9's layout before
                                            * it); 9: BongVerb's and BongDelay's knobs in the sends' slots (fx_migrate; the
                                            * layout is 8's); 8: each clip its own LFO (plfo); 7: combined Color and mixed
                                            * kits; 1-5 and 7-9 readable, private divergent v6 rejected */
@@ -171,7 +172,7 @@ typedef struct {                          /* an instrument step (format 1 had a 
 static inline int ns_vel(const nstep_t *s) { return s->vel & 0x7F; }
 static inline int ns_prob(const nstep_t *s) { return s->prob & 0x7F; }
 
-#define NILOCKS 16                        /* per instrument part: a sound parameter locked for one step */
+#define NILOCKS 32                        /* per instrument part: a sound parameter locked for one step */
 typedef struct {
     uint8_t step, param;                  /* param: dsp/synth.h SP_* */
     int8_t val;
@@ -296,7 +297,7 @@ typedef struct {
     uint32_t hit[NPADS][2], acc[2];
     uint16_t mute;
     uint8_t len, rate, nlk, rsv[3];
-    lock_t lk[NLOCKS];
+    lock_t lk[OLD_LOCKS];
 } dpart_old_t;
 typedef struct {
     uint8_t note[NCHORD], vel, gate, prob;
@@ -305,9 +306,24 @@ _Static_assert(sizeof(nstep_old_t) == 7u && sizeof(nstep_t) == 8u, "stable legac
 typedef struct {
     nstep_old_t st[OLD_STEPS];
     uint8_t len, rate, nlk, rsv;
-    ilock_t lk[NILOCKS];
+    ilock_t lk[OLD_LOCKS];
 } ipart_old_t;
 typedef struct { dpart_old_t d; ipart_old_t t[NINST]; } pattern_old_t;
+/* format 4..10's 128-step pattern, 16 locks a part: a record of such a file is decoded as this, then spread */
+typedef struct {
+    uint32_t hit[NPADS][STEP_WORDS], acc[STEP_WORDS];
+    uint16_t mute;
+    uint8_t len, rate, nlk, rsv[3];
+    lock_t lk[OLD_LOCKS];
+} dpart_v10_t;
+typedef struct {
+    nstep_t st[NSTEPS];
+    uint8_t len, rate, nlk, rsv;
+    ilock_t lk[OLD_LOCKS];
+} ipart_v10_t;
+typedef struct { dpart_v10_t d; ipart_v10_t t[NINST]; } pattern_v10_t;
+_Static_assert(offsetof(dpart_v10_t, lk) == offsetof(dpart_t, lk) && offsetof(ipart_v10_t, lk) == offsetof(ipart_t, lk),
+               "format 11 only lengthens the parts' lock tables");
 #define PROJ_PREFIX ((uint32_t)offsetof(project_t, p))
 #define PROJ_TAIL ((uint32_t)offsetof(project_t, pots))
 #define PROJ_TAIL_BYTES (sizeof(project_t) - PROJ_TAIL)
@@ -334,7 +350,7 @@ typedef struct {
 typedef struct {
     nstep_v1_t st[OLD_STEPS];
     uint8_t len, rate, nlk, rsv;
-    ilock_t lk[NILOCKS];
+    ilock_t lk[OLD_LOCKS];
 } ipart_v1_t;
 typedef struct {
     dpart_old_t d;
@@ -1158,6 +1174,8 @@ static int proj_file_format(void)
         return 0;
     if (sz >= (int)PROJ_META && sz <= (int)PROJ_CAPACITY && ver == PROJ_VERSION)
         return PROJ_VERSION;
+    if (sz >= (int)PROJ_META && sz <= (int)PROJ_CAPACITY && ver == 10)
+        return 10;                        /* (11's layout, its patterns with 16 locks a part) */
     if (sz >= (int)(PROJ_PREFIX + PROJ_V9_TAIL_BYTES) && sz <= (int)PROJ_CAPACITY && ver == 9)
         return 9;                         /* (10's layout without the drums' patch) */
     if (sz >= (int)(PROJ_PREFIX + PROJ_V9_TAIL_BYTES) && sz <= (int)PROJ_CAPACITY && ver == 8)
@@ -1245,7 +1263,7 @@ static int read_old_drums(uint32_t at, dpart_t *d)
             d->hit[pad][w] = old.hit[pad][w];
     }
     d->mute = old.mute; d->len = old.len; d->rate = old.rate; d->nlk = old.nlk;
-    for (i = 0; i < NLOCKS; i++)
+    for (i = 0; i < OLD_LOCKS; i++)
         d->lk[i] = old.lk[i];
     return 0;
 }
@@ -1267,7 +1285,7 @@ static int project_load_v23(int fmt)
                                &old, sizeof old))
                 return -1;
             d->len = old.len; d->rate = old.rate; d->nlk = old.nlk;
-            for (k = 0; k < NILOCKS; k++)
+            for (k = 0; k < OLD_LOCKS; k++)
                 d->lk[k] = old.lk[k];
             for (k = 0; k < OLD_STEPS; k++) {
                 int n;
@@ -1317,7 +1335,7 @@ static int project_load_v1(void)
             d->rate = ip.rate;
             d->nlk = ip.nlk;
             d->rsv = 0;
-            for (k = 0; k < NILOCKS; k++)
+            for (k = 0; k < OLD_LOCKS; k++)
                 d->lk[k] = ip.lk[k];
         }
     }
