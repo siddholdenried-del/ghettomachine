@@ -15,7 +15,10 @@ GhettoMachine, part of the BongWare firmware line engineered by BongTech, turns 
   follow actions, sounds per pattern, tap tempo and MIDI clock.
 - **A deeper synth:** OSC 2 with its own wave, FM and ring modulation, a wave shaper (fold, clip, rectify, crush),
   analog drift, a third envelope, a second LFO for each note, a six-slot mod matrix and four macro knobs.
-- **A 303 pattern generator** on T2–T4: acid lines with slides and accents, made from a few knobs.
+- **A 303 pattern generator** on T2–T4: acid lines with slides and accents, made from a few knobs, with steps you
+  can keep while the rest is rolled again. **A beat generator** on the drums: six styles, a knob for how busy each
+  part of the kit is.
+- **MIDI over USB and Bluetooth:** notes in and out (the sequencer's too), clock sent or followed.
 - **Stems over USB:** a computer records the master and each track on its own pair of inputs, all at once.
 
 > Development preview 0.5. The build history that used to open this manual is in [CHANGELOG.md](CHANGELOG.md).
@@ -131,6 +134,24 @@ On instrument STEPS, hold a step and turn **K3 GATE**. Slow turns edit in eighth
 
 A very dense collection of long parts can exceed the fixed FM-1 project save slot. If SAVE reports **PROJECT TOO LARGE**, the previous save is kept and the current edits stay in memory. Shorten or clear unused parts before saving again.
 
+### The beat generator (BEAT)
+
+On the drums' steps, press **SEQ** again: **BEAT** writes the part's hits for you. SEQ once more goes back to the
+steps (on T2–T4 the same press is ACID).
+
+- **OCT+ NEW BEAT:** a new beat from a random seed. **OCT− MUTATE:** an eighth of the steps rolled again.
+- **BEAT** (page 1): **K1 STYLE** (HOUSE, TECHNO, ELECTRO, BOOM BAP, TRAP, BREAKS), **K2 KICK**, **K3 SNARE** (the
+  clap with it), **K4 HATS**. At 50 % a part plays the style as it comes; higher fills in the steps the style only
+  sometimes plays, lower thins even its sure ones, and 0 % takes it out.
+- **MORE** (SELECT): **K1 PERC** (rim, toms and the second cymbal, off the beat), **K2 FILL** (snare and falling
+  toms in the part's last four steps, and sometimes a crash on its 1), **K3 ACCENT**.
+- **LINE:** **K1 SEED** (every beat has a number: turn back to find an earlier one), **K2 LENGTH**, **K3 RATE**,
+  **K4 SWING**, as on STEPS. A longer part gets a beat of its own length, not 16 steps repeated.
+- Every turn makes the beat again at once and replaces the part's hits and accents up to its length (locks, lane
+  mutes and steps past the length stay). **EDIT + OCT−** undoes it. The hits are ordinary hits: edit them on STEPS.
+- Each pattern's drum part keeps its own settings, saved with the project and copied with a pattern.
+- The screen shows the beat a row a drum, the bass drum at the bottom and the cymbals at the top; accented steps white.
+
 ## The instrument tracks (T2–T4)
 
 - **KEYS** (their home page): all 27 keys play. OCT− / OCT+ move the octave.
@@ -208,7 +229,13 @@ also while it plays. It works with **any sound**: MONO or POLY, any preset.
 - **Each part keeps its own settings**, saved with the project and copied with a pattern. A part's first turn starts
   from the track's last settings, so a new pattern can begin as the same line: then MUTATE or NEW for a variation.
 - **The steps are ordinary steps:** edit them on STEPS. But the next turn on ACID makes the line again from its
-  settings and replaces hand edits. **EDIT + OCT−** undoes it (the steps and the settings together).
+  settings and replaces hand edits, except on steps you have kept (below). **EDIT + OCT−** undoes it (the steps and
+  the settings together).
+- **KEEP** (SELECT to the fourth page): lock the steps you like and roll the rest. **K1 STEP** moves along the line
+  (its column lights), **K2 KEEP** keeps that step or frees it, **K3 KEEP ALL** keeps every step (up) or none
+  (down), and **K4 NOTE** changes the step's note by hand, a semitone a click (down past C1: a rest), and keeps it.
+  A kept step has a white bar under its column, and stays exactly as it is, rest or note, through every NEW,
+  MUTATE and knob of the generator. Kept steps are the part's own: saved, copied with the pattern, undone.
 - It fills the part's length; steps past it are left as they are.
 
 **303 marks on STEPS, by hand** (any track, any sound): hold a step and
@@ -575,7 +602,20 @@ Press HOME on the SONG page.
   pattern keeps T2–T4's sounds and the drums' kit. A track moving to another pattern (a scene, a clip, the song, a
   follow action) takes that pattern's sound; a pattern with none yet takes the sound that's playing. So pattern 1 can
   be a 909 with a soft pad and pattern 2 an 808 with an acid bass. The grid shows which patterns have their own.
-- **SELECT: CPU.** Turn SELECT to see where the processor's time goes, live: **DRUMS**, **SYNTH**, **INSERT+COLOR**,
+- **K3 USB PORT:** **COMPUTER** or **MIDI HOST** (a USB controller or synth plugged straight into the FM-1).
+- **K4 MIX:** **SHARED** (one mixer, one set of FX and one master bus, whatever the pattern) or **OWN** (**mix per
+  pattern**). On, a track's LEVEL, PAN and sends go with the pattern its clip is on, as its sound does with K2; the
+  FX pages' and the master bus's knobs go with the pattern you are on (a scene, the song, a follow action, or the
+  one you picked to edit). A pattern with none yet takes what's playing, so turning it on changes nothing until
+  you change something. Only the knobs that differ are told to the effects; a big jump in the master bus between
+  two patterns can still be heard as a jump.
+- **SELECT: MIDI.** **K1 SEQ OUT:** **OFF** (only the keys and pads you play are sent) or **ON** (the sequencer's
+  notes too: the drums on channel 10, T2–T4 on 2–4, each with its note-off at the end of its gate; a muted track
+  sends nothing; an arpeggiated part sends its steps' notes, not the arpeggio). **K2 BLUETOOTH:** **OFF** (the
+  radio quiet, the default) or **ON**: the FM-1 shows up as a Bluetooth MIDI device for a computer, phone or
+  tablet, and the page says STARTING, then ON, then CONNECTED. Everything MIDI goes over it as over USB: notes in
+  and out, clock. The switch is kept with the project (SAVE), so it comes back on at power-on.
+- **SELECT again: CPU.** Turn SELECT to see where the processor's time goes, live: **DRUMS**, **SYNTH**, **INSERT+COLOR**,
   **REV+DLY CORE2**, **MASTER CORE2**, **OTHER** and the **TOTAL**, each as a share of the time the FM-1 has for each
   block of sound. The bar is the average; a tick past it marks the worst block of the last second or so (a pattern
   starting, a switch), and the band's **PEAK** is the total's. **LATE**: the blocks that weren't ready in time since it
@@ -590,7 +630,11 @@ Press HOME on the SONG page.
 | The project: patterns, song, sounds (each pattern's too), the drums' edits, mixer, FX, the master bus, LFOs, arps, follow actions, SETUP | a file with two copies, so a power cut while saving keeps the old one | when you tap SAVE (while playing: at the stop) |
 | User presets and kits | a store of their own | as soon as you save one |
 
-**From 0.4:** the same format; 0.4 and 0.5 read each other's projects.
+**Within 0.5:** the project format grew three times (32 locks a part; then mix per pattern, the generators' kept
+steps and beats). This build reads every earlier 0.5 save; once it has saved, an earlier 0.5 build starts a fresh
+project instead of reading it (the file stays, and this build reads it again).
+
+**From 0.4:** 0.5 reads 0.4's projects; 0.4 can't read one 0.5 has saved.
 
 **From 0.3:** a project saved by 0.3 loads as it was; its parts' generators start unset. The first SAVE writes 0.4's
 format (0.5's too), which 0.3 can't read: going back to 0.3 starts a fresh project (the file stays, and 0.4 or 0.5
@@ -608,8 +652,14 @@ the sound saved with the pattern it's on.
 
 - **In:** channel 10 plays the pads (General MIDI drum notes), channels 2–4 play T2–T4, and channel 1 plays the
   track picked.
-- **Out:** the keys send on their track's channel (pads on channel 10).
-- **Clock:** sent or followed, over USB (SETUP, above).
+- **Out:** the keys send on their track's channel (pads on channel 10). With **SEQ OUT** on (SETUP, SELECT: MIDI)
+  the sequencer's notes go out too, on the same channels.
+- **Clock:** sent or followed (SETUP K1), over USB and Bluetooth. Followed, **Continue** goes on from where the
+  last Stop left every track, the bar and the song; **Start** is from the top. If you changed pattern in between,
+  Continue starts from the top as well.
+- **Bluetooth** (SETUP, SELECT: MIDI, K2): a computer or phone connects to the FM-1; one at a time. Bluetooth's
+  timing is looser than USB's (messages arrive in bunches), so for a tight clock use the cable.
+  The FM-1 has no MIDI out jack: its TRS jack is MIDI in only.
 
 ## Not in 0.5
 
@@ -678,8 +728,10 @@ the sound saved with the pattern it's on.
 - Projects from earlier builds (before 0.2) start fresh. A project saved by 0.2 loads converted, with no follow
   actions and sounds per pattern off if it was saved before the performance update.
 - MIDI clock is timed to the audio block it arrives in, so following, the FM-1 sits about 3 ms behind the clock on
-  average (up to 6). Continue starts from the top. The clock is sent out of USB only.
-- Sounds per pattern keeps the tracks' sounds and the kit, not the mixer, FX or master bus.
-- The 303 generator: no per-step dice locking (keep this step, re-roll the rest), no 303-style transpose track, no
-  drum generator. A part of any length, up to 128 steps, gets a line of that length, not a 16-step line repeated. The arpeggiator
+  average (up to 6). No Song Position Pointer: Continue is from the last Stop, not from a place the clock names.
+- Bluetooth: MIDI with one computer or phone. The FM-1 doesn't connect out to Bluetooth keyboards, and sends no
+  audio to Bluetooth headphones or speakers.
+- Mix per pattern keeps the mixer, the FX and the master bus, not the tracks' insert effects or Color.
+- The 303 generator: no 303-style transpose track. The beat generator keeps no steps (the 303's KEEP has no drum
+  twin) and writes no ratchets. A part of any length, up to 128 steps, gets a line of that length, not a 16-step line repeated. The arpeggiator
   ignores slides (it plays each note as its own).

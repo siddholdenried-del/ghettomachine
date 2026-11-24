@@ -2,6 +2,11 @@
 
 Moved out of MANUAL.md on 24 Nov 2026. The newest notes are in the manual's sections and the commit log.
 
+**24 Nov 2026, later (project format 12):** mix per pattern (SETUP K4); MIDI out of the sequencer (SEQ OUT), MIDI
+Continue, and Bluetooth MIDI on fm1-base's own stack (SETUP, SELECT: MIDI); the drums' beat generator (SEQ again on
+their steps); the 303 generator's KEEP page. The stock 808 / 909 engines' state left the FM-1's RAM (15 KB: they
+have not played there since the DrumEngine took over), which is what made room for the radio.
+
 **Historical hardware test: 0.5** (first installed over USB on 20 Nov). The first recording from it clicked now and then, so
 0.5 now keeps a deeper USB buffer, MASTER no longer changes what a computer records, and the drum steps' beats glow
 (1, 5, 9, 13): that build went on the FM-1 on 21 Nov, and a recording from it had no clicks. REC + GLO (erase the

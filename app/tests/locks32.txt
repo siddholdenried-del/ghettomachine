@@ -3,6 +3,7 @@
 # snare's DECAY, the delay's WIDTH; then more than 16 locks go on one part, are saved and come back.
 flash_load app/tests/fixtures/proj_v10.img
 reboot
+expect oldseq1 1    # (0.5: SEQ again on the drums' steps is BEAT; this suite was written when it stayed)
 wait 600
 expect dirty 0
 expect projfmt 10

@@ -241,6 +241,17 @@ typedef struct {                          /* a part's 303 generator (the ACID pa
     uint8_t rsv;
 } gen_t;
 
+/* a drum part's generator (the BEAT pages, 0.5: SEQ again on the drums): a beat in a style, from a seed */
+enum { DS_HOUSE, DS_TECHNO, DS_ELECTRO, DS_BOOMBAP, DS_TRAP, DS_BREAKS, NDSTYLES };
+typedef struct {
+    uint16_t seed;                        /* 1..65535; 0: never generated */
+    uint8_t mut;                          /* MUTATEs since the seed */
+    uint8_t style;                        /* DS_* */
+    uint8_t kick, snare, hats, perc;      /* how busy each is, 0..100 (50: the style as it comes) */
+    uint8_t fill, accent;                 /* chances, 0..100 %: the part's last steps fill; a hit accented */
+    uint8_t rsv[2];
+} dgen_t;
+
 typedef struct {
     uint32_t magic;
     uint8_t kit;                          /* KIT_909 / KIT_808 / KIT_606 */
@@ -297,6 +308,8 @@ typedef struct {
      * yet, it takes what is playing when it starts */
     struct { uint8_t used, level, pan, rev, dly; } pmix[NPAT][NTRK];
     struct { uint8_t used, v[FXP_ALL]; } pfx[NPAT];
+    uint8_t gkeep[NPAT][NINST][NSTEPS / 8];   /* format 12: the 303 generator's KEEP: a bit a step it leaves alone */
+    dgen_t dgen[NPAT];                    /* format 12: each drum part's generator */
 } project_t;
 static uint8_t *fxv(int i);               /* an FX knob's place in the project: fx, or fx2 past FXP_NUM */
 /* Freeze the persisted 64-step layouts; legacy files end before the 606 pots. */
@@ -1797,6 +1810,8 @@ static void pmix_clear(void)
 {
     memset(proj.pmix, 0, sizeof proj.pmix);
     memset(proj.pfx, 0, sizeof proj.pfx);
+    memset(proj.gkeep, 0, sizeof proj.gkeep);   /* (format 12's other news: no step kept, no beat generated) */
+    memset(proj.dgen, 0, sizeof proj.dgen);
     proj.recq &= 0x7Fu;
 }
 
@@ -4259,7 +4274,7 @@ void app_init(void)
 /* ---------------------------------------------------------------------- undo --- */
 /* a snapshot is a whole pattern (all four tracks) */
 #define NUNDO 6                           /* (8 until BongVerb's lines took 26 KB of the pool: a step 3.6 KB) */
-typedef struct { pattern_t p; gen_t g[NINST]; uint8_t idx; } snap_t;   /* (the parts' generators with them) */
+typedef struct { pattern_t p; gen_t g[NINST]; dgen_t dg; uint8_t k[NINST][NSTEPS / 8]; uint8_t idx; } snap_t;   /* (the parts' generators with them) */
 /* The total can never exceed NUNDO: a new edit drops redo, and undo/redo
  * each move one item. Grow the stacks from opposite ends of one pool. */
 static snap_t history[NUNDO] PLAT_POOL;
@@ -4271,6 +4286,8 @@ static void undo_capture(snap_t *s, uint8_t idx)
     s->p = proj.p[idx];
     for (int i = 0; i < NINST; i++)
         s->g[i] = proj.gen[idx][i];
+    s->dg = proj.dgen[idx];
+    memcpy(s->k, proj.gkeep[idx], sizeof s->k);
     s->idx = idx;
 }
 
@@ -4329,10 +4346,14 @@ static void undo_step(int redo)
     if (from == to) {
         undo_swap(&proj.p[idx], &from->p, sizeof from->p);
         undo_swap(proj.gen[idx], from->g, sizeof from->g);
+        undo_swap(&proj.dgen[idx], &from->dg, sizeof from->dg);
+        undo_swap(proj.gkeep[idx], from->k, sizeof from->k);
     } else {
         proj.p[idx] = from->p;
         for (int i = 0; i < NINST; i++)
             proj.gen[idx][i] = from->g[i];
+        proj.dgen[idx] = from->dg;
+        memcpy(proj.gkeep[idx], from->k, sizeof from->k);
     }
     plat_unlock(f);
     undo_n += redo ? 1 : -1;
@@ -4350,7 +4371,8 @@ static const char *const PAGE_NAME[] = {"STEPS", "EDIT", "MUTE", "PATTERNS", "KI
                                         "QUICK MIXER"};
 static const char *const V3_BUS_LABEL[] = {"SATURATOR", "COMPRESSOR", "TRANSIENT", "LIMITER"};
 static const char *const V3_MODE_LABEL[] = {"STOCK", "DRY", "BUS"};
-#define NGENPAGE 3                        /* the 303 generator's (SEQ after STEPS, T2..T4): ACID, NOTES, LINE (SELECT) */
+#define NGENPAGE 4                        /* the 303 generator's (SEQ after STEPS, T2..T4): ACID, NOTES, LINE, KEEP (SELECT) */
+#define NDGENPAGE 3                       /* the drums' beat generator's (SEQ after STEPS): BEAT, BEAT 2, LINE */
 static const char *const TRK_NAME[NTRK] = {"DRUMS", "T2", "T3", "T4"};
 static const char *const TYPE_NAME[NTYPES] = {"MONO", "POLY"};
 /* an instrument track's EDIT pages and ENV pages: the four knobs' parameters (dsp/synth.h SP_*, or the track's own) */
@@ -4402,7 +4424,9 @@ static struct {
     uint8_t envpage;                      /* an instrument track's ENV page: 0 the amp's, 1 the filter's, 2 MOD ENV */
     uint8_t lfopage, arppage;             /* the LFO's pages (LFO 1, its MORE; an instrument's LFO 2, MATRIX); ARP's 0, 1 */
     uint8_t mslot;                        /* MATRIX: the slot on the knobs, 0..SYN_SLOTS - 1 */
-    uint8_t genpage;                      /* the 303 generator's page: 0 ACID (the chances), 1 NOTES, 2 LINE */
+    uint8_t genpage;                      /* the 303 generator's page: 0 ACID (the chances), 1 NOTES, 2 LINE, 3 KEEP
+                                           * (the drums' BEAT pages: 0..2 of it) */
+    uint8_t gcur;                         /* KEEP: the step its knobs are on */
     uint8_t mixpage, fxpage;              /* the mixer's page (LEVEL, PAN, REVERB, DELAY); the FX's */
     uint8_t mstpage;                      /* the master bus's: CHAIN, EQ, EQ 2, COMP, COMP 2, TAPE, STEREO, LIMIT */
     int8_t knob_k;                        /* the knob turned last (its card stands out a moment), -1 none */
@@ -6561,8 +6585,10 @@ static int npages(void);
 #ifdef PLAT_HOST
 static uint8_t old_pick;                  /* the simulator's older suites (oldpick1): a track change as it was before
                                            * 0.5, between the drums and an instrument to the track's own page */
+static uint8_t old_seq;                   /* (oldseq1): SEQ on the drums' steps stays there, as before BEAT */
 #else
 #define old_pick 0
+#define old_seq 0
 #endif
 static void track_pick(int tr)
 {
@@ -7038,6 +7064,8 @@ static void pattern_copy_to(int n)        /* the whole pattern, all four tracks 
     proj.p[n] = *cur();
     for (i = 0; i < NINST; i++)
         proj.gen[n][i] = proj.gen[proj.pat][i];
+    proj.dgen[n] = proj.dgen[proj.pat];
+    memcpy(proj.gkeep[n], proj.gkeep[proj.pat], sizeof proj.gkeep[n]);
     for (i = 0; i < NTRK; i++) {          /* its clips' LFOs with it (a track on the pattern now: the one it plays) */
         proj.plfo[n][i] = clip_of(i) == proj.pat ? proj.lfo[i] : proj.plfo[proj.pat][i];
         if (clip_of(i) == n)
@@ -7073,7 +7101,7 @@ static int page_fits(int pg)              /* a page the track picked can show (a
 {
     const int inst = ui.trk != TR_DRUM;
     switch (pg) {
-    case PG_KEYS: case PG_ENV: case PG_ARP: case PG_GEN: case PG_COLOR: return inst;
+    case PG_KEYS: case PG_ENV: case PG_ARP: case PG_COLOR: return inst;
     case PG_MUTE: case PG_KIT: case PG_V3_BUS: return !inst;
     case PG_PICK: return 0;               /* (a chord being picked: not from a button) */
     default: return pg <= PG_QMIX;
@@ -7220,7 +7248,12 @@ static void gen_make(const gen_t *g, int len, nstep_t *out)   /* the part's firs
     }
 }
 
-static void gen_write(int tr)             /* the part's steps from its settings (its steps past its length untouched) */
+/* KEEP (0.5, the ACID pages' fourth): a step marked kept is left as it is by every new line, MUTATE and knob */
+static uint8_t *gkeep_of(int tr) { return proj.gkeep[clip_of(tr)][tr - 1]; }
+static int gkept(int tr, int s) { return gkeep_of(tr)[s >> 3] >> (s & 7) & 1; }
+
+static void gen_write(int tr)             /* the part's steps from its settings (its steps past its length untouched,
+                                           * and the ones kept) */
 {
     ipart_t *p = ipart(tr);
     int s, len = p->len;
@@ -7228,7 +7261,8 @@ static void gen_write(int tr)             /* the part's steps from its settings 
     gen_make(gen_of(tr), len, gen_buf[0]);
     f = plat_lock();
     for (s = 0; s < len; s++)
-        p->st[s] = gen_buf[0][s];
+        if (!gkept(tr, s))
+            p->st[s] = gen_buf[0][s];
     plat_unlock(f);
     gen_last[tr] = *gen_of(tr);
     dirty = 1;
@@ -7309,8 +7343,16 @@ static void gen_mutate(void)              /* OCT-: a few steps re-rolled (until 
 
 /* the pages: ACID (DENSITY WHOLE SLIDE ACCENT), NOTES (ROOT SCALE NOTES OCTAVE), LINE (SEED, and the part's LENGTH,
  * RATE and the SWING, as on STEPS) */
-static const char *const GEN_LABEL[12] = {"DENSITY", "WHOLE", "SLIDE", "ACCENT", "ROOT", "SCALE", "NOTES", "OCTAVE",
-                                          "SEED", "LENGTH", "RATE", "SWING"};
+static const char *const GEN_LABEL[16] = {"DENSITY", "WHOLE", "SLIDE", "ACCENT", "ROOT", "SCALE", "NOTES", "OCTAVE",
+                                          "SEED", "LENGTH", "RATE", "SWING", "STEP", "KEEP", "KEEP ALL", "NOTE"};
+static int gcur_of(int tr) { int n = ipart(tr)->len; return ui.gcur < n ? ui.gcur : n - 1; }
+static int gkeep_count(int tr)
+{
+    int s, n = 0;
+    for (s = 0; s < ipart(tr)->len; s++)
+        n += gkept(tr, s);
+    return n;
+}
 static int gen_value(int tr, const gen_t *g, int i, int *lo, int *hi, char *t)   /* knob i (page * 4 + k): value, text */
 {
     int v;
@@ -7347,6 +7389,28 @@ static int gen_value(int tr, const gen_t *g, int i, int *lo, int *hi, char *t)  
         *hi = NSTEPS;
         int_text(*part_len(tr), t);
         return *part_len(tr);
+    case 12:                              /* KEEP: the step its knobs are on */
+        *lo = 1;
+        *hi = *part_len(tr);
+        int_text(gcur_of(tr) + 1, t);
+        return gcur_of(tr) + 1;
+    case 13:
+        *hi = 1;
+        text_cat(t, gkept(tr, gcur_of(tr)) ? "KEPT" : "FREE");
+        return gkept(tr, gcur_of(tr));
+    case 14:
+        *hi = *part_len(tr);
+        int_text(gkeep_count(tr), t);
+        text_cat(t, " KEPT");
+        return gkeep_count(tr);
+    case 15:
+        *hi = 108;
+        v = ipart(tr)->st[gcur_of(tr)].note[0];
+        if (v)
+            note_text(v, t);
+        else
+            text_cat(t, "REST");
+        return v;
     case 10:
         *hi = NRATES - 1;
         text_cat(t, RATE_NAME[*part_rate(tr) % NRATES]);
@@ -7367,6 +7431,46 @@ static void gen_knob(int k, int32_t e)    /* the ACID pages' knobs: the part mad
     int tr = ui.trk, i = ui.genpage * 4 + k, lo, hi;
     gen_t *g;
     char t[16];
+    if (i >= 12) {                        /* KEEP: K1 STEP, K2 KEEP, K3 KEEP ALL (up: all, down: none), K4 its NOTE */
+        const int c = gcur_of(tr), len = ipart(tr)->len;
+        uint8_t *kp = gkeep_of(tr);
+        nstep_t *st = &ipart(tr)->st[c];
+        uint32_t f;
+        int s;
+        if (i == 12) {
+            ui.gcur = (uint8_t)clamp(c + e, 0, len - 1);
+            ui.spage = (uint8_t)(ui.gcur / 16);
+            ui.spage_t = plat_ms();
+        } else if (i == 13 && e) {
+            undo_mark(30);
+            kp[c >> 3] = (uint8_t)(e > 0 ? kp[c >> 3] | 1u << (c & 7) : kp[c >> 3] & ~(1u << (c & 7)));
+        } else if (i == 14 && e) {
+            undo_mark(31);
+            for (s = 0; s < NSTEPS; s++)
+                kp[s >> 3] = (uint8_t)(e > 0 && s < len ? kp[s >> 3] | 1u << (s & 7) : kp[s >> 3] & ~(1u << (s & 7)));
+        } else if (i == 15 && e) {        /* its note by hand (a semitone a click; under C1: a rest): kept at once */
+            int n = st->note[0] ? st->note[0] + e : e > 0 ? gen_view(tr).root : 0;
+            undo_mark(32);
+            f = plat_lock();
+            if (n < 24) {
+                nstep_clear(st);
+            } else {
+                if (!st->note[0]) {
+                    nstep_clear(st);
+                    st->vel = GEN_VEL;
+                    st->prob = 100;
+                    st->gate = GATE_HALF;
+                }
+                st->note[0] = (uint8_t)(n > 108 ? 108 : n);
+            }
+            plat_unlock(f);
+            kp[c >> 3] |= (uint8_t)(1u << (c & 7));
+        }
+        dirty = 1;
+        gen_value(tr, gen_of(tr), i, &lo, &hi, t);
+        app_say(GEN_LABEL[i], t);
+        return;
+    }
     if (i >= 10) {                        /* RATE, SWING: as on STEPS, the line as it is */
         seq_knob(i - 9, e);
         return;
@@ -7396,6 +7500,227 @@ static void gen_knob(int k, int32_t e)    /* the ACID pages' knobs: the part mad
     gen_write(tr);
     gen_value(tr, g, i, &lo, &hi, t);
     app_say(GEN_LABEL[i], t);
+}
+
+/* ---- the drums' beat generator (0.5: the BEAT pages, SEQ again on the drums) ----
+ * A style is five rows of 16 weights (0..10: how sure a sixteenth is): bass drum, snare, clap, closed hat, open hat.
+ * A knob at 50 plays the style as it comes (10: always; 5: half the time); higher fills in the unlikely steps, lower
+ * thins even the sure ones. PERC scatters rim, toms and the second cymbal off the beat; FILL crowds the part's last
+ * four steps with snare and toms and may put a crash on its 1; ACCENT marks steps, the beats most. All from the seed,
+ * as the 303's lines are: the same seed and knobs, the same beat; MUTATE re-rolls an eighth of the steps */
+static const char *const DSTYLE_NAME[NDSTYLES] = {"HOUSE", "TECHNO", "ELECTRO", "BOOM BAP", "TRAP", "BREAKS"};
+static const uint8_t DSTYLE[NDSTYLES][5][16] = {
+    {{10,0,0,0, 10,0,0,1, 10,0,0,0, 10,0,1,0}, {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,2}, {0,0,0,0, 10,0,0,0, 0,0,0,0, 10,0,0,0},
+     {3,2,10,2, 3,2,10,2, 3,2,10,2, 3,2,10,3}, {0,0,5,0, 0,0,5,0, 0,0,5,0, 0,0,6,0}},
+    {{10,0,0,0, 10,0,0,0, 10,0,0,0, 10,0,0,2}, {0,0,0,0, 2,0,0,1, 0,0,1,0, 2,0,1,1}, {0,0,0,0, 6,0,0,0, 0,0,0,0, 6,0,0,0},
+     {6,5,10,5, 6,5,10,5, 6,5,10,5, 6,5,10,6}, {0,0,3,0, 0,0,3,0, 0,0,3,0, 0,0,4,0}},
+    {{10,0,0,3, 0,0,6,0, 2,0,7,0, 0,2,0,0}, {0,0,0,0, 10,0,0,0, 0,0,0,0, 10,0,0,2}, {0,0,0,0, 4,0,0,0, 0,0,0,0, 4,0,0,0},
+     {10,5,8,5, 10,5,8,5, 10,5,8,5, 10,5,8,6}, {0,0,1,0, 0,0,2,0, 0,0,1,0, 0,0,3,0}},
+    {{10,0,0,1, 0,0,2,4, 7,0,5,0, 0,2,0,1}, {0,0,0,0, 10,0,0,1, 0,1,0,0, 10,0,0,2}, {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0},
+     {10,1,9,2, 10,1,9,2, 10,1,9,2, 10,1,9,3}, {0,0,0,0, 0,0,1,0, 0,0,0,0, 0,0,2,0}},
+    {{10,0,0,0, 0,0,3,2, 0,0,7,3, 0,2,0,2}, {0,0,0,0, 0,0,0,0, 10,0,0,0, 0,0,0,1}, {0,0,0,0, 0,0,0,0, 8,0,0,0, 0,0,0,0},
+     {10,6,10,6, 10,6,10,6, 10,6,10,6, 10,7,10,8}, {0,0,0,0, 0,0,1,0, 0,0,0,0, 0,0,2,0}},
+    {{10,0,2,0, 0,0,0,2, 0,3,8,0, 0,1,0,0}, {0,0,0,0, 10,0,0,3, 0,3,0,0, 10,0,0,3}, {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0},
+     {10,3,10,3, 10,3,10,3, 10,3,10,3, 10,3,10,4}, {0,0,0,0, 0,0,2,0, 0,0,0,0, 0,0,3,0}},
+};
+static const uint8_t DPERC_W[16] = {0,1,0,1, 0,1,1,2, 0,1,0,2, 1,2,2,3};
+static const uint8_t DPERC_PAD[5] = {5, 2, 3, 4, 10};   /* rim, the toms, the second cymbal */
+static dgen_t dgen_last;                  /* the settings a new part's first turn starts from */
+
+static dgen_t *dgen_of(void) { return &proj.dgen[clip_of(TR_DRUM)]; }
+
+static dgen_t dgen_view(void)             /* what the BEAT page shows: the part's, else what its first turn starts from */
+{
+    dgen_t g;
+    if (dgen_of()->seed)
+        return *dgen_of();
+    if (dgen_last.seed)
+        return dgen_last;
+    memset(&g, 0, sizeof g);
+    g.seed = 1;
+    g.kick = g.snare = g.hats = 50;
+    g.perc = 15;
+    g.fill = 25;
+    g.accent = 30;
+    return g;
+}
+
+#define DG_ACC 0x8000u                    /* (a step's hits: a bit a pad, and its accent) */
+static void dgen_make(const dgen_t *g, int len, uint16_t *out)
+{
+    const uint8_t (*w)[16] = DSTYLE[g->style % NDSTYLES];
+    int s, m, j, k = len / 8 > 1 ? len / 8 : 1, fill0 = len >= 8 ? len - 4 : len;
+    uint8_t ep[NSTEPS];
+    for (s = 0; s < len; s++)
+        ep[s] = 0;
+    for (m = 1; m <= g->mut; m++)
+        for (j = 0; j < k; j++)
+            ep[gen_hash(g->seed * 7919u + (uint32_t)m, (uint32_t)j) % (uint32_t)len] = (uint8_t)m;
+    for (s = 0; s < len; s++) {
+        uint32_t base = (uint32_t)g->seed * 65537u + (uint32_t)ep[s] * 1009u + 77u, h[8];
+        int i, q = s & 15;
+        uint16_t b = 0;
+        for (i = 0; i < 8; i++)
+            h[i] = gen_hash(base, (uint32_t)(s * 8 + i));
+#define DG_ON(i, wt, kn) (h[i] % 1000u < (uint32_t)(wt) * (uint32_t)(kn) * 2u)
+        if (DG_ON(0, w[0][q], g->kick)) b |= 1u << 0;
+        if (DG_ON(1, w[1][q], g->snare)) b |= 1u << 1;
+        if (DG_ON(2, w[2][q], g->snare)) b |= 1u << 6;
+        if (DG_ON(4, w[4][q], g->hats)) b |= 1u << 8;          /* the open hat in the closed one's place */
+        else if (DG_ON(3, w[3][q], g->hats)) b |= 1u << 7;
+        if (DG_ON(5, DPERC_W[q], g->perc * 2u)) b |= (uint16_t)(1u << DPERC_PAD[h[5] / 1000u % 5u]);
+        if (s >= fill0 && h[6] % 1000u < g->fill * 6u)       /* the fill: snare, or a tom falling */
+            b |= (uint16_t)(1u << ((h[6] / 1000u & 1u) ? 1 : 4 - (s - fill0) * 3 / 4));
+        if (s == 0 && len >= 16 && h[6] % 1000u < g->fill * 4u)
+            b |= 1u << 9;                 /* a crash on the 1 */
+#undef DG_ON
+        if (b && h[7] % 1000u < g->accent * ((q & 3) ? 3u : 10u))
+            b |= DG_ACC;
+        out[s] = b;
+    }
+}
+
+static void dgen_write(void)              /* the part's hits from its settings (its steps past its length untouched) */
+{
+    static uint16_t buf[NSTEPS];
+    dpart_t *p = dcur();
+    int s, pad, len = p->len;
+    uint32_t f;
+    dgen_make(dgen_of(), len, buf);
+    f = plat_lock();
+    for (s = 0; s < len; s++) {
+        for (pad = 0; pad < NPADS; pad++) {
+            if (buf[s] >> pad & 1u)
+                bit_set(p->hit[pad], s);
+            else
+                bit_clear(p->hit[pad], s);
+        }
+        if (buf[s] & DG_ACC)
+            bit_set(p->acc, s);
+        else
+            bit_clear(p->acc, s);
+    }
+    plat_unlock(f);
+    dgen_last = *dgen_of();
+    dirty = 1;
+}
+
+static dgen_t *dgen_begin(void)
+{
+    dgen_t *g = dgen_of();
+    if (!g->seed)
+        *g = dgen_view();
+    return g;
+}
+
+static void dgen_roll(int fresh)          /* OCT+: a random seed's beat; OCT-: a few steps re-rolled */
+{
+    static uint16_t was[NSTEPS], now[NSTEPS];
+    dgen_t *g;
+    int len = dcur()->len, n, same = 1;
+    char t[16], u[8];
+    undo_mark(0);
+    g = dgen_begin();
+    if (fresh) {
+        g->seed = gen_random_seed(g->seed);
+        g->mut = 0;
+    } else {
+        dgen_make(g, len, was);
+        for (n = 0; n < 8 && same && g->mut < 255; n++) {
+            g->mut++;
+            dgen_make(g, len, now);
+            same = !memcmp(was, now, (size_t)len * sizeof was[0]);
+        }
+    }
+    dgen_write();
+    t[0] = 0;
+    text_cat(t, "SEED ");
+    int_text(g->seed, u);
+    text_cat(t, u);
+    app_say(fresh ? "NEW BEAT" : "MUTATE", t);
+}
+
+/* the pages: BEAT (STYLE KICK SNARE HATS), MORE (PERC FILL ACCENT), LINE (SEED, and the part's LENGTH, RATE, SWING) */
+static const char *const DGEN_LABEL[12] = {"STYLE", "KICK", "SNARE", "HATS", "PERC", "FILL", "ACCENT", 0,
+                                           "SEED", "LENGTH", "RATE", "SWING"};
+static int dgen_value(const dgen_t *g, int i, int *lo, int *hi, char *t)
+{
+    int v;
+    t[0] = 0;
+    *lo = 0;
+    *hi = 100;
+    switch (i) {
+    case 0:
+        *hi = NDSTYLES - 1;
+        text_cat(t, DSTYLE_NAME[g->style % NDSTYLES]);
+        return g->style;
+    case 1: v = g->kick; break;
+    case 2: v = g->snare; break;
+    case 3: v = g->hats; break;
+    case 4: v = g->perc; break;
+    case 5: v = g->fill; break;
+    case 6: v = g->accent; break;
+    case 8:
+        *lo = 1;
+        *hi = 65535;
+        int_text(g->seed, t);
+        return g->seed;
+    case 9:
+        *lo = 1;
+        *hi = NSTEPS;
+        int_text(*part_len(TR_DRUM), t);
+        return *part_len(TR_DRUM);
+    case 10:
+        *hi = NRATES - 1;
+        text_cat(t, RATE_NAME[*part_rate(TR_DRUM) % NRATES]);
+        return *part_rate(TR_DRUM);
+    default:
+        *lo = 50;
+        *hi = 75;
+        v = proj.swing;
+        break;
+    }
+    int_text(v, t);
+    text_cat(t, "%");
+    return v;
+}
+
+static void seq_knob(int k, int32_t e);
+static void dgen_knob(int k, int32_t e)   /* the BEAT pages' knobs: the beat made again at once */
+{
+    int i = (ui.genpage < NDGENPAGE ? ui.genpage : NDGENPAGE - 1) * 4 + k, lo, hi;
+    dgen_t *g;
+    char t[16];
+    if (i == 7)
+        return;
+    if (i >= 10) {                        /* RATE, SWING: as on STEPS, the beat as it is */
+        seq_knob(i - 9, e);
+        return;
+    }
+    if (i == 9) {                         /* LENGTH: as on STEPS, then a beat made for it (if there is one) */
+        seq_knob(0, e);
+        if (dgen_of()->seed)
+            dgen_write();
+        return;
+    }
+    undo_mark(40u + (uint32_t)i);
+    g = dgen_begin();
+    switch (i) {
+    case 0: g->style = (uint8_t)clamp(g->style + e, 0, NDSTYLES - 1); break;
+    case 1: g->kick = (uint8_t)clamp(g->kick + e, 0, 100); break;
+    case 2: g->snare = (uint8_t)clamp(g->snare + e, 0, 100); break;
+    case 3: g->hats = (uint8_t)clamp(g->hats + e, 0, 100); break;
+    case 4: g->perc = (uint8_t)clamp(g->perc + e, 0, 100); break;
+    case 5: g->fill = (uint8_t)clamp(g->fill + e, 0, 100); break;
+    case 6: g->accent = (uint8_t)clamp(g->accent + e, 0, 100); break;
+    default:
+        g->seed = (uint16_t)clamp(g->seed + e, 1, 65535);
+        g->mut = 0;
+        break;
+    }
+    dgen_write();
+    dgen_value(g, i, &lo, &hi, t);
+    app_say(DGEN_LABEL[i], t);
 }
 
 static void seq_knob(int k, int32_t e)    /* the step and KEYS pages' knobs: LENGTH, RATE (the track's), SWING, TEMPO */
@@ -7918,8 +8243,11 @@ static void knob(int k, int32_t e)        /* KNOB 1..4 (k 0..3) on the page show
         lfo_knob(k, e);
     } else if (inst && ui.page == PG_ARP) {
         arp_knob(k, e);
-    } else if (inst && ui.page == PG_GEN) {
-        gen_knob(k, e);
+    } else if (ui.page == PG_GEN) {
+        if (inst)
+            gen_knob(k, e);
+        else
+            dgen_knob(k, e);
     } else if (inst && ui.page == PG_SEQ) {
         istep_knob(k, e);
     } else if (!inst && ui.page == PG_SEQ && (ui.dtool || ui.held_step >= 0)) {
@@ -8087,8 +8415,10 @@ static void input(void)
             sync_drum_mutes();
             plat_unlock(f);
             app_say("ALL PADS", "ON");
-        } else if (inst && ui.page == PG_GEN) {   /* the 303 generator: OCT+ a new line, OCT- a few steps changed */
-            if (up)
+        } else if (ui.page == PG_GEN) {   /* the generators: OCT+ a new line (beat), OCT- a few steps changed */
+            if (!inst)
+                dgen_roll(up);
+            else if (up)
                 gen_new();
             else
                 gen_mutate();
@@ -8114,10 +8444,10 @@ static void input(void)
                                            * shown last; SELECT its other), then back to the keys */
         if (ui.page == PG_PICK)
             pick_leave();
-        else if (!inst || (ui.page != PG_SEQ && ui.page != PG_GEN))
+        else if ((ui.page != PG_SEQ && ui.page != PG_GEN) || (!inst && old_seq))
             ui.page = PG_SEQ;
-        else
-            ui.page = (uint8_t)(ui.page == PG_SEQ ? PG_GEN : PG_KEYS);
+        else                              /* (the drums: their steps and BEAT, turn about) */
+            ui.page = (uint8_t)(ui.page == PG_SEQ ? PG_GEN : inst ? PG_KEYS : PG_SEQ);
         ui.held_step = -1;
     }
     if (pressed >> B_ENV & 1u) {          /* the drums' MUTE page; an instrument's envelopes; again: back */
@@ -8436,8 +8766,8 @@ static void input(void)
             ui.lfopage = (uint8_t)clamp(ui.lfopage + e, 0, lfo_pages(ui.trk) - 1);
         } else if (inst && ui.page == PG_ARP) {
             ui.arppage = (uint8_t)clamp(ui.arppage + e, 0, 1);
-        } else if (inst && ui.page == PG_GEN) {
-            ui.genpage = (uint8_t)clamp(ui.genpage + e, 0, NGENPAGE - 1);
+        } else if (ui.page == PG_GEN) {
+            ui.genpage = (uint8_t)clamp(ui.genpage + e, 0, (inst ? NGENPAGE : NDGENPAGE) - 1);
         } else if (ui.page == PG_HOME && (ui.btn >> B_SEL & 1u) && sq.playing) {
             ui.sel_used = 1;
             nudge(e);
@@ -9488,10 +9818,17 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
         return 0;
     }
     case KD_GEN: {                        /* the 303 generator: page 0 ACID, 1 NOTES, 2 LINE */
-        gen_t g = gen_view(tr);
+        gen_t g;
         int lo, hi, i = (page % NGENPAGE) * 4 + k;
-        if (tr == TR_DRUM)
-            return 0;
+        if (tr == TR_DRUM) {              /* the drums' BEAT pages */
+            const dgen_t dg = dgen_view();
+            if (i >= 12 || !DGEN_LABEL[i])
+                return 0;
+            v = dgen_value(&dg, i, &lo, &hi, t);
+            card_put(c, DGEN_LABEL[i], t, v, lo, hi, -1);
+            return 1;
+        }
+        g = gen_view(tr);
         v = gen_value(tr, &g, i, &lo, &hi, t);
         card_put(c, GEN_LABEL[i], t, v, lo, hi, -1);
         return 1;
@@ -10179,8 +10516,8 @@ static void page_gen(void)                /* the 303 generator: the line (16 ste
     } else {
         text_cat(t, "OCT+ OR A KNOB: MAKE A LINE");
     }
-    band_set(col, TRK_NAME[tr], ui.genpage == 0 ? "ACID" : ui.genpage == 1 ? "ACID: NOTES" : "ACID: LINE", t, NGENPAGE,
-             ui.genpage);
+    band_set(col, TRK_NAME[tr], ui.genpage == 0 ? "ACID" : ui.genpage == 1 ? "ACID: NOTES" : ui.genpage == 2 ? "ACID: LINE"
+             : "KEEP", t, NGENPAGE, ui.genpage);
     for (s = 0; s < p->len; s++)
         if (p->st[s].note[0]) {
             if (p->st[s].note[0] < lo) lo = p->st[s].note[0];
@@ -10206,10 +10543,14 @@ static void page_gen(void)                /* the 303 generator: the line (16 ste
     cv_text(3, 98, &FONT_XS, "SL", C_TXT2);
     for (k = 0; k < 16; k++) {           /* (playhead columns first: notes held over them stay on top) */
         s = ui.spage * 16 + k;
+        if (s < p->len && ui.genpage == 3 && s == gcur_of(tr))   /* KEEP: the step its knobs are on */
+            cv_rect(28 + k * 13 - 1, 0, 13, 114, mix565(C_BODY, TH_INK, 45));
         if (s < p->len && sq.playing && s == st) {
             cv_rect(28 + k * 13 - 1, 0, 13, 110, PLAYHEAD);
             playflag(28 + k * 13 - 1, 13);
         }
+        if (s < p->len && gkept(tr, s))   /* a kept step: a bar under its column */
+            cv_rect(28 + k * 13, 111, 11, 3, C_WHITE2);
     }
     for (k = 0; k < 16; k++) {
         const nstep_t *ns;
@@ -10241,13 +10582,76 @@ static void page_gen(void)                /* the 303 generator: the line (16 ste
             cv_rect(x + 4, 103, 3, 3, C_GRID);
     }
 #undef GEN_Y
-    cv_text(6, 116, &FONT_XS, "OCT+ NEW LINE", TH_TXT);
+    if (ui.genpage == 3) {
+        cv_text(6, 116, &FONT_XS, "KEPT STEPS STAY: NEW, MUTATE, KNOBS", TH_TXT);
+    } else {
+        cv_text(6, 116, &FONT_XS, "OCT+ NEW LINE", TH_TXT);
+        cv_text(100, 116, &FONT_XS, "OCT- MUTATE", TH_TXT);
+    }
+    if (p->len > 16 && ui.genpage != 3) {
+        steps_text(t);
+        text_r(236, 116, &FONT_XS, t, C_TXT2);
+    }
+    cards_of(KD_GEN, ui.genpage);
+}
+
+static void page_dgen(void)               /* the drums' beat generator: the beat (16 steps of the page), a row a pad */
+{
+    static const char *const NM[NDGENPAGE] = {"BEAT", "BEAT: MORE", "BEAT: LINE"};
+    const dpart_t *p = dcur();
+    const dgen_t g = dgen_view();
+    int st = sq.t[TR_DRUM].step, k, s, pad, gp = ui.genpage < NDGENPAGE ? ui.genpage : NDGENPAGE - 1;
+    char t[32], u[12];
+    t[0] = 0;
+    if (dgen_of()->seed) {
+        text_cat(t, "SEED ");
+        int_text(g.seed, u);
+        text_cat(t, u);
+        if (g.mut) {
+            text_cat(t, " M");
+            int_text(g.mut, u);
+            text_cat(t, u);
+        }
+        text_cat(t, "  ");
+        text_cat(t, DSTYLE_NAME[g.style % NDSTYLES]);
+    } else {
+        text_cat(t, "OCT+ OR A KNOB: MAKE A BEAT");
+    }
+    band_set(C_ACID, "DR", NM[gp], t, NDGENPAGE, gp);
+    cv_text(3, 0, &FONT_T, "CY", C_TXT2);
+    cv_text(3, 15, &FONT_T, "HH", C_TXT2);
+    cv_text(3, 36, &FONT_T, "PC", C_TXT2);
+    cv_text(3, 61, &FONT_T, "SD", C_TXT2);
+    cv_text(3, 72, &FONT_T, "BD", C_TXT2);
+    cv_text(3, 86, &FONT_T, "AC", C_TXT2);
+    for (k = 0; k < 16; k++) {
+        int x = 28 + k * 13;
+        s = ui.spage * 16 + k;
+        if (s >= p->len)
+            continue;
+        if (sq.playing && s == st) {
+            cv_rect(x - 1, 0, 13, 100, PLAYHEAD);
+            playflag(x - 1, 13);
+        }
+        for (pad = 0; pad < NPADS; pad++) {   /* the bass drum at the bottom, the cymbals at the top */
+            int y = 2 + (NPADS - 1 - pad) * 7;
+            if (bit_get(p->hit[pad], s))
+                rrect(x, y, 11, 5, 1, bit_get(p->acc, s) ? C_WHITE2 : TH_FG);
+            else
+                cv_rect(x + 4, y + 2, 3, 1, (k & 3) ? C_GRID : C_TXT2);
+        }
+        if (bit_get(p->acc, s))
+            rrect(x + 1, 87, 9, 9, 2, C_WHITE2);
+        else
+            cv_rect(x + 4, 90, 3, 3, C_GRID);
+    }
+    cv_text(6, 116, &FONT_XS, "OCT+ NEW BEAT", TH_TXT);
     cv_text(100, 116, &FONT_XS, "OCT- MUTATE", TH_TXT);
     if (p->len > 16) {
         steps_text(t);
         text_r(236, 116, &FONT_XS, t, C_TXT2);
     }
-    cards_of(KD_GEN, ui.genpage);
+    cards_of(KD_GEN, gp);
 }
 
 static void page_keys(void)               /* an instrument track's KEYS page: what the keys hold, the voices, the keys */
@@ -11815,6 +12219,16 @@ static const char *help_text(void)
         return "ALL KEYS PLAY   OCT- / OCT+: OCTAVE\nREC, THEN PLAY: RECORD AS YOU PLAY\n"
                "REC, STOPPED: STEP RECORD (SELECT:\n   THE CURSOR, TO LEAVE A REST)\n"
                "ARP TWICE: CHORD MODE   SEQ: STEPS";
+    case PG_GEN:
+        return inst ? "OCT+: A NEW LINE   OCT-: MUTATE\nSELECT: ACID, NOTES, LINE, KEEP\n"
+                      "KEEP: K1 STEP  K2 KEEP IT  K4 ITS NOTE\n   KEPT STEPS STAY THROUGH EVERY\n   NEW LINE, MUTATE AND KNOB\n"
+                      "SEQ: THE KEYS"
+                    : "OCT+: A NEW BEAT   OCT-: MUTATE\nK1 STYLE   K2-K4: HOW BUSY\n"
+                      "   (50: THE STYLE AS IT COMES)\nSELECT: MORE (PERC FILL ACCENT), LINE\n"
+                      "SEQ: BACK TO THE STEPS";
+    case PG_SETUP:
+        return "SELECT: SETUP, MIDI, CPU\nK1 CLOCK   K2 SOUNDS PER PATTERN\nK3 USB PORT   K4 MIX PER PATTERN\n"
+               "MIDI: K1 SEQ OUT (THE SEQUENCER'S\n   NOTES SENT)   K2 BLUETOOTH";
     case PG_SONG:
         return "WHITE: SET THE ENTRY, MOVE ON\nSELECT: CURSOR   K1 PATTERN  K2 BARS\n"
                "K3 LAUNCH   K4 SONG ON / OFF\nOCT+: COPY ENTRY   OCT-: DELETE IT";
@@ -11885,7 +12299,12 @@ static void page(void)
         cards_of(KD_KIT, 0);
         break;
     case PG_KEYS: page_keys(); break;
-    case PG_GEN: page_gen(); break;
+    case PG_GEN:
+        if (ui.trk == TR_DRUM)
+            page_dgen();
+        else
+            page_gen();
+        break;
     case PG_PICK: page_pick(); break;
     default: inst ? page_roll() : page_steps(); break;
     }
@@ -12439,6 +12858,8 @@ int app_expect(const char *what, int *got)
     else if (!strncmp(what, "settool", 7))   /* settoolN: an instrument's step tools turned to page N (older suites:
                                               * 3, the GROOVE knobs they were written with); stool: the page */
         *got = ui.stool = (uint8_t)(atoi(what + 7) % NSTOOL);
+    else if (!strncmp(what, "oldseq", 6))    /* oldseqN: 1 the drums' SEQ as before BEAT (the older suites) */
+        *got = old_seq = (uint8_t)(what[6] == '1');
     else if (!strncmp(what, "oldpick", 7))   /* oldpickN: 1 a track change as before 0.5 (the older suites) */
         *got = old_pick = (uint8_t)(what[7] == '1');
     else if (!strncmp(what, "dparam", 6)) {   /* dparamPAD_I: the DrumEngine's parameter I of pad PAD (1..11), its tick */
@@ -12862,6 +13283,19 @@ int app_expect(const char *what, int *got)
         int pad = atoi(what + 3);
         const char *u = strchr(what, '_');
         *got = u ? drums_get(drum_model(pad), pad, atoi(u + 1)) : -1;
+    } else if (!strncmp(what, "gkeep", 5)) {   /* gkeepT_S: track T's step S (1-based) kept; gcur: KEEP's step */
+        const char *u = strchr(what, '_');
+        int t = atoi(what + 5), st = u ? atoi(u + 1) - 1 : -1;
+        if (t < 2 || t > NTRK || st < 0 || st >= NSTEPS) return 0;
+        *got = gkept(t - 1, st);
+    } else if (!strcmp(what, "gcur")) {
+        *got = ui.gcur + 1;
+    } else if (!strncmp(what, "dgen", 4)) {   /* dgenI: the drum part's generator: 0 seed 1 mut 2 style 3 kick 4 snare
+                                               * 5 hats 6 perc 7 fill 8 accent */
+        const dgen_t *g = dgen_of();
+        const int i = atoi(what + 4), v[9] = {g->seed, g->mut, g->style, g->kick, g->snare, g->hats, g->perc, g->fill, g->accent};
+        if (i < 0 || i > 8) return 0;
+        *got = v[i];
     } else if (!strcmp(what, "genpage")) {   /* the 303 generator's page: 0 ACID, 1 NOTES */
         *got = ui.genpage;
     } else if (!strncmp(what, "gen", 3)) {   /* genN_K: track N's part's generator, K 0 seed (0: never) 1 mutates 2 root
