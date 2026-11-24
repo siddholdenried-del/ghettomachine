@@ -45,6 +45,9 @@ typedef struct {
        Tone -1 (low-pass, darker) .. 0 (off) .. +1 (high-pass, thinner);
        Drive 0 (off) .. 1. Both at zero leave the voice untouched. */
     float tone[11], drive[11];
+    /* The snare's overall decay (GhettoMachine 0.5): -1 (a quarter as long) .. 0 (as its Body and Wire set it) ..
+       +1 (three times as long); its body, upper head and wires together. */
+    float snare_decay;
 } KitPatch;
 
 static inline TomPatch kit_tom_controls(const KitPatch *p, int pad)

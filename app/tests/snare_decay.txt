@@ -1,0 +1,48 @@
+# The snare's DECAY (0.5): its whole length, body and wires together; page 2 of its editor, K3. At 0 the drum is as
+# its Body and Wire set it (every preset has it at 0). Up: its tail still sounds 250 ms on; down: gone by then.
+listen
+wait 300
+expect demode 1
+turn ALGO -3
+wait 50
+key 3 down
+wait 20
+key 3 up
+tap EDIT
+wait 100
+turn SELECT 1
+wait 100
+expect epage 1
+# as it is: 250 ms after a hit
+wait 600
+key 3 down
+wait 20
+key 3 up
+wait 250
+peakreset
+wait 100
+expect peak_db_max <-40
+# all the way up
+turn K3 40
+wait 100
+said Decay 100.0%
+wait 600
+key 3 down
+wait 20
+key 3 up
+wait 250
+peakreset
+wait 100
+expect peak_db_max >-40
+# all the way down: shorter than it was
+turn K3 -80
+wait 100
+said Decay -100.0%
+wait 800
+key 3 down
+wait 20
+key 3 up
+wait 60
+peakreset
+wait 100
+expect peak_db_max <-45

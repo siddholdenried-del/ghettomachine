@@ -199,8 +199,11 @@ static void snare_hit(SnareVoice *v, float vel, const KitPatch *p)
     float body = kit_unit(p->snare_body);
     float wire = kit_unit(p->snare_wire);
     float snappy = kit_unit(p->snare_snappy);
+    /* Decay: the whole drum's length, its body and wires together; 0 leaves both as Body and Wire set them. */
+    float dk = p->snare_decay < -1.f ? -1.f : p->snare_decay > 1.f ? 1.f : p->snare_decay;
+    float len = dk < 0.f ? 1.f + .75f * dk : 1.f + 2.f * dk;
     /* Round's upper resonator dies early; Hard's paired oscillators ring together. */
-    float ring = dry ? 18.f + 104.f*body*body : hard ? 11.f + 55.f*body*body : 10.f + 66.f*body*body;
+    float ring = (dry ? 18.f + 104.f*body*body : hard ? 11.f + 55.f*body*body : 10.f + 66.f*body*body) * len;
     float upper = dry ? 2.32f : hard ? 1.44f : 1.97f;
     float lift = hard ? .47f : dry ? .22f : .035f;
     excite(v->head, f, vel * .375f, ring, f * lift, hard ? 9.f : 5.f, 0.f, 1.f);
@@ -212,7 +215,7 @@ static void snare_hit(SnareVoice *v, float vel, const KitPatch *p)
     float wire_gain = hard ? .07f + 1.75f*snappy2*snappy2*snappy2 : dry ? 1.13f : 1.06f;
     v->wire = vel * snappy * wire_gain;
     /* The Hard pitched component dies before its quieter high-passed wires. */
-    v->wire_rate = fall(dry ? 13.f + 146.f*wire*wire : hard ? 20.f + 287.f*wire*wire : 9.f + 100.f*wire*wire);
+    v->wire_rate = fall((dry ? 13.f + 146.f*wire*wire : hard ? 20.f + 287.f*wire*wire : 9.f + 100.f*wire*wire) * len);
     /* Two moving averages give the independently decaying snappy band. */
     v->wire_hp = hard ? .145f : dry ? .13f + .065f * vel : .083f;
     v->wire_lp = hard ? .67f : dry ? .32f + .42f * vel : .58f;

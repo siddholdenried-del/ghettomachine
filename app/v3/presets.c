@@ -42,7 +42,9 @@ static const Param kick_params[] = {
 static const Param snare_params[] = {
     OPTION("Model",shells,KitPatch,snare_preset),
     PERCENT("Tune",KitPatch,snare_tune), PERCENT("Body",KitPatch,snare_body),
-    PERCENT("Snappy",KitPatch,snare_snappy), PERCENT("Wire",KitPatch,snare_wire), SHAPING
+    PERCENT("Snappy",KitPatch,snare_snappy), PERCENT("Wire",KitPatch,snare_wire), SHAPING,
+    /* (after the shaping pair: a recipe that leaves it out has it at 0, the drum as it was) */
+    NUMBER("Decay","%",-1000,1000,80,1,KitPatch,snare_decay,1000)
 };
 static const Param clap_params[] = {
     OPTION("Model",shells,KitPatch,clap_preset), PERCENT("Spread",KitPatch,clap_spread),

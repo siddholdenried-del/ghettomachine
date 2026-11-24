@@ -18,7 +18,7 @@ wait 100
 turn K1 1
 wait 100
 said Body tune
-# the snare: TUNE on K1, WIRE on K4; MODEL on page 2 (after TONE and DRIVE)
+# the snare: TUNE on K1, WIRE on K4; DECAY then MODEL on page 2 (after TONE and DRIVE)
 tap SEQ
 key 3 down
 wait 20
@@ -36,6 +36,9 @@ turn SELECT 1
 wait 100
 expect epage 1
 turn K3 1
+wait 100
+said Decay
+turn K4 1
 wait 100
 said Model Hard
 turn SELECT -1
