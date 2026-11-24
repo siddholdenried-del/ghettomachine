@@ -43,13 +43,21 @@ expect pot7_0 64
 # FX: its four pages, then home (no Color page). Trigger the hat and synth together.
 tap FX
 wait 30
-tap FX
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap FX')
+wait 80
 wait 30
-tap FX
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap FX')
+wait 80
 wait 30
-tap FX
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap FX')
+wait 80
 wait 30
-tap FX
+turn SELECT -40 0   # (0.5: the editor's first page again, as the old 'tap FX' left it)
+wait 20
+press SEQ   # (0.5: home, the steps)
+wait 36
+release SEQ
+wait 20
 wait 30
 expect page 0
 expect color1_5 0

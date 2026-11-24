@@ -24,16 +24,24 @@ tap FX
 wait 30
 expect page 10
 expect fxpage 0
-tap FX
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap FX')
+wait 80
 wait 30
 expect fxpage 1
-tap FX
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap FX')
+wait 80
 wait 30
 expect fxpage 2
-tap FX
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap FX')
+wait 80
 wait 30
 expect fxpage 3
-tap FX
+turn SELECT -40 0   # (0.5: the editor's first page again, as the old 'tap FX' left it)
+wait 20
+press FX   # (0.5: pressed again: back where it was opened from)
+wait 36
+release FX
+wait 20
 wait 30
 expect page 0
 # a drum hit sounds on its stem the same whatever the project's Color says (nothing processes it)

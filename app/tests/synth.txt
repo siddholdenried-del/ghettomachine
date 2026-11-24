@@ -91,31 +91,43 @@ spin K4 -60
 wait 30
 expect snd2_17 0
 # EDIT taps through OSC, TONE, FILTER, MORE, then back to the keys
-tap EDIT
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap EDIT')
+wait 80
 wait 30
 expect epage 1
 shot osc.png
-tap EDIT
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap EDIT')
+wait 80
 wait 30
 expect epage 2
-tap EDIT
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap EDIT')
+wait 80
 wait 30
 expect epage 3
 shot filter.png
-tap EDIT
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap EDIT')
+wait 80
 wait 30
 expect epage 4
 # the synth update's pages after MORE: OSC 2, SHAPER, MACRO; then the keys
-tap EDIT
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap EDIT')
+wait 80
 wait 30
 expect epage 5
-tap EDIT
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap EDIT')
+wait 80
 wait 30
 expect epage 6
-tap EDIT
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap EDIT')
+wait 80
 wait 30
 expect epage 7
-tap EDIT
+turn SELECT -40 0   # (0.5: the editor's first page again, as the old 'tap EDIT' left it)
+wait 20
+press EDIT   # (0.5: pressed again: back where it was opened from)
+wait 36
+release EDIT
+wait 20
 wait 30
 expect page 5
 expect epage 0
@@ -165,16 +177,24 @@ spin K1 -127
 wait 30
 expect snd2_18 0
 wait 2000
-tap ENV
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap ENV')
+wait 80
 wait 30
 expect envpage 1
 spin K4 5
 wait 30
 expect snd2_25 35
-tap ENV
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap ENV')
+wait 80
 wait 30
 expect envpage 2
-tap ENV
+turn SELECT -40 0   # (0.5: the editor's first page again, as the old 'tap ENV' left it)
+wait 20
+tap SEQ   # (0.5: home, the keys: SEQ round to them; 240 ms more than the old tap)
+wait 30
+tap SEQ
+wait 30
+tap SEQ
 wait 30
 expect page 5
 expect envpage 0

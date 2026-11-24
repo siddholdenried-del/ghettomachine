@@ -1,0 +1,141 @@
+# The editors' buttons (0.5): EDIT, ENV, LFO, ARP, FX and GLO open their editor on the page it was left on and keep the
+# screen it was opened from; pressed again, back to that screen. SELECT turns an editor's pages. (Pages: 0 STEPS,
+# 1 EDIT, 2 MUTE, 3 PATTERNS, 5 KEYS, 6 ENV, 7 LFO, 8 ARP, 9 MIXER, 10 FX, 11 SONG, 12 MASTER, 19 QUICK MIXER)
+wait 300
+expect page 0
+# ---- T2, from its keys: EDIT, a page on, back; EDIT again: the page it was left on
+turn ALGO 1
+wait 30
+expect trk 2
+expect page 5
+tap EDIT
+wait 30
+expect page 1
+expect epage 0
+turn SELECT 2
+wait 30
+expect epage 2
+tap EDIT
+wait 30
+expect page 5
+tap EDIT
+wait 30
+expect page 1
+expect epage 2
+# from EDIT to LFO, LFO back to EDIT, EDIT back to the keys
+tap LFO
+wait 30
+expect page 7
+tap LFO
+wait 30
+expect page 1
+tap EDIT
+wait 30
+expect page 5
+# ENV, ARP, FX: the same
+tap ENV
+wait 30
+expect page 6
+turn SELECT 1
+wait 30
+expect envpage 1
+tap ENV
+wait 30
+expect page 5
+tap ARP
+wait 30
+expect page 8
+tap ARP
+wait 30
+expect page 5
+tap FX
+wait 30
+expect page 10
+turn SELECT 1
+wait 30
+expect fxpage 1
+tap FX
+wait 30
+expect page 5
+tap FX
+wait 30
+expect page 10
+expect fxpage 1
+tap FX
+wait 30
+# ---- from PATTERNS: LFO and back there (not to the keys)
+tap HOME
+wait 30
+expect page 3
+tap LFO
+wait 30
+expect page 7
+tap LFO
+wait 30
+expect page 3
+# ---- GLO from the QUICK MIXER: the mixer, SELECT on to the master bus, back; GLO again: the master bus as left
+tap HOME
+wait 30
+expect page 19
+tap GLO
+wait 30
+expect page 9
+turn SELECT 5
+wait 30
+expect page 12
+expect mstpage 1
+tap GLO
+wait 30
+expect page 19
+tap GLO
+wait 30
+expect page 12
+expect mstpage 1
+tap GLO
+wait 30
+expect page 19
+# ---- the drums: a drum's editor opens on the page it was left on (it went back to the first before)
+turn ALGO -1
+wait 30
+expect trk 1
+tap SEQ
+wait 30
+expect page 0
+tap EDIT
+wait 30
+expect page 1
+turn SELECT 1
+wait 30
+expect epage 1
+tap EDIT
+wait 30
+expect page 0
+tap EDIT
+wait 30
+expect epage 1
+tap EDIT
+wait 30
+expect page 0
+# ENV on the drums: the lane mutes, and back
+tap ENV
+wait 30
+expect page 2
+tap ENV
+wait 30
+expect page 0
+# ---- a screen the track picked can't show: home instead (T2's ENV, then EDIT, then the drums: EDIT back -> STEPS)
+turn ALGO 1
+wait 30
+tap ENV
+wait 30
+expect page 6
+tap EDIT
+wait 30
+expect page 1
+turn ALGO -1
+wait 30
+expect trk 1
+expect page 1
+tap EDIT
+wait 30
+expect page 0

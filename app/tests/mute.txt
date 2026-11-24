@@ -116,7 +116,8 @@ tap ARP
 wait 30
 spin K1 1
 wait 30
-tap ARP
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap ARP')
+wait 80
 wait 30
 spin K1 1
 wait 30

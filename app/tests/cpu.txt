@@ -25,13 +25,21 @@ expect trk 1
 # Starting on the drums, FX past FILTER goes home (no Color strip).
 tap FX
 wait 30
-tap FX
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap FX')
+wait 80
 wait 30
-tap FX
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap FX')
+wait 80
 wait 30
-tap FX
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap FX')
+wait 80
 wait 30
-tap FX
+turn SELECT -40 0   # (0.5: the editor's first page again, as the old 'tap FX' left it)
+wait 20
+press FX   # (0.5: pressed again: back where it was opened from)
+wait 36
+release FX
+wait 20
 wait 30
 expect page 0
 # the returns asleep in silence (BongVerb bit 0, BongDelay bit 1: in and out under -120 dB for 0.5 s and 1.1 s), awake

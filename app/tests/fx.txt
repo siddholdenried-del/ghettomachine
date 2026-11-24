@@ -9,7 +9,12 @@ wait 600
 # MASTER full: what the master bus puts out (0.2: the volume comes after it)
 master 4096
 # ---- GLO: the mixer, LEVEL first; K1..K4 are the drums, T2, T3, T4
-tap GLO
+press GLO   # (was 'tap GLO')
+wait 38
+release GLO
+turn SELECT -40 0   # (0.5: GLO opens where it was left: the old's page)
+wait 17
+wait 21
 wait 30
 expect page 9
 expect mixpage 0
@@ -24,7 +29,8 @@ expect mix2_0 80
 expect level2 80
 shot mix_level.png
 # PAN: the drums hard right, so the left side is silent (their pads send nothing to the FX)
-tap GLO
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap GLO')
+wait 80
 wait 30
 expect mixpage 1
 spin K1 63
@@ -64,14 +70,20 @@ wait 200
 expect peak_db_min -75
 wait 3000
 # no sends: nothing after it
-tap GLO
+press GLO   # (was 'tap GLO')
+wait 38
+release GLO
+turn SELECT -40 0   # (0.5: GLO opens where it was left: the old's page)
+wait 17
+wait 21
 wait 30
 turn SELECT 2
 wait 30
 expect mixpage 2
 spin K3 -45
 wait 30
-tap GLO
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap GLO')
+wait 80
 wait 30
 spin K3 -35
 wait 30
@@ -93,7 +105,8 @@ tap FX
 wait 30
 expect page 10
 expect fxpage 0
-tap FX
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap FX')
+wait 80
 wait 30
 expect fxpage 1
 expect fx4 2
@@ -138,7 +151,8 @@ expect dlyon 1
 expect rec 0
 unsaid RECORD
 unsaid SEL+PADS
-tap FX
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap FX')
+wait 80
 wait 30
 expect page 10
 shot fx_paused.png

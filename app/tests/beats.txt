@@ -77,7 +77,10 @@ tap ENV
 wait 30
 expect page 2
 expect wdim 4369
-tap ENV
+press SEQ   # (0.5: home, the steps)
+wait 38
+release SEQ
+wait 38
 wait 30
 expect page 0
 # ---- T2's STEPS: as before, no glow

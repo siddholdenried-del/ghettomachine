@@ -22,7 +22,8 @@ spin K3 20
 wait 30
 expect lset2_8 20
 shot lfo.png
-tap LFO
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap LFO')
+wait 80
 wait 30
 expect lfopage 1
 spin K2 1
@@ -102,7 +103,8 @@ wait 30
 expect lset1_0 4
 spin K3 30
 wait 30
-tap LFO
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap LFO')
+wait 80
 wait 30
 expect lfopage 1
 spin K1 1
@@ -189,7 +191,8 @@ key 7 up
 key 11 up
 wait 300
 # LATCH: the notes stay after the keys; a new key starts a new set
-tap ARP
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap ARP')
+wait 80
 wait 30
 expect arppage 1
 spin K1 1
@@ -224,9 +227,16 @@ wait 30
 expect arpset3_1 5
 tap REC
 wait 30
-tap ARP
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap ARP')
+wait 80
 wait 30
-tap ARP
+turn SELECT -40 0   # (0.5: the editor's first page again, as the old 'tap ARP' left it)
+wait 20
+tap SEQ   # (0.5: home, the keys: SEQ round to them; 240 ms more than the old tap)
+wait 30
+tap SEQ
+wait 30
+tap SEQ
 wait 30
 expect page 5
 key 7 down

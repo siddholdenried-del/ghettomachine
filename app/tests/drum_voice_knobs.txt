@@ -87,7 +87,8 @@ turn K1 1
 wait 100
 said Decay
 unsaid Profile
-tap EDIT
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap EDIT')
+wait 80
 wait 100
 turn K1 1
 wait 100
@@ -103,7 +104,8 @@ turn K1 1
 wait 100
 said Decay
 unsaid Ride
-tap EDIT
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap EDIT')
+wait 80
 wait 100
 turn K1 1
 wait 100
@@ -119,7 +121,8 @@ turn K1 1
 wait 100
 said Tune
 unsaid Model
-tap EDIT
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap EDIT')
+wait 80
 wait 100
 turn K4 1
 wait 100

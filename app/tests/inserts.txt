@@ -25,16 +25,24 @@ tap FX
 release SEL
 wait 30
 expect page 10
-tap FX
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap FX')
+wait 80
 wait 30
 expect page 10
-tap FX
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap FX')
+wait 80
 wait 30
 expect page 10
-tap FX
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap FX')
+wait 80
 wait 30
 expect page 10
-tap FX
+turn SELECT -40 0   # (0.5: the editor's first page again, as the old 'tap FX' left it)
+wait 20
+press FX   # (0.5: pressed again: back where it was opened from)
+wait 36
+release FX
+wait 20
 wait 30
 expect page 5
 expect insert2 2

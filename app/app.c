@@ -6417,9 +6417,36 @@ static void do_save(void)
     }
 }
 
-static void page_button(int page)         /* a page's button: its page, or (pressed again) the track's own */
+/* The editors' buttons (EDIT, ENV, LFO, ARP, FX, GLO; 0.5): a button opens its editor on the page it was left on and
+ * keeps the screen it was opened from; pressed again, back to that screen. SELECT turns an editor's pages. (SEQ and
+ * HOME go round their own screens as before.) */
+enum { ED_EDIT, ED_ENV, ED_LFO, ED_ARP, ED_FX, ED_GLO, NED };
+static uint8_t ed_from[NED] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+static uint8_t glo_last = PG_MIX;         /* GLO's page left last: the mixer or the master bus */
+
+static int page_fits(int pg)              /* a page the track picked can show (and come back to) */
 {
-    ui.page = (uint8_t)(ui.page == page ? home_page(ui.trk) : page);
+    const int inst = ui.trk != TR_DRUM;
+    switch (pg) {
+    case PG_KEYS: case PG_ENV: case PG_ARP: case PG_GEN: case PG_COLOR: return inst;
+    case PG_MUTE: case PG_KIT: case PG_V3_BUS: return !inst;
+    case PG_PICK: return 0;               /* (a chord being picked: not from a button) */
+    default: return pg <= PG_QMIX;
+    }
+}
+
+static void ed_open(int ed, int pg)       /* an editor's button: its page (as it was left), from the screen on now */
+{
+    if (ui.page != pg)
+        ed_from[ed] = ui.page;
+    ui.page = (uint8_t)pg;
+    ui.redraw = 1;
+}
+
+static void ed_back(int ed)               /* pressed again: back to the screen it was opened from */
+{
+    const int pg = ed_from[ed];
+    ui.page = (uint8_t)(pg != ui.page && page_fits(pg) ? pg : home_page(ui.trk));
     ui.redraw = 1;
 }
 
@@ -7227,22 +7254,14 @@ static void input(void)
             ui.spage_t = plat_ms();
         }
     }
-    if ((released >> B_EDIT & 1u) && !ui.edit_used) {   /* EDIT tapped: its page, or its next page (or back) */
+    if ((released >> B_EDIT & 1u) && !ui.edit_used) {   /* EDIT tapped: the editor, on the page it was left on (SELECT
+                                                         * turns them); again: back to the screen it was opened from */
         if (ui.page != PG_EDIT) {
-            ui.page = PG_EDIT;
-            if (!inst && v3_mode) ui.epage=0;
-        } else if (v6_voice_page()) {
-            if (ui.epage+1 < v6_pages()) ++ui.epage;
-            else { ui.page=PG_SEQ; ui.epage=0; }
-        } else if (inst) {                /* the next page; after the last, the keys */
-            if (ui.epage + 1 < inst_epages(ui.trk)) {
-                ui.epage++;
-            } else {
+            if (ui.epage >= (inst ? inst_epages(ui.trk) : v3_mode && ui.pad < NPADS ? v6_pages() : drum_epages()))
                 ui.epage = 0;
-                ui.page = PG_KEYS;
-            }
+            ed_open(ED_EDIT, PG_EDIT);
         } else {
-            ui.epage = (uint8_t)(ui.epage + 1 < drum_epages() ? ui.epage + 1 : 0);
+            ed_back(ED_EDIT);
         }
     }
     if ((pressed >> B_SEQ & 1u) && !ui.seq_used) {      /* the steps; on an instrument track, again: the 303 generator (the page of it
@@ -7255,17 +7274,12 @@ static void input(void)
             ui.page = (uint8_t)(ui.page == PG_SEQ ? PG_GEN : PG_KEYS);
         ui.held_step = -1;
     }
-    if (pressed >> B_ENV & 1u) {          /* the drums' MUTE page; an instrument's envelopes (amp, filter, then the keys) */
-        if (!inst) {
-            page_button(PG_MUTE);
-        } else if (ui.page != PG_ENV) {
-            ui.page = PG_ENV;
-        } else if (ui.envpage + 1 < NENVPAGE) {
-            ui.envpage++;
-        } else {
-            ui.envpage = 0;
-            ui.page = PG_KEYS;
-        }
+    if (pressed >> B_ENV & 1u) {          /* the drums' MUTE page; an instrument's envelopes; again: back */
+        const int pg = inst ? PG_ENV : PG_MUTE;
+        if (ui.page != pg)
+            ed_open(ED_ENV, pg);
+        else
+            ed_back(ED_ENV);
     }
     if (pressed >> B_HOME & 1u)           /* HOME: the patterns, the quick mixer, the song, SETUP, then back */
         ui.page = (uint8_t)(ui.page == PG_HOME ? PG_QMIX : ui.page == PG_QMIX ? PG_SONG : ui.page == PG_SONG ? PG_SETUP
@@ -7277,25 +7291,14 @@ static void input(void)
             ui.redraw = 1;
         } else if (btn >> B_SEL & 1u) {   /* SEL + GLO: the master bus, at once */
             ui.sel_used = 1;
+            if (ui.page != PG_MIX && ui.page != PG_MST)
+                ed_from[ED_GLO] = ui.page;
             ui.page = PG_MST;
             ui.mstpage = 0;
-        } else if (ui.page == PG_MIX) {
-            if (ui.mixpage < 3) {
-                ui.mixpage++;
-            } else {
-                ui.mixpage = 0;
-                ui.page = PG_MST;
-                ui.mstpage = 0;
-            }
-        } else if (ui.page == PG_MST) {
-            if (ui.mstpage < NMSTPAGE - 1) {
-                ui.mstpage++;
-            } else {
-                ui.mstpage = 0;
-                ui.page = (uint8_t)home_page(ui.trk);
-            }
-        } else {
-            ui.page = PG_MIX;
+        } else if (ui.page == PG_MIX || ui.page == PG_MST) {   /* again: back */
+            ed_back(ED_GLO);
+        } else {                          /* the mixer or the master bus, whichever was left last, as it was */
+            ed_open(ED_GLO, glo_last);
         }
     }
     if (pressed >> B_PLAY & 1u) {
@@ -7347,16 +7350,13 @@ static void input(void)
         do_save();
     else if ((released >> B_SAVE & 1u) && ui.save_slot >= 0)   /* SAVE held + PRESETS, let go: a user preset */
         save_user();
-    if (pressed >> B_LFO & 1u) {          /* every track's LFO: its pages (an instrument's: LFO 2, MATRIX too), then back */
+    if (pressed >> B_LFO & 1u) {          /* every track's LFO (an instrument's: LFO 2, MATRIX too); again: back */
         if (ui.page != PG_LFO) {
-            ui.page = PG_LFO;
             if (ui.lfopage >= lfo_pages(ui.trk))
                 ui.lfopage = 0;
-        } else if (ui.lfopage + 1 < lfo_pages(ui.trk)) {
-            ui.lfopage++;
+            ed_open(ED_LFO, PG_LFO);
         } else {
-            ui.lfopage = 0;
-            ui.page = (uint8_t)home_page(ui.trk);
+            ed_back(ED_LFO);
         }
     }
     if (pressed >> B_ARP & 1u) {          /* T2..T4's arpeggiator */
@@ -7367,32 +7367,28 @@ static void input(void)
         } else if (ui.page == PG_SEQ && ui.held_step >= 0) {
             pick_open();
         } else if (ui.page != PG_ARP) {
-            ui.page = PG_ARP;
-        } else if (!ui.arppage) {
-            ui.arppage = 1;
+            ed_open(ED_ARP, PG_ARP);
         } else {
-            ui.arppage = 0;
-            ui.page = PG_KEYS;
+            ed_back(ED_ARP);
         }
     }
     if (pressed >> B_FX & 1u) {           /* the FX: REVERB, DELAY, DELAY 2, FILTER, then back */
         if ((btn >> B_SEL & 1u) && inst)
             ui.sel_used = 1;
-        if (!inst && (btn >> B_SEL & 1u)) {
+        if (!inst && (btn >> B_SEL & 1u)) {   /* SEL + FX on the drums: their bus; again: back */
             ui.sel_used = 1;
-            page_button(PG_V3_BUS);
+            if (ui.page != PG_V3_BUS)
+                ed_open(ED_FX, PG_V3_BUS);
+            else
+                ed_back(ED_FX);
         } else if (ui.page == PG_V3_BUS) {
             v3_bus_mode(0, 1);
         } else if (ui.page == PG_COLOR) {
             ui.page = (uint8_t)home_page(ui.trk);
         } else if (ui.page != PG_FX) {
-            ui.page = PG_FX;
-        } else if (ui.fxpage < NFXPAGE - 1) {
-            ui.fxpage++;
+            ed_open(ED_FX, PG_FX);
         } else {
-            ui.fxpage = 0;
-            ui.color_page = 0;
-            ui.page = (uint8_t)home_page(ui.trk);   /* (no Color: the unified engine has none in the tracks) */
+            ed_back(ED_FX);
         }
     }
 
@@ -10678,6 +10674,8 @@ void app_frame(void)
 {
     uint32_t now = plat_ms(), t = sq.ticks;
     input();
+    if (ui.page == PG_MIX || ui.page == PG_MST)   /* (GLO opens again on whichever of them was left last) */
+        glo_last = ui.page;
     if (qm.held && (ui.page != PG_QMIX || ui.trk != qm.trk))   /* the QUICK MIXER left: its held moves let go */
         qm_clear();
 #if FM1B_USB_HOST

@@ -66,7 +66,7 @@ route still works for getting M-VAVE's firmware back.
 | **PLAY** | Starts and stops. |
 | **REC** | Tap: recording on or off (turn a knob while it's on and playing: the knob is recorded). Hold it: the metronome, count-in and quantize (below). |
 | **SEQ** | The steps. On T2–T4, press again for the 303 generator (ACID), again for the keys. |
-| **EDIT, ENV, LFO, ARP, FX, GLO** | Their pages. Press again for the next page; after the last, back. |
+| **EDIT, ENV, LFO, ARP, FX, GLO** | Their editor, on the page you left it on (SELECT turns its pages). Press the same button again: back to the screen you were on before you opened it. |
 | **HOME** | PATTERNS, the scene grid, for playing live. Again: the QUICK MIXER, then the song, then SETUP, then back to the track. None of them stops or re-times what's playing. |
 | **SEL + GLO** | The master bus, at once. |
 | **SEL + FX (T2–T4)** | The selected instrument track's insert; SELECT chooses a mode or OFF. |
@@ -115,8 +115,8 @@ monospace face. Three parts, top to bottom:
   page, glow dimly while they're empty, and the screen's grid gives them a darker column, so a bar is easy to count.
   - Hold **SEQ** and press steps: accents.
   - Hold a step and turn **SELECT**: its chance (100 % to 5 %).
-- **EDIT:** the pad's knobs: tune, tone, decay, its reverb and delay sends, and so on. Tap EDIT for more. The last page
-  is the kit's own knobs (accent, velocity).
+- **EDIT:** the pad's knobs: tune, tone, decay, its reverb and delay sends, and so on. SELECT for more; EDIT again goes
+  back to where you were. The last page is the kit's own knobs (accent, velocity).
 - **The two kits play at the same level:** each 808 sound is as loud as the 909 pad that plays its part (until 21 Nov
   the 808 played a groove about 12 dB quieter). The 808's accent is stronger than the 909's, as on a real 808: about
   6 dB against 3; the KIT page's Accent sets it.
@@ -222,7 +222,7 @@ On STEPS an accented note has a white bar over it and a slide a mark at its end.
 - **SHAPER:** its type (**FOLD**, **CLIP**, **RECT**, **CRUSH**), **AMOUNT** (0 is off), **BIAS**, and **PLACE**: before
   the filter (PRE FLT) or after it (POST FLT).
 - **MACRO:** MACRO 1–4, four knobs that do whatever the matrix tells them to (below).
-- **ENV:** the amp's attack, decay, sustain and release; press ENV again for the filter's, and again for **MOD ENV**, a
+- **ENV:** the amp's attack, decay, sustain and release; SELECT for the filter's, and on for **MOD ENV**, a
   third envelope that moves whatever the matrix sends it to.
 - **MONO** goes back to a key you still hold when you let go of the newer one. **LEGATO** (MORE): **OFF**, every note
   starts again; **ON**, tied notes don't restart the envelopes (and with GLIDE, a note glides from the last one while
@@ -363,7 +363,8 @@ Turning a knob without recording on, or stopped, only changes the sound.
 
 ## Mixer, FX and the master bus
 
-- **GLO, the mixer:** LEVEL, PAN, REVERB, DELAY pages. On each, K1–K4 are DRUMS, T2, T3, T4. The QUICK MIXER (HOME,
+- **GLO, the mixer:** LEVEL, PAN, REVERB, DELAY pages, then the master bus's, one row SELECT turns through; GLO opens
+  on whichever you left it on, and GLO again goes back. On each, K1–K4 are DRUMS, T2, T3, T4. The QUICK MIXER (HOME,
   twice) has one track's LEVEL, REVERB, DELAY and PAN on K1–K4 instead. The drums' sends open the
   FX to their pads' own reverb and delay knobs.
 - **FX:** one shared **BongVerb** and one shared **BongDelay**. Each track's REVERB and DELAY sends feed them; their

@@ -192,7 +192,8 @@ wait 30
 expect trk 4
 tap ARP
 wait 30
-tap ARP
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap ARP')
+wait 80
 wait 30
 expect arppage 1
 spin K2 5
@@ -202,7 +203,12 @@ spin K3 1
 wait 30
 expect chordinv4 1
 shot chord.png
-tap ARP
+turn SELECT -40 0   # (0.5: the editor's first page again, as the old 'tap ARP' left it)
+wait 20
+press ARP   # (0.5: pressed again: back where it was opened from)
+wait 36
+release ARP
+wait 20
 wait 30
 expect page 5
 expect nsteps4 0

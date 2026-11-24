@@ -90,10 +90,12 @@ tap LFO
 wait 30
 expect page 7
 expect lfopage 0
-tap LFO
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap LFO')
+wait 80
 wait 30
 expect lfopage 1
-tap LFO
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap LFO')
+wait 80
 wait 30
 expect lfopage 2
 spin K1 4
@@ -103,7 +105,8 @@ wait 30
 expect snd2_42 4
 expect snd2_43 40
 shot lfo2.png
-tap LFO
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap LFO')
+wait 80
 wait 30
 expect lfopage 3
 expect mslot 1
@@ -269,7 +272,13 @@ expect peak_db_max -0.5
 key 7 up
 wait 600
 # ---- a user sound keeps the update's parameters: WOBBLE with DRIFT 30, saved as USER 1; PLUCK, then USER 1 again
-tap EDIT
+turn SELECT -40 0   # (0.5: the editor's first page again, as the old 'tap EDIT' left it)
+wait 20
+tap SEQ   # (0.5: home, the keys: SEQ round to them; 240 ms more than the old tap)
+wait 30
+tap SEQ
+wait 30
+tap SEQ
 wait 30
 expect page 5
 tap EDIT

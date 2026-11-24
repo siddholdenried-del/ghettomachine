@@ -24,7 +24,10 @@ wait 30
 key 20 up
 wait 30
 expect mute 256
-tap ENV
+press ENV   # (0.5: pressed again: back where it was opened from)
+wait 38
+release ENV
+wait 38
 wait 30
 expect page 0
 key 1 down

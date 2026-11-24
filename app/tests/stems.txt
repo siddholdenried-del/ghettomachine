@@ -55,9 +55,15 @@ expect pkl >-200
 expect pkr >-200
 master 4096
 # ---- the mixer's PAN (GLO twice): T2 hard left, so its stem's right side is silent; the drums' stem keeps both
-tap GLO
+press GLO   # (was 'tap GLO')
+wait 38
+release GLO
+turn SELECT -40 0   # (0.5: GLO opens where it was left: the old's page)
+wait 17
+wait 21
 wait 30
-tap GLO
+turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap GLO')
+wait 80
 wait 30
 expect mixpage 1
 spin K2 -63
