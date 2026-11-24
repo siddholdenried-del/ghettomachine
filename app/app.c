@@ -75,6 +75,7 @@ static const char *trial_pad_name(int kit, int pad)
 #define LK_707_CB 0xD0u                   /* no historic 707 knob used bit 4 or 5 */
 #define LK_707_TB 0xE0u
 #define LK_PROB 0x7Fu                     /* lock_t.param: the step's chance, either kit */
+#define LK_VEL 0x7Du                      /* lock_t.param: the hit's velocity (0.5), 1..127 (none: normal, or its accent) */
 #define LK_SUB 0x7Eu                      /* lock_t.param: the step's substeps (0.5), 2..4: it plays that many times */
 #define IL_SUB 0x7Fu                      /* ilock_t.param: an instrument step's substeps (not a sound parameter) */
 #define NTRK 4                            /* tracks: the drums, then T2..T4 */
@@ -2180,9 +2181,14 @@ static void pump_key(int kit, float vel); /* (a kick for PUMP: at the block's ta
  * an instrument step's notes again (each half a substep long). One slot a pad and a track; the audio interrupt's */
 static struct {
     float to, len;                        /* samples to the next, between them */
-    uint8_t left, a;                      /* still to play; a pad's accent, an instrument's step */
+    uint8_t left, a;                      /* still to play; a pad's velocity (sub_vel), an instrument's step */
 } sub[NPADS + NINST];
 static uint32_t sub_on;                   /* a bit per slot with some left */
+
+static float sub_vel(int a)               /* a hit's velocity: 0 normal, 255 accented, else 1..127 of 127 */
+{
+    return a == 255 ? 1.0f : a ? (float)a * (1.0f / 127.0f) : DRUMS_VEL_NORMAL;
+}
 
 static void sub_arm(int i, int n, float dur, int a)
 {
@@ -2204,7 +2210,7 @@ static void sub_fire(int i)
     sub_fires++;
 #endif
     if (i < NPADS) {
-        float v = sub[i].a ? 1.0f : DRUMS_VEL_NORMAL;
+        float v = sub_vel(sub[i].a);
         if ((perf.rmask | proj.tmute) & 1u)
             return;
         pad_fire(i, v);
@@ -2240,13 +2246,15 @@ static void seq_drum(void)                /* audio interrupt: the drum part's ne
         if (muted || chance_skips(p, next, pad))
             continue;
         locks_apply(p, next, pad);
-        pad_fire(pad, bit_get(p->acc, next) ? 1.0f : DRUMS_VEL_NORMAL);
-        if (pad == 0)                     /* the bass drum: the master's PUMP ducks to it */
-            pump_key(drum_model(0), bit_get(p->acc, next) ? 1.0f : DRUMS_VEL_NORMAL);
         {
-            int j = lock_find(p, next, pad, LK_SUB);
+            int j = lock_find(p, next, pad, LK_VEL), a = j >= 0 ? p->lk[j].val & 127 : bit_get(p->acc, next) ? 255 : 0;
+            float v = sub_vel(a);         /* (its own velocity, else its accent's) */
+            pad_fire(pad, v);
+            if (pad == 0)                 /* the bass drum: the master's PUMP ducks to it */
+                pump_key(drum_model(0), v);
+            j = lock_find(p, next, pad, LK_SUB);
             if (j >= 0)
-                sub_arm(pad, p->lk[j].val, sq.t[TR_DRUM].dur, bit_get(p->acc, next));
+                sub_arm(pad, p->lk[j].val, sq.t[TR_DRUM].dur, a);
         }
     }
     sq.t[TR_DRUM].to_next += sq.t[TR_DRUM].dur;
@@ -4104,6 +4112,7 @@ static struct {
     uint8_t spage;                        /* the step page, 0..7 */
     uint8_t stool;                        /* an instrument track's STEPS: its tools' page (ST_*, SELECT) */
     uint8_t st_vel, st_gate;              /* a new step's velocity and gate there (0: 100, GATE_DEF) */
+    uint8_t dtool;                        /* the drums' STEPS: 0 PART GROOVE's knobs, 1 the HIT's (SELECT) */
     uint8_t hnote;                        /* the held step's note being edited: 0 all of them, 1.. from its lowest */
     uint8_t seq_prev, seq_used;           /* a resize chord leaves the previous SEQ view alone */
     uint8_t epage;                        /* the EDIT page (four knobs each) */
@@ -4494,6 +4503,45 @@ static void held_sub(int32_t e)           /* a step held + ALGORITHM: its subste
     }
     int_text(n, t);
     app_say("SUBSTEPS", t);
+    ui.redraw = 1;
+}
+
+static void dhit_knob(int k, int32_t e)   /* the drums' STEPS, a hit held (or their HIT page): K1 VELOCITY K2 CHANCE
+                                           * K3 SUBSTEPS K4 ACCENT (the step's, every pad's) */
+{
+    dpart_t *p = dcur();
+    int s = ui.held_step, i, v;
+    char t[8];
+    uint32_t f;
+    if (s < 0 || !bit_get(p->hit[ui.pad], s)) {
+        app_say("THE HIT", "HOLD A STEP");
+        return;
+    }
+    if (k == 1) {
+        held_chance(e);
+    } else if (k == 2) {
+        held_sub(e);
+    } else {
+        if (!ui.held_used)
+            undo_mark(0);
+        ui.held_used = 1;
+        i = lock_find(p, s, ui.pad, LK_VEL);
+        v = clamp((i >= 0 ? p->lk[i].val : bit_get(p->acc, s) ? 127 : (int)(DRUMS_VEL_NORMAL * 127.0f + 0.5f)) + e, 1, 127);
+        f = plat_lock();
+        if (k == 0)
+            i = lock_put(p, s, ui.pad, LK_VEL, v);
+        else if (e > 0)
+            bit_set(p->acc, s);
+        else
+            bit_clear(p->acc, s);
+        plat_unlock(f);
+        if (k == 0 && i) {
+            app_say("NO LOCK LEFT", "");
+            return;
+        }
+        int_text(v, t);
+        app_say(k ? "ACCENT" : "VELOCITY", k ? (e > 0 ? "ON" : "OFF") : t);
+    }
     ui.redraw = 1;
 }
 
@@ -7538,6 +7586,8 @@ static void knob(int k, int32_t e)        /* KNOB 1..4 (k 0..3) on the page show
         gen_knob(k, e);
     } else if (inst && ui.page == PG_SEQ) {
         istep_knob(k, e);
+    } else if (!inst && ui.page == PG_SEQ && (ui.dtool || ui.held_step >= 0)) {
+        dhit_knob(k, e);
     } else {
         seq_knob(k, e);
     }
@@ -8059,6 +8109,9 @@ static void input(void)
             ui.srec_held = ui.srec_n = 0;
             int_text(ui.cursor[ui.trk] + 1, t);
             app_say("STEP", t);
+        } else if (!inst && ui.page == PG_SEQ) {  /* the drums' steps: PART GROOVE's knobs or the HIT's (the banks: OCT) */
+            ui.dtool = (uint8_t)clamp(ui.dtool + e, 0, 1);
+            app_say("TOOLS", ui.dtool ? "DRUM HIT" : "PART GROOVE");
         } else if (inst && ui.page == PG_SEQ) {   /* an instrument's steps: its tools' pages (the banks: the black keys) */
             ui.stool = (uint8_t)clamp(ui.stool + e, 0, NSTOOL - 1);
             app_say("TOOLS", STOOL_NAME[ui.stool]);
@@ -8712,8 +8765,12 @@ static void band(void)
                 cv_rect(xr - 12, 5 + j, j < 5 ? j + 1 : 9 - j, 1, C_NOW);
             xr -= 12;
         }
-        if (ui.rec)                       /* recording: a red dot */
+        if (ui.rec) {                     /* recording: a red dot */
             cv_rect(xr - 12, 6, 8, 8, C_RED);
+            xr -= 12;
+        }
+        if (dirty)                        /* (0.5) changed since the last save: a hollow acid box (SAVE keeps it) */
+            frame(xr - 12, 6, 8, 8, C_ACID);
     }
     f = text_w(&FONT_MT, bd.title) <= 224 ? &FONT_MT : text_w(&FONT_MB, bd.title) <= 224 ? &FONT_MB : &FONT_B;
     fit(f, bd.title, 224, t);
@@ -8796,7 +8853,7 @@ static void strip(void)                   /* four cells, K1..K4 as the knobs sit
 }
 
 /* ---- each kind of page's four knobs */
-enum { KD_SEQ, KD_HELD, KD_STOOL, KD_DRUM, KD_KIT, KD_MODEL, KD_INST, KD_ENV, KD_LFO, KD_ARP, KD_MIX, KD_FX, KD_MST, KD_SONG, KD_REC, KD_PF,
+enum { KD_SEQ, KD_HELD, KD_STOOL, KD_DHIT, KD_DRUM, KD_KIT, KD_MODEL, KD_INST, KD_ENV, KD_LFO, KD_ARP, KD_MIX, KD_FX, KD_MST, KD_SONG, KD_REC, KD_PF,
        KD_SETUP, KD_FOLLOW, KD_GEN, KD_COLOR, KD_QMIX };
 
 static int fx_mid(int i)                  /* a two-way FX knob's middle, or -1 */
@@ -8836,6 +8893,24 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
             int_text(proj.bpm10 / 10, t);
             card_put(c, N[3], t, proj.bpm10 / 10, 60, 240, -1);
         }
+        return 1;
+    }
+    case KD_DHIT: {                       /* the drums' hit held: its velocity, chance, substeps; the step's accent */
+        static const char *const N[4] = {"VELOCITY", "CHANCE", "SUBSTEPS", "ACCENT"};
+        const dpart_t *d = dcur();
+        int s = ui.held_step, j;
+        if (s < 0 || !bit_get(d->hit[ui.pad], s)) {
+            text_cat(t, "HOLD STEP");
+        } else if (k == 3) {
+            text_cat(t, bit_get(d->acc, s) ? "ON" : "OFF");
+        } else {
+            j = lock_find(d, s, ui.pad, k == 0 ? LK_VEL : k == 1 ? LK_PROB : LK_SUB);
+            int_text(j >= 0 ? d->lk[j].val : k == 0 ? (bit_get(d->acc, s) ? 127 : (int)(DRUMS_VEL_NORMAL * 127.0f + 0.5f))
+                                             : k == 1 ? 100 : 1, t);
+            if (k == 1)
+                text_cat(t, "%");
+        }
+        card_put(c, N[k], t, 0, 0, 1, -1);
         return 1;
     }
     case KD_STOOL: {                      /* an instrument's step tools: STEP (the stamp), HARMONY, PART */
@@ -9577,7 +9652,7 @@ static void page_steps(void)              /* the drums' grid: 11 pads and the ac
     text_cat(hint, trial_pad_name(drum_model(ui.pad), ui.pad));
     if (drum_lane_muted(ui.pad))
         text_cat(hint, " MUTED");
-    kit_band("DRUM STEPS", hint, npages(), ui.spage);
+    kit_band(ui.dtool || ui.held_step >= 0 ? "DRUM HIT" : "DRUM STEPS", hint, npages(), ui.spage);
     hits_take();
     for (row = 0; row < NPADS + 1; row++) {
         int y = row * 11, muted = row < NPADS && (p->mute >> row & 1u), sel = row == ui.pad;
@@ -9617,7 +9692,7 @@ static void page_steps(void)              /* the drums' grid: 11 pads and the ac
             }
         }
     }
-    cards_of(KD_SEQ, 0);
+    cards_of(ui.dtool || ui.held_step >= 0 ? KD_DHIT : KD_SEQ, 0);
 }
 
 static void page_roll(void)               /* an instrument part: its notes, pitch up, 16 steps of the page */
@@ -10512,6 +10587,30 @@ static void page_home(void)               /* the scene grid: 16 patterns across 
  * the total, the total's worst block (PEAK), and the blocks that came late since the start. The reverb and delay and
  * the master bus run on the second core (CORE2: post_job), beside the first's; the rest, and TOTAL, are the first
  * core's, which waits for the second at the end of a block (OTHER) and for its half of the synth's voices (SYNTH) */
+/* the last late block (0.5): seen by the main loop a moment after (the count went up): the stage with the worst
+ * block lately and the page on screen then. The CPU page names them */
+static struct {
+    uint32_t seen, n;
+    uint8_t stage, page;
+} late;
+
+static void late_watch(void)
+{
+    uint32_t x = plat_xruns();
+    int i, w = 0;
+    if (x == late.seen)
+        return;
+    if (x > late.seen) {
+        for (i = 1; i < CS_TOTAL; i++)
+            if (cs_pk[i] > cs_pk[w])
+                w = i;
+        late.stage = (uint8_t)w;
+        late.page = ui.page;
+        late.n++;
+    }
+    late.seen = x;
+}
+
 static void page_cpu(void)
 {
     static const char *const NM[CS_NUM] = {"DRUMS", "SYNTH", "DRUM BUS", "VERB+DLY CORE2", "MASTER CORE2", "OTHER",
@@ -10555,9 +10654,13 @@ static void page_cpu(void)
             text_r(232, y - 2, &FONT_XS, u, hot ? TH_RED : TH_TXT);
         }
     }
-    {   /* (0.5) the total over the last 22 s */
+    {   /* (0.5) the total over the last 22 s; under its name the last late block: its longest stage and the page */
         hist_feed(4, (int)(cs_us[CS_TOTAL] * per * 2.55f), 100);
-        cv_text(8, 96, &FONT_XS, "TOTAL, 22 S", C_TXT2);
+        cv_text(8, 96, &FONT_XS, late.n ? "LAST LATE:" : "TOTAL, 22 S", late.n ? TH_RED : C_TXT2);
+        if (late.n) {
+            cv_text(8, 107, &FONT_XS, NM[late.stage % CS_NUM], TH_TXT);
+            cv_text(8, 118, &FONT_XS, PAGE_NAME[late.page], C_TXT2);
+        }
         hist_draw(104, 96, 128, 30);
     }
     cards_of(KD_SETUP, 0);
@@ -11721,6 +11824,7 @@ void app_frame(void)
         ui.redraw = 1;
     }
     shed();
+    late_watch();
     {   /* the delay's line back once STUTTER and TAPE STOP are done with it: the keys up, and the last block
          * that had them through its tail (perf.on: the block rendering; pf_was: the tail's, a block later). Zeroed
          * here, outside the lock (it took 1.5 ms with the audio held off, a quarter of a block: a glitch as the live
@@ -11860,6 +11964,13 @@ int app_expect(const char *what, int *got)
         *got = ui.stool = (uint8_t)(atoi(what + 7) % NSTOOL);
     else if (!strncmp(what, "oldpick", 7))   /* oldpickN: 1 a track change as before 0.5 (the older suites) */
         *got = old_pick = (uint8_t)(what[7] == '1');
+    else if (!strcmp(what, "dtool"))      /* the drums' STEPS: 0 PART GROOVE's knobs, 1 the HIT's */
+        *got = ui.dtool;
+    else if (!strncmp(what, "dvel", 4)) { /* dvelPAD_STEP: the hit's velocity lock (0: none) */
+        const char *u = strchr(what, '_');
+        int j = u ? lock_find(p, (atoi(u + 1) - 1) & (NSTEPS - 1), atoi(what + 4) % NPADS, LK_VEL) : -1;
+        *got = j >= 0 ? p->lk[j].val : 0;
+    }
     else if (!strcmp(what, "hnote"))      /* the held step's note picked: 0 all, 1.. from its lowest */
         *got = ui.hnote;
     else if (!strcmp(what, "stool"))

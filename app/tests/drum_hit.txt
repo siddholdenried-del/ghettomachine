@@ -1,0 +1,45 @@
+# The drums' STEPS (0.5): SELECT turns between PART GROOVE's knobs and the HIT's; with a hit held the knobs are the
+# hit's on either: K1 VELOCITY (its own, a lock) K2 CHANCE K3 SUBSTEPS K4 ACCENT. The step banks: OCT- / OCT+.
+listen
+wait 200
+expect trk 1
+expect dtool 0
+expect hit0_1 1
+key 0 down
+wait 30
+expect held 1
+turn K1 -20
+wait 30
+said VELOCITY
+expect dvel0_1 >0
+expect nlk 1
+turn K2 -5
+wait 30
+expect prob0_1 75
+turn K3 1
+wait 30
+said SUBSTEPS 2
+turn K4 1
+wait 30
+said ACCENT ON
+expect acc1 1
+shot drum_hit.png
+key 0 up
+wait 30
+expect held 0
+expect hit0_1 1
+expect nlk 3
+# no hit held: SELECT to the HIT page; its knobs ask for one; back: LENGTH again
+turn SELECT 1
+wait 30
+expect dtool 1
+turn K1 1
+wait 30
+said HOLD A STEP
+expect len 16
+turn SELECT -1
+wait 30
+expect dtool 0
+turn K1 -4
+wait 30
+expect len 12
