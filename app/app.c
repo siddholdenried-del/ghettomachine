@@ -30,10 +30,24 @@
 #include "v3/presets.h"
 #include "v3_metrics.h"
 
+/* The stock 808 / 909 engine's sound (mode 0, STOCK) is the simulator's only since 0.5: the FM-1 plays the DrumEngine
+ * (1 dry, 2 through its bus), and the stock engine's render, triggers and cymbal samples (about 140 KB) are not in its
+ * image. Its knobs' tables and values stay (saved projects, locks and kits hold them). */
+#ifdef PLAT_HOST
+#define V3_MODE_MIN 0
+#else
+#define V3_MODE_MIN 1
+#define drums_render(k, l, r, rv, dl, n) ((void)0)
+#define drums_trigger_mapped(k, m, p, v) ((void)0)
+#define drums_cut_mapped(k, m, p) ((void)0)
+#define drums_cut_pad(p) ((void)0)
+#define drums_governor_tail_active(p) 0
+#define drums_governor_release_tail(p) 0
+#endif
 static volatile uint8_t v3_mode = 1;
 static void v3_set_mode(unsigned mode)
 {
-    if (mode > 2 || v3_mode == mode) return;
+    if (mode < V3_MODE_MIN || mode > 2 || v3_mode == mode) return;
     if (!mode || !v3_mode) trial_quiet();
     if (mode && !v3_mode)                 /* (the stock kits stop where they are: not to ring on when they come back) */
         for (int r = 0; r < DRUMS_NPADS; r++)
@@ -7247,7 +7261,7 @@ static void v3_bus_knob(int k, int32_t delta)
 static void v3_bus_mode(int delta, int toggle)
 {
     uint32_t f = plat_lock();
-    unsigned mode = toggle ? (v3_mode == 2 ? 1 : 2) : (unsigned)clamp((int)v3_mode + delta, 0, 2);
+    unsigned mode = toggle ? (v3_mode == 2 ? 1 : 2) : (unsigned)clamp((int)v3_mode + delta, V3_MODE_MIN, 2);
     v3_set_mode(mode);
     plat_unlock(f);
     app_say("DrumEngine", V3_MODE_LABEL[mode]);

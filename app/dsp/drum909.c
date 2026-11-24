@@ -345,9 +345,15 @@ void drum909_init(drum909_t *d)
         d9_smp_rate(s);
         d9_env_set(&s->out, 0.0f);
         d9_shape_prep(&s->shape, s->drive, s->dist_type);
+#ifdef PLAT_HOST                          /* (the FM-1 has the DrumEngine only since 0.5: the stock kits' sound, and
+                                           * these 110 KB of cymbals, are the simulator's: its suites play them) */
         if (i == 2) { s->buf = x0x_smp_crash; s->len = X0X_SMP_CRASH_LEN; }
         else if (i == 3) { s->buf = x0x_smp_ride; s->len = X0X_SMP_RIDE_LEN; }
         else { s->buf = x0x_smp_hh; s->len = X0X_SMP_HH_LEN; }
+#else
+        s->buf = 0;
+        s->len = 0;
+#endif
     }
 
     d->accent = 2.0f;

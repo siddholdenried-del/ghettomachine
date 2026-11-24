@@ -3,7 +3,7 @@
 GhettoMachine, part of the BongWare firmware line engineered by BongTech, turns the M-VAVE FM-1 into a four-track groovebox:
 
 - **Drums:** the DrumEngine, with twelve genre kits (ELECTRO, HOUSE, TECHNO, TRAP, BOOM BAP, DRUM & BASS, GARAGE, DISCO, DUB,
-  LO-FI, INDUSTRIAL, MINIMAL) and a preset per genre for every drum. (The stock 808 / 909 engine stays only as a test mode.)
+  LO-FI, INDUSTRIAL, MINIMAL) and a preset per genre for every drum. (The stock 808 / 909 engine's sound is not in the FM-1's firmware since 0.5: the drums' bus page turns between DRY and BUS only. It lives on in the simulator, whose tests play it.)
 - **T2, T3, T4:** instrument tracks. Each is a MONO synth or a POLY synth.
 - **One sequencer** of up to 128 steps a track, 16 patterns, and a song chain.
 - **An LFO for every clip** (each track's part of each pattern has its own), an arpeggiator and one optional insert effect on T2–T4, and per-step locks.
