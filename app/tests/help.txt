@@ -1,0 +1,28 @@
+# HELP (0.5): SEL held by itself for half a second: the page's held combinations; let go: the page back. SEL used as
+# a modifier (SEL + a pad key: the track) shows nothing.
+listen
+wait 200
+press SEL
+wait 700
+said HELP STEPS
+shot help_drum_steps.png
+release SEL
+wait 50
+expect page 0
+expect trk 1
+turn ALGO 2
+wait 30
+press SEL
+wait 700
+shot help_synth_steps.png
+release SEL
+wait 50
+tap HOME
+wait 50
+press SEL
+wait 700
+said HELP PATTERNS
+shot help_home.png
+release SEL
+wait 50
+expect page 3

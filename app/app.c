@@ -4144,6 +4144,8 @@ static struct {
     uint32_t shed_t;                      /* when the voice pool last moved */
     uint8_t rec;                          /* recording armed */
     uint8_t rec_shown;                    /* REC held long enough (or used): its page shows */
+    uint8_t help;                         /* SEL held by itself half a second: HELP, the page's held combinations */
+    uint32_t sel_t;                       /* when SEL went down */
     uint32_t rec_t;                       /* when REC went down */
     int8_t count_shown;                   /* the count-in's beat on the band */
     uint8_t tkey_down, tkey_used;         /* HOME: track keys (black 1-4) held; used as a modifier (no mute) */
@@ -7710,6 +7712,7 @@ static void input(void)
     }
     if (pressed >> B_SEL & 1u) {          /* SEL: held + pad keys 1-4: tracks */
         ui.sel_used = 0;
+        ui.sel_t = plat_ms();
         if (btn >> B_REC & 1u)            /* REC held + SEL (sampling until 0.5): nothing, neither RECORD on or off
                                            * as REC is let go nor SEL's help (found on the FM-1) */
             ui.sel_used = ui.rec_used = 1;
@@ -7875,8 +7878,11 @@ static void input(void)
         ui.srec_held = ui.srec_n = 0;
         app_say("RECORD", ui.rec ? "ON" : "OFF");
     }
-    if ((released >> B_SEL & 1u) && !ui.sel_used)
-        app_say("SEL+PADS: TRACK", inst ? "SEL+PRESETS: BANK" : "PADS 1-4");
+    if ((released >> B_SEL & 1u) && ui.help) {   /* (HELP shown: let go, the page back) */
+        ui.help = 0;
+        ui.redraw = 1;
+    } else if ((released >> B_SEL & 1u) && !ui.sel_used)
+        app_say("SEL+PADS: TRACK", "HOLD SEL: HELP");
     if ((released >> B_SAVE & 1u) && !ui.save_used)
         do_save();
     else if ((released >> B_SAVE & 1u) && ui.save_slot >= 0)   /* SAVE held + PRESETS, let go: a user preset */
@@ -11410,6 +11416,80 @@ static void page_color(void)
 }
 
 /* the page now: its band's text and its knobs set, its picture drawn (the canvas begun and blitted by the caller) */
+/* HELP (0.5): SEL held by itself: what the page on screen does with held keys and second presses, the things no knob
+ * card shows. A line each (38 characters), the page's own first, then the ones that work everywhere */
+static const char *help_text(void)
+{
+    const int inst = ui.trk != TR_DRUM;
+    switch (ui.page) {
+    case PG_SEQ:
+        return inst ? "SELECT: NOTES / HARMONY / PART / GROOVE\nHOLD STEP + K1-K4: EDIT THAT STEP\n"
+                      "HOLD STEP + SELECT: ONE OF ITS NOTES\nHOLD STEP + ALGO: SUBSTEPS\n"
+                      "HOLD STEP + ARP: PICK ITS NOTES\nHOLD STEP + OCT+: HALF, WHOLE, SLIDE\n"
+                      "HOLD STEP + EDIT / ENV / LFO: LOCKS\nBLACK 1-8: STEP BANK   SEQ: ACID"
+                    : "WHITE: STEPS   BLACK: PADS\nSELECT: GROOVE KNOBS / HIT KNOBS\n"
+                      "HOLD STEP + K1-K4: VEL CHANCE SUB ACC\nHOLD STEP + ALGO: SUBSTEPS\n"
+                      "HOLD SEQ + STEP: ACCENT\nSEQ + OCT+: DOUBLE   SEQ + OCT-: HALVE\n"
+                      "OCT- / OCT+: STEP BANK\nENV: LANE MUTES   EDIT: THE DRUM";
+    case PG_EDIT: case PG_ENV: case PG_LFO: case PG_ARP:
+        return inst ? "SELECT: PAGES   SAME BUTTON: BACK\nPRESETS: SOUNDS\nSAVE + PRESETS: KEEP AS A USER SOUND\n"
+                      "SAVE + OCT-: THE SOUND AS SAVED\nSTEP HELD (STEPS), THEN A KNOB: LOCK\n"
+                      "REC ON, PLAYING, A KNOB: RECORDED\nARP TWICE: CHORD MODE"
+                    : "SELECT: PAGES   SAME BUTTON: BACK\nPRESETS: THIS DRUM'S PRESETS\nSEL + KNOB: FINE STEPS\n"
+                      "STEP HELD (STEPS), THEN A KNOB: LOCK\nLFO: MOVES ONE KNOB AT EACH HIT\n"
+                      "ITS EDITS ARE SAVED WITH THE PROJECT";
+    case PG_HOME:
+        return "WHITE: SCENE   PAD 1-4: MUTE TRACK\nPAD + WHITE: THAT TRACK'S CLIP ONLY\n"
+               "PAD + OCT-: STOP IT   PAD + OCT+: SOLO\nWHITE + K1 / K2: FOLLOW ACTION\n"
+               "BLACK 5-11 HELD: PERFORM KEYS (K1)\nOCT-: TAP TEMPO   OCT+ HELD: TAPE STOP\n"
+               "SEL + SELECT: NUDGE\nHOME: QUICK MIXER, SONG, SETUP";
+    case PG_QMIX:
+        return "PAD 1-4: THE TRACK (NO MUTE HERE)\nK1-K4: LEVEL REVERB DELAY PAN\n"
+               "DRUMS: WHITE 1-11 MUTE LANES\nT2-T4: WHITE HELD: FILTER, SENDS,\n   ROLL, STUTTER, OCTAVE\n"
+               "BLACK 5-11 HELD: PERFORM KEYS";
+    case PG_MIX: case PG_FX: case PG_MST: case PG_V3_BUS:
+        return "SELECT: PAGES (MIXER ON TO MASTER)\nSAME BUTTON AGAIN: BACK\nSEL + GLO: THE MASTER BUS\n"
+               "SEL + FX: THE TRACK'S INSERT (T2-T4)\nRETURNS: PAST THE MIXER'S DELAY PAGE";
+    case PG_KEYS:
+        return "ALL KEYS PLAY   OCT- / OCT+: OCTAVE\nREC, THEN PLAY: RECORD AS YOU PLAY\n"
+               "REC, STOPPED: STEP RECORD (SELECT:\n   THE CURSOR, TO LEAVE A REST)\n"
+               "ARP TWICE: CHORD MODE   SEQ: STEPS";
+    case PG_SONG:
+        return "WHITE: SET THE ENTRY, MOVE ON\nSELECT: CURSOR   K1 PATTERN  K2 BARS\n"
+               "K3 LAUNCH   K4 SONG ON / OFF\nOCT+: COPY ENTRY   OCT-: DELETE IT";
+    default:
+        return "SELECT: PAGES OR THE CURSOR";
+    }
+}
+
+static void page_help(void)
+{
+    static const char *const ALWAYS = "ALGO: TRACK, THE PAGE STAYS\nEDIT + OCT- / OCT+: UNDO / REDO\n"
+                                      "SAVE: PROJECT   SAVE + KEY: COPY PATTERN\nHOLD REC: CLICK, QUANTIZE, ERASE";
+    const char *src[2] = {help_text(), ALWAYS};
+    char line[44];
+    int y = 0, k, n;
+    band_set(C_CREAM, "ALL", "HELP", PAGE_NAME[ui.page], 0, 0);
+    for (k = 0; k < 2; k++) {
+        const char *q = src[k];
+        while (*q && y < BODY_H - 10) {
+            for (n = 0; *q && *q != '\n' && n < 43; n++)
+                line[n] = *q++;
+            line[n] = 0;
+            if (*q == '\n')
+                q++;
+            cv_text(6, y, &FONT_XS, line, k ? C_TXT2 : TH_TXT);
+            y += 11;
+        }
+        if (!k) {
+            cv_rect(6, y + 3, 228, 1, C_GRID);
+            y += 6;
+        }
+    }
+    for (k = 0; k < 4; k++)
+        cards[k].on = 0;
+}
+
 static void page(void)
 {
     int inst = ui.trk != TR_DRUM;
@@ -11417,6 +11497,10 @@ static void page(void)
         cap_set(0, 0, 0, 0);              /* (the scope's buffer back) */
     if (rec_page()) {
         page_rec();
+        return;
+    }
+    if (ui.help) {
+        page_help();
         return;
     }
     switch (ui.page) {
@@ -11826,6 +11910,14 @@ void app_frame(void)
     if (sq.ext_stop) {                    /* MIDI CLOCK followed: a Stop */
         sq.ext_stop = 0;
         seq_stop();
+    }
+    if ((ui.btn >> B_SEL & 1u) && !ui.sel_used && !ui.help && now - ui.sel_t >= 500u) {
+        ui.help = 1;                      /* SEL held by itself: HELP for the page on screen */
+        ui.redraw = 1;
+        app_say("HELP", PAGE_NAME[ui.page]);
+    } else if (ui.help && (ui.sel_used || !(ui.btn >> B_SEL & 1u))) {   /* (used as a modifier after all) */
+        ui.help = 0;
+        ui.redraw = 1;
     }
     if ((ui.btn >> B_REC & 1u) && !ui.rec_shown && now - ui.rec_t >= 300u) {
         ui.rec_shown = 1;                 /* REC held: its page */
