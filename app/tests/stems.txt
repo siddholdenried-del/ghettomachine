@@ -6,6 +6,7 @@
 # the last look (both sides, or one), dB x 10, -1200 silent; stemreset: every stem's peak started again; stemovers: stem
 # samples clipped since the last look; peak_db_min / _max: the FM-1's own output (after MASTER) since peakreset;
 # pkl / pkr: each side of the app's render (what the USB master pair takes) since the last look, dB x 10, -1000 silent
+expect oldpick1 1   # (0.5: ALGORITHM keeps the page across tracks; this suite was written when it went to the track's own)
 expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 master 4096

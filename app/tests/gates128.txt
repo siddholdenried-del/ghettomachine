@@ -1,4 +1,5 @@
 # A full 128-step note in the real step-editor, and fine edits after a fast turn.
+expect oldpick1 1   # (0.5: ALGORITHM keeps the page across tracks; this suite was written when it went to the track's own)
 expect settool3 3   # (0.5: an instrument's steps open on STEP NOTES; these knobs are PART GROOVE's)
 expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600

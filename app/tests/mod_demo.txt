@@ -2,6 +2,7 @@
 # T3's PLUCK through the arpeggiator (UP, two octaves, LATCH) on C minor; the drums' LFO (S&H, a sixteenth) on a closed-hat
 # knob, so every hat is a little different. 8 s to mod_demo.wav
 #   app/build/host/ghettomachine_host app/tests/mod_demo.txt OUTDIR
+expect oldpick1 1   # (0.5: ALGORITHM keeps the page across tracks; this suite was written when it went to the track's own)
 expect settool3 3   # (0.5: an instrument's steps open on STEP NOTES; these knobs are PART GROOVE's)
 expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600

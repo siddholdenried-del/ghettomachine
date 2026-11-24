@@ -4104,6 +4104,7 @@ static struct {
     uint8_t spage;                        /* the step page, 0..7 */
     uint8_t stool;                        /* an instrument track's STEPS: its tools' page (ST_*, SELECT) */
     uint8_t st_vel, st_gate;              /* a new step's velocity and gate there (0: 100, GATE_DEF) */
+    uint8_t hnote;                        /* the held step's note being edited: 0 all of them, 1.. from its lowest */
     uint8_t seq_prev, seq_used;           /* a resize chord leaves the previous SEQ view alone */
     uint8_t epage;                        /* the EDIT page (four knobs each) */
     uint8_t envpage;                      /* an instrument track's ENV page: 0 the amp's, 1 the filter's, 2 MOD ENV */
@@ -4950,6 +4951,7 @@ static void istep_down(int k)
         plat_unlock(f);
         return;
     }
+    ui.hnote = 0;
     ui.held_step = (int8_t)s;
     ui.held_key = (uint8_t)k;
     ui.held_used = 0;
@@ -5061,6 +5063,54 @@ static int gate_edit(int gate, int rate, int32_t e)
     }
 }
 
+static int hnote_at(const nstep_t *s)     /* the held step's note picked (ui.hnote): where in the step; -1: all */
+{
+    int n = nstep_count(s), i, j, r;
+    if (!ui.hnote || ui.hnote > n)
+        return -1;
+    for (i = 0; i < n; i++) {             /* (its rank from the lowest) */
+        for (r = 1, j = 0; j < n; j++)
+            r += s->note[j] < s->note[i];
+        if (r == ui.hnote)
+            return i;
+    }
+    return -1;
+}
+
+static void hnote_move(nstep_t *s, int at, int e)   /* that one note e semitones (past the step's others), still picked */
+{
+    int n = nstep_count(s), v = s->note[at], d = e > 0 ? 1 : -1, j, r;
+    while (e) {
+        int w = v + d;
+        for (j = 0; j < n; j++)
+            if (j != at && s->note[j] == w)
+                w += d, j = -1;
+        if (w < 1 || w > 127)
+            break;
+        v = w;
+        e -= d;
+    }
+    s->note[at] = (uint8_t)v;
+    for (r = 1, j = 0; j < n; j++)
+        r += s->note[j] < v;
+    ui.hnote = (uint8_t)r;
+}
+
+static void hnote_pick(int32_t e)         /* a step held + SELECT: which of its notes the knobs move (ALL, or one) */
+{
+    const nstep_t *s = &ipart(ui.trk)->st[ui.held_step];
+    char t[8];
+    int at;
+    if (!s->note[0])
+        return;
+    ui.hnote = (uint8_t)clamp(ui.hnote + e, 0, nstep_count(s));
+    ui.held_used = 1;                     /* (looked at: not cleared at the release) */
+    at = hnote_at(s);
+    if (at >= 0)
+        note_text(s->note[at], t);
+    app_say("EDIT NOTE", at < 0 ? "ALL" : t);
+}
+
 static void iheld_knob(int k, int32_t e)  /* a step held: K1 its notes (the chord moves), K2 velocity, K3 gate */
 {
     int tr = ui.trk, i, lo = 127, hi = 0;
@@ -5074,7 +5124,9 @@ static void iheld_knob(int k, int32_t e)  /* a step held: K1 its notes (the chor
     if (!ui.held_used || k != 2) ui.gate_run = 0;
     ui.held_used = 1;
     f = plat_lock();
-    if (k == 0) {
+    if (k == 0 && hnote_at(s) >= 0) {     /* the one note picked */
+        hnote_move(s, hnote_at(s), e);
+    } else if (k == 0) {
         for (i = 0; i < NCHORD && s->note[i]; i++) {
             if (s->note[i] < lo) lo = s->note[i];
             if (s->note[i] > hi) hi = s->note[i];
@@ -5090,8 +5142,9 @@ static void iheld_knob(int k, int32_t e)  /* a step held: K1 its notes (the chor
     }
     plat_unlock(f);
     if (k == 0) {
+        i = hnote_at(s);
         ui.last_note[tr] = s->note[0];
-        note_text(s->note[0], t);
+        note_text(s->note[i < 0 ? 0 : i], t);
         app_say("NOTE", t);
         preview(tr, s);
     } else if (k == 1) {
@@ -6165,25 +6218,37 @@ static void song_oct(int up)              /* OCT-: the cursor's entry gone; OCT+
 }
 
 /* ------------------------------------------------------------------ common --- */
+static int page_fits(int pg);
+static int npages(void);
+#ifdef PLAT_HOST
+static uint8_t old_pick;                  /* the simulator's older suites (oldpick1): a track change as it was before
+                                           * 0.5, between the drums and an instrument to the track's own page */
+#else
+#define old_pick 0
+#endif
 static void track_pick(int tr)
 {
     tr = clamp(tr, 0, NTRK - 1);
     if (tr != ui.trk) {
+        const int cross = (tr == TR_DRUM) != (ui.trk == TR_DRUM);
         qm_clear();                       /* (the QUICK MIXER's held moves: not carried to another track) */
         if (ui.page == PG_PICK)
             pick_leave();
-        /* between the drums and an instrument track: the track's own page (its keys play), unless on EDIT or
-         * HOME; between instrument tracks the page stays */
-        if ((tr == TR_DRUM) != (ui.trk == TR_DRUM) && ui.page != PG_EDIT && ui.page != PG_HOME && ui.page != PG_QMIX &&
-            ui.page != PG_LFO &&
-            ui.page != PG_MIX && ui.page != PG_FX && ui.page != PG_SONG && ui.page != PG_MST && ui.page != PG_SETUP)
-            ui.page = (uint8_t)home_page(tr);
         keys_let_go();
         ui.trk = (uint8_t)tr;
         sel_trk = (uint8_t)tr;
+        /* (0.5) the page stays wherever the track picked has it too (STEPS, EDIT, LFO, the mixers ...), with its step
+         * bank and, between instrument tracks, its editor's page: the same thing on the next track. Only a page the
+         * track hasn't (KEYS on the drums, MUTE on a synth ...) goes to the track's own */
+        if (!page_fits(ui.page) || (old_pick && cross && ui.page != PG_EDIT && ui.page != PG_HOME &&
+                                    ui.page != PG_QMIX && ui.page != PG_LFO && ui.page != PG_MIX && ui.page != PG_FX &&
+                                    ui.page != PG_SONG && ui.page != PG_MST && ui.page != PG_SETUP))
+            ui.page = (uint8_t)home_page(tr);
         ui.held_step = -1;
-        ui.spage = 0;
-        ui.epage = 0;
+        if (ui.spage >= npages() || old_pick)
+            ui.spage = 0;
+        if (cross || old_pick)
+            ui.epage = 0;
     }
     app_say(TRK_NAME[tr], tr == TR_DRUM ? drum_kit_title() : TYPE_NAME[tset(tr)->type]);
 }
@@ -7091,6 +7156,25 @@ static void istep_knob(int k, int32_t e)
             app_say("INVERSION", "PICK A CHORD: K1");
             return;
         }
+        if (k == 2 && hnote_at(s) >= 0) { /* OCTAVE on the one note picked: a voicing */
+            int at = hnote_at(s), w = s->note[at] + 12 * e;
+            for (i = 0; i < n; i++)
+                if (w < 1 || w > 127 || s->note[i] == w)
+                    return;
+            if (!ui.held_used)
+                undo_mark(0);
+            ui.held_used = 1;
+            f = plat_lock();
+            s->note[at] = (uint8_t)w;
+            plat_unlock(f);
+            hnote_move(s, at, 0);
+            note_text(w, t);
+            app_say("OCTAVE", t);
+            preview(tr, s);
+            return;
+        }
+        if (k != 2)
+            ui.hnote = 0;                 /* (a chord rebuilt: its notes are others) */
         if (k == 2) {
             for (i = 0; i < n; i++) {
                 if (s->note[i] < lo) lo = s->note[i];
@@ -7935,7 +8019,9 @@ static void input(void)
             app_say("SETUP", ui.setup_view ? t : "CLOCK, SOUNDS");
         } else if (ui.held_step >= 0 && !(inst && (ui.page == PG_EDIT || ui.page == PG_ENV || ui.page == PG_LFO))) {
             /* (there: pages to lock on) */
-            if (inst)
+            if (inst && ui.page == PG_SEQ)   /* its steps: which note (its chance: STEP NOTES' K4) */
+                hnote_pick(e);
+            else if (inst)
                 iheld_chance(e);
             else
                 held_chance(e);
@@ -8791,8 +8877,9 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
         const nstep_t *s = &ipart(tr)->st[ui.held_step];
         static const char *const N[4] = {"NOTE", "VELOCITY", "GATE", "CHANCE"};
         if (k == 0) {
-            note_text(s->note[0] ? s->note[0] : 60, t);
-            if (nstep_count(s) > 1)
+            int at = hnote_at(s);
+            note_text(s->note[0] ? s->note[at < 0 ? 0 : at] : 60, t);
+            if (nstep_count(s) > 1 && at < 0)
                 text_cat(t, "+");
             card_put(c, N[0], t, s->note[0], 24, 108, -1);
         } else if (k == 1) {
@@ -9624,7 +9711,8 @@ static void page_roll(void)               /* an instrument part: its notes, pitc
             if (x + w > 240)
                 w = 240 - x;
             rrect(x, top + (hi - nn) * rh, w, rh > 2 ? rh - 1 : rh, 2,
-                  s == ui.held_step ? TH_HI : mix565(C_BODY, TH_FG, 110 + ns_vel(ns)));
+                  s != ui.held_step ? mix565(C_BODY, TH_FG, 110 + ns_vel(ns))
+                  : ui.hnote && hnote_at(ns) != i ? TH_FG : hnote_at(ns) == i ? C_NOW : TH_HI);
         }
         if (istep_locked(p, s))
             cv_rect(x + 3, 0, 5, 3, TH_FG);
@@ -11770,6 +11858,10 @@ int app_expect(const char *what, int *got)
     else if (!strncmp(what, "settool", 7))   /* settoolN: an instrument's step tools turned to page N (older suites:
                                               * 3, the GROOVE knobs they were written with); stool: the page */
         *got = ui.stool = (uint8_t)(atoi(what + 7) % NSTOOL);
+    else if (!strncmp(what, "oldpick", 7))   /* oldpickN: 1 a track change as before 0.5 (the older suites) */
+        *got = old_pick = (uint8_t)(what[7] == '1');
+    else if (!strcmp(what, "hnote"))      /* the held step's note picked: 0 all, 1.. from its lowest */
+        *got = ui.hnote;
     else if (!strcmp(what, "stool"))
         *got = ui.stool;
     else if (!strcmp(what, "subfires"))   /* substeps played since last asked */

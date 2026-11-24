@@ -4,6 +4,7 @@
 # BongVerb's mode and BongDelay's drive (8, 9), 19..20 FILTER: filter reso; on the master bus (tests/master.txt has the rest): 12..15 COMP: threshold ratio
 # attack release, 16..18 COMP 2: makeup mix pump, 21 the limiter's switch, 37 its GAIN);
 # pkl / pkr: each side's peak since the last look, dB x 10; gr: the compressor's reduction now, dB x 10
+expect oldpick1 1   # (0.5: ALGORITHM keeps the page across tracks; this suite was written when it went to the track's own)
 expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 # MASTER full: what the master bus puts out (0.2: the volume comes after it)

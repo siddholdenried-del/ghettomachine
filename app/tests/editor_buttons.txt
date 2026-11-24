@@ -1,6 +1,7 @@
 # The editors' buttons (0.5): EDIT, ENV, LFO, ARP, FX and GLO open their editor on the page it was left on and keep the
 # screen it was opened from; pressed again, back to that screen. SELECT turns an editor's pages. (Pages: 0 STEPS,
 # 1 EDIT, 2 MUTE, 3 PATTERNS, 5 KEYS, 6 ENV, 7 LFO, 8 ARP, 9 MIXER, 10 FX, 11 SONG, 12 MASTER, 19 QUICK MIXER)
+expect oldpick1 1   # (0.5: ALGORITHM keeps the page across tracks; this suite was written when it went to the track's own)
 wait 300
 expect page 0
 # ---- T2, from its keys: EDIT, a page on, back; EDIT again: the page it was left on

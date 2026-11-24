@@ -7,8 +7,6 @@ listen
 wait 200
 turn ALGO 2
 wait 30
-tap SEQ
-wait 30
 expect trk 3
 expect page 0
 expect stool 0
@@ -113,3 +111,59 @@ expect trk 1
 turn K1 -4
 wait 30
 expect len 12
+
+# ---- ALGORITHM keeps the page across tracks (0.5): the drums' STEPS to T2's STEPS (not its KEYS), and its tools' page
+turn ALGO 1
+wait 30
+expect trk 2
+expect page 0
+expect stool 3
+turn ALGO 1
+wait 30
+expect trk 3
+expect page 0
+# ---- one note of a held step (SELECT with it held): step 6 is D4 MIN moved: F4 G#4 C5 (65 68 72)
+expect settool0 0
+expect page 0
+expect note3_6_0 65
+expect note3_6_1 68
+expect note3_6_2 72
+key 9 down
+wait 30
+expect held 6
+expect hnote 0
+turn SELECT 2
+wait 30
+expect hnote 2
+said EDIT NOTE
+# K1: only the middle note, up 2 (G#4 to A#4, 70)
+turn K1 2
+wait 30
+expect note3_6_0 65
+expect note3_6_1 70
+expect note3_6_2 72
+expect hnote 2
+# past the top note: it steps over C5 (72) to C#5 (73), and is the highest now
+turn K1 2
+wait 30
+expect note3_6_1 73
+expect hnote 3
+shot steptools_pick.png
+# HARMONY's OCTAVE on it alone: a voicing
+expect settool1 1
+turn K3 1
+wait 30
+expect note3_6_1 85
+expect note3_6_0 65
+expect note3_6_2 72
+key 9 up
+wait 30
+expect held 0
+expect nsteps3 2
+# the next step held starts at ALL
+key 9 down
+wait 30
+expect hnote 0
+key 9 up
+wait 30
+expect nsteps3 1

@@ -1,5 +1,6 @@
 # GhettoMachine 0.2's screens, every page, with fx_demo.txt's groove playing so the meters move: a picture each, to OUTDIR.
 #   app/build/host/ghettomachine_host app/tests/ui_tour.txt OUTDIR
+expect oldpick1 1   # (0.5: ALGORITHM keeps the page across tracks; this suite was written when it went to the track's own)
 expect settool3 3   # (0.5: an instrument's steps open on STEP NOTES; these knobs are PART GROOVE's)
 expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600

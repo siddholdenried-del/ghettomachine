@@ -3,6 +3,7 @@
 # the sound's parameters (sndN_ID): 0 WAVE 1 DETUNE 2 MIX 3 INTERVAL | 4 SUB 5 NOISE 6 PWM 7 DRIVE | 8 CUTOFF 9 RESO
 # 10 ENV AMT 11 FILTER | 12 KEYTRACK 13 VELOCITY 14 SPREAD 15 LEGATO | 16 VOICES 17 GLIDE | 18-21 AMP ADSR | 22-25 FILTER ADSR
 # T2 starts as SQR BASS (MONO, an octave down: key 7 is C3, 48, pitch 768), T3 PLUCK, T4 SOFT PAD (POLY)
+expect oldpick1 1   # (0.5: ALGORITHM keeps the page across tracks; this suite was written when it went to the track's own)
 expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 # MASTER full: the master bus's output as it is (0.2: the volume comes after the chain)

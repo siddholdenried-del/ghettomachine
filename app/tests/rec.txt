@@ -2,6 +2,7 @@
 # LEGATO, all on REC held.  tools/build.py ../../app --host, then  app/build/host/ghettomachine_host app/tests/rec.txt OUTDIR
 # click: 0 OFF 1 ON 2 REC; countin: bars; recq: 0 a step 1 two 2 four; counting: in the count-in; clicks: since the
 # last look; noteN_S / gateN_S: track N, step S (1-based; gate in eighths of a step); nstepsN: steps with notes
+expect oldpick1 1   # (0.5: ALGORITHM keeps the page across tracks; this suite was written when it went to the track's own)
 expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 master 4096

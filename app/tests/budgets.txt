@@ -2,6 +2,7 @@
 # the synth target is 40%, and the shared returns (BongVerb, BongDelay) have 25%.
 # cpufakeN_US supplies deterministic stage times solely to the load governor.
 # Stages 0, 1, 2, 3 and 6 are drums, synth, the drum bus, returns and core 0 total.
+expect oldpick1 1   # (0.5: ALGORITHM keeps the page across tracks; this suite was written when it went to the track's own)
 expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 master 4096

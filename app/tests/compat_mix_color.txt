@@ -2,6 +2,7 @@
 # gone (the unified engine has no Color in a track): FX past its last page goes home, and the project's Color settings
 # stay as they were saved, unapplied. The discontinued 606 kit becomes
 # the 808. Its historic T2 insert is retained as opaque project data.
+expect oldpick1 1   # (0.5: ALGORITHM keeps the page across tracks; this suite was written when it went to the track's own)
 expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 flash_load app/tests/fixtures/proj_v5.img
 reboot

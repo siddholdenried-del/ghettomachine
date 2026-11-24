@@ -59,9 +59,9 @@ route still works for getting M-VAVE's firmware back.
 
 | Control | What it does |
 | --- | --- |
-| **ALGORITHM** | Picks the track: DRUMS, T2, T3, T4. Or hold **SEL** and press pad keys 1–4. |
 | **PRESETS** | Presets, wherever you are: an instrument track's sound; on the drums the genre kit, or, in a drum's editor (EDIT with a pad picked), that drum's own presets. |
-| **SELECT** | Turns the pages of every editor (the synth's EDIT, ENV, LFO, FX, the master bus, a drum's editor...), moves a cursor, or sets a held step's chance. |
+| **SELECT** | Turns the pages of every editor (the synth's EDIT, ENV, LFO, FX, the master bus, a drum's editor...), moves a cursor; with a step held, its chance (drums) or which of its notes to edit (T2–T4). |
+| **ALGORITHM** | Picks the track: DRUMS, T2, T3, T4 (or hold **SEL** and press pad keys 1–4). The page stays wherever the next track has it too (STEPS, EDIT, LFO, the mixers ...), so the same thing can be edited track after track; a page the track hasn't (KEYS on the drums) goes to its own. With a step held: its substeps. |
 | **K1–K4** | The four knobs of the page on screen. |
 | **PLAY** | Starts and stops. |
 | **REC** | Tap: recording on or off (turn a knob while it's on and playing: the knob is recorded). Hold it: the metronome, count-in and quantize (below). |
@@ -154,6 +154,9 @@ A very dense collection of long parts can exceed the fixed FM-1 project save slo
     playing octave. Press **ARP** or **SEQ** to get back to STEPS.
   - Hold a step: **K1** moves its note (or chord), **K2** sets velocity, **K3** sets gate (up to 128 steps; slow eighth-step edits, fast musical-bar snaps),
     **SELECT** sets chance.
+  - **One note of a chord:** hold a step and turn **SELECT** to pick which of its notes the knobs move: ALL, or one
+    (from the lowest; it turns yellow). **K1** then moves only that note, stepping past the step's other notes, and STEP
+    HARMONY's **K3** OCTAVE moves it alone by octaves (a voicing). A held step's chance is STEP NOTES' **K4**.
   - **Four pages of tools, turned with SELECT** (the screen's title names the page; the step banks are on black keys 1–8 and OCT− / OCT+):
     - **STEP NOTES** (where STEPS opens): hold a step for **K1** NOTE, **K2** VELOCITY, **K3** GATE, **K4** CHANCE. With no
       step held the knobs set what the next new step gets: its note, velocity and gate.
