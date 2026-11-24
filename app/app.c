@@ -7845,8 +7845,10 @@ static int lum565(uint16_t c)             /* 0..255 */
     return (r * 54 + g * 183 + b * 19) >> 8;
 }
 
+static void grad_init(void);
 static void theme(uint16_t col)          /* the page: the canvas, drawn on in the section's colour, written in bone */
 {
+    grad_init();
     th.col = C_CANVAS;
     th.panel = C_FIELD;
     th.grid = C_DUSK;
@@ -7947,6 +7949,83 @@ static void foot(const char *left, const char *right, int now)   /* the work are
 }
 
 #define PLAYHEAD mix565(C_CANVAS, C_NOW, 72)   /* the step playing: a dim yellow column (its flag: playflag) */
+
+/* ---- gradients (0.5): three ramps, built once, 48 steps each.
+ *   HEAT, for meters and faders, by where along them: aqua, acid green, yellow, orange, hot pink at the top: a level's
+ *     colour says how hot it is;
+ *   GLOW, under a scope's trace, by the distance from it: acid at the trace through teal and violet into the black;
+ *   TRACE, a trace's own colour by its height: cyan low, acid in the middle, yellow high. */
+#define NGRAD 48
+enum { GR_HEAT, GR_GLOW, GR_TRACE, NGR };
+static uint16_t grad[NGR][NGRAD];
+
+static void grad_init(void)
+{
+    static const uint8_t STOP[NGR][5][3] = {
+        {{18, 200, 180}, {195, 255, 49}, {255, 227, 73}, {255, 138, 31}, {255, 45, 111}},
+        {{160, 236, 44}, {25, 184, 154}, {91, 43, 184}, {40, 16, 70}, {16, 8, 26}},
+        {{43, 217, 255}, {120, 240, 160}, {195, 255, 49}, {225, 245, 60}, {255, 227, 73}}};
+    static const uint8_t AT[NGR][5] = {{0, 102, 179, 219, 255}, {0, 64, 140, 210, 255}, {0, 80, 128, 190, 255}};
+    static uint8_t done;
+    int g, i, k;
+    if (done)
+        return;
+    done = 1;
+    for (g = 0; g < NGR; g++)
+        for (i = 0; i < NGRAD; i++) {
+            int t = i * 255 / (NGRAD - 1);
+            for (k = 0; k < 3 && t > AT[g][k + 1]; k++)
+                ;
+            {
+                const uint8_t *a = STOP[g][k], *b = STOP[g][k + 1];
+                int f = (t - AT[g][k]) * 256 / (AT[g][k + 1] - AT[g][k] ? AT[g][k + 1] - AT[g][k] : 1);
+                grad[g][i] = mix565(RGB(a[0], a[1], a[2]), RGB(b[0], b[1], b[2]), f);
+            }
+        }
+}
+
+static inline uint16_t gradc(int g, int num, int den)   /* ramp g at num / den, 0..1 */
+{
+    int i = den > 0 ? num * (NGRAD - 1) / den : 0;
+    return grad[g][i < 0 ? 0 : i >= NGRAD ? NGRAD - 1 : i];
+}
+
+static void vheat(int x, int y, int w, int h, int fill)   /* a meter or fader up: fill rows from the bottom, by height */
+{
+    int r;
+    for (r = 0; r < fill && r < h; r++)
+        cv_rect(x, y + h - 1 - r, w, 1, gradc(GR_HEAT, r, h - 1));
+}
+
+static void hheat(int x, int y, int w, int h, int fill)   /* a meter across: fill columns from the left, by place */
+{
+    int c;
+    for (c = 0; c < fill && c < w; c++)
+        cv_rect(x + c, y, 1, h, gradc(GR_HEAT, c, w - 1));
+}
+
+static void glow_col(int x, int yc, int yb)   /* under (or over) a trace at yc toward yb: GLOW by the distance */
+{
+    int d = yb > yc ? 1 : -1, n = yb > yc ? yb - yc : yc - yb, k, span = n > 40 ? n : 40;
+    for (k = 1; k <= n; k++)
+        cv_pset(x, yc + d * k, gradc(GR_GLOW, k, span));
+}
+
+static void gline(int x0, int y0, int x1, int y1, int ytop, int ybot)   /* a 2-pixel trace, TRACE by its height */
+{
+    int32_t dx = x1 > x0 ? x1 - x0 : x0 - x1, sx = x0 < x1 ? 1 : -1;
+    int32_t dy = y1 > y0 ? y0 - y1 : y1 - y0, sy = y0 < y1 ? 1 : -1, err = dx + dy, guard = 2000;
+    while (guard--) {
+        int32_t e2 = 2 * err;
+        uint16_t c = gradc(GR_TRACE, ybot - y0, ybot - ytop);
+        cv_pset(x0, y0, c);
+        cv_pset(x0, y0 + 1, c);
+        if (x0 == x1 && y0 == y1)
+            break;
+        if (e2 >= dy) { err += dy; x0 += sx; }
+        if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+}
 static void playflag(int x, int w)        /* the playhead's flag on top of its column: a small yellow triangle */
 {
     int j, c = x + w / 2;
@@ -8540,9 +8619,9 @@ static void svf_curve(int type, float fc, float q, int x0, int y0, int w, int h,
             db = -36.0f;
         y = y0 + (int)((18.0f - db) * (float)(h - 1) / 54.0f);
         if (fill)
-            cv_rect(x0 + i, y, 1, y0 + h - y, mix565(C_BODY, C_DUSK, 150));
+            glow_col(x0 + i, y, y0 + h);
         if (i)
-            thick(x0 + i - 1, py, x0 + i, y, col);
+            gline(x0 + i - 1, py, x0 + i, y, y0, y0 + h);
         py = y;
     }
     cv_rect(x0, y0 + (int)(18.0f * (float)(h - 1) / 54.0f), w, 1, C_GRID);   /* 0 dB */
@@ -8584,7 +8663,6 @@ static void pic_env(int tr, int pg)       /* the envelope's shape: attack, decay
     int a = snd_value(tr, ids[0]), d = snd_value(tr, ids[1]), s = snd_value(tr, ids[2]), r = snd_value(tr, ids[3]);
     int wa = 6 + a * 56 / 127, wd = 6 + d * 56 / 127, ws = 36, wr = 6 + r * 56 / 127, tot = wa + wd + ws + wr;
     int x0 = 10, w = 220, top = 14, bot = 112, ys = bot - s * (bot - top) / 127, x1, x2, x3, x4, x;
-    uint16_t col = TH_FG;
     grid_bg();                     /* (the atlas: curves on a grid, on black) */
     x1 = x0 + wa * w / tot;
     x2 = x1 + wd * w / tot;
@@ -8594,12 +8672,12 @@ static void pic_env(int tr, int pg)       /* the envelope's shape: attack, decay
         int y = x <= x1 ? bot - (x - x0) * (bot - top) / (x1 - x0 ? x1 - x0 : 1)
                 : x <= x2 ? top + (x - x1) * (ys - top) / (x2 - x1 ? x2 - x1 : 1)
                 : x <= x3 ? ys : ys + (x - x3) * (bot - ys) / (x4 - x3 ? x4 - x3 : 1);
-        cv_rect(x, y, 1, bot - y, mix565(C_BODY, C_DUSK, 150));
+        glow_col(x, y, bot);
     }
-    thick(x0, bot, x1, top, col);
-    thick(x1, top, x2, ys, col);
-    thick(x2, ys, x3, ys, col);
-    thick(x3, ys, x4, bot, col);
+    gline(x0, bot, x1, top, top, bot);
+    gline(x1, top, x2, ys, top, bot);
+    gline(x2, ys, x3, ys, top, bot);
+    gline(x3, ys, x4, bot, top, bot);
     cv_rect(x0, bot, w, 1, C_GRID);
     {
         static const char *const N[4] = {"A", "D", "S", "R"};
@@ -8633,8 +8711,10 @@ static void pic_osc(int tr)               /* the oscillator's wave, two cycles; 
             int y = 66 - (int)(v * 50.0f), y2 = 66 - (int)(v2 * 50.0f);
             if (i && mixv > 0 && (i & 1))
                 cv_line(10 + i - 1, py2, 10 + i, y2, mix565(C_PANEL, col, 40 + mixv));
-            if (i)
-                thick(10 + i - 1, py, 10 + i, y, col);
+            if (i) {
+                glow_col(10 + i, y, 66);
+                gline(10 + i - 1, py, 10 + i, y, 16, 116);
+            }
             py = y;
             py2 = y2;
         }
@@ -9257,7 +9337,7 @@ static void v6_voice_art(int pad, const KitPatch *patch)
         y = 56 - (int)(a * e * 46.0f);
         y = y < 8 ? 8 : y > 104 ? 104 : y;
         if (x)
-            cv_line(12 + x - 1, py, 12 + x, y, C_ACID);
+            cv_line(12 + x - 1, py, 12 + x, y, gradc(GR_HEAT, 215 - x, 215));
         py = y;
     }
 }
@@ -9519,8 +9599,12 @@ static void page_lfo(void)                /* the track's LFO: its shape, where i
             if (l->depth < 0)
                 v = -v;
             y = 64 - (int)(v * amp * 52.0f);
-            if (c)
+            if (c && l->depth) {
+                glow_col(10 + c, y, 64);
+                gline(10 + c - 1, py, 10 + c, y, 12, 116);
+            } else if (c) {
                 thick(10 + c - 1, py, 10 + c, y, wc);
+            }
             py = y;
         }
     }
@@ -9737,7 +9821,7 @@ static void page_cpu(void)
         cv_text(8, y - 2, &FONT_XS, NM[i], i == CS_TOTAL ? TH_TXT : C_TXT2);
         cv_rect(104, y + 3, 100, 8, C_GRID);
         if (w > 0)
-            cv_rect(104, y + 3, w, 8, i == CS_TOTAL && pct > 85 ? TH_RED : C_METER);
+            hheat(104, y + 3, 100, 8, w);
         {   /* the worst block lately: a tick (at the end when past 100 %) */
             int pk = (int)(cs_pk[i] * per + 0.5f);
             pk = pk > 99 ? 99 : pk;
@@ -9838,8 +9922,10 @@ static void page_qmix(void)               /* the QUICK MIXER: the tracks (the pi
                t == tr ? C_INK : muted ? C_RULE : C_TXT2);
         h = db_h(lvl[t], 52, 48.0f);      /* its level now: yellow (on the picked one, black) */
         cv_rect(x + 2, 22, 52, 2, t == tr ? mix565(col, C_INK, 90) : C_GRID);
-        if (h > 0)
-            cv_rect(x + 2, 22, h, 2, t == tr ? C_INK : C_NOW);
+        if (h > 0 && t == tr)
+            cv_rect(x + 2, 22, h, 2, C_INK);
+        else
+            hheat(x + 2, 22, 52, 2, h);
     }
     if (tr == TR_DRUM) {                  /* the lanes: a white key each, acid while on (yellow as it sounds), muted dark */
         const uint16_t mute = dcur()->mute;
@@ -9896,13 +9982,10 @@ static void page_mix(void)                /* the mixer: a strip a track, its met
             fx_text(i, u);
             text_c(30 + k * 60, 17, &FONT_XS, u, ret && v > 127 ? C_NOW : C_TXT2);
             rrect(x, 30, w, 92, 4, C_GRID);
-            if (h > 0)
-                rrect(x, 122 - h, w, h, 4, TH_FG);
+            vheat(x, 30, w, 92, h);       /* HEAT up its range: a return's boost goes orange, then pink */
             if (ret) {
-                int yb = 122 - 127 * 92 / mx;
-                if (v > 127)              /* the boost past the old top: yellow */
-                    rrect(x, 122 - h, w, h - (122 - yb), 4, C_NOW);
-                cv_rect(x - 4, 122 - 85 * 92 / mx, w + 8, 1, TH_TXT);   /* 0 dB: the preset's return */
+                cv_rect(x - 4, 122 - 85 * 92 / mx, w + 8, 1, TH_TXT);    /* 0 dB: the preset's return */
+                cv_rect(x - 2, 122 - 127 * 92 / mx, w + 4, 1, C_RULE);   /* the old top: past it, the boost */
             }
         }
         cards_of(KD_MIX, ui.mixpage);
@@ -9921,7 +10004,7 @@ static void page_mix(void)                /* the mixer: a strip a track, its met
         h = db_h(lvl[t], 92, 48.0f);      /* the meter, -48..0 dBFS */
         rrect(x + 6, 30, 8, 92, 3, C_GRID);
         if (h > 0)
-            rrect(x + 6, 122 - h, 8, h, 3, h > 90 ? TH_RED : h > 80 ? RGB(240, 190, 80) : C_METER);
+            vheat(x + 6, 30, 8, 92, h);
         if (ui.mixpage == 1) {            /* PAN: a slider across */
             cv_rect(x + 20, 76, 30, 2, C_GRID);
             cv_rect(x + 35, 70, 1, 14, C_TXT2);
@@ -9929,8 +10012,7 @@ static void page_mix(void)                /* the mixer: a strip a track, its met
         } else {                          /* a bar up */
             int b = v * 92 / 127;
             rrect(x + 20, 30, 30, 92, 4, C_GRID);
-            if (b > 0)
-                rrect(x + 20, 122 - b, 30, b, 4, col);
+            vheat(x + 20, 30, 30, 92, b);
         }
     }
     cards_of(KD_MIX, ui.mixpage);
@@ -9957,12 +10039,11 @@ static void page_fx(void)                 /* the sends' FX: what they do, drawn 
     grid_bg();                     /* (the atlas: curves on a grid, on black) */
     if (pg == 0) {                        /* the reverb: its tail, long by DECAY, bright by TONE, loud by LEVEL */
         float decay = 0.2f + (float)proj.fx[FXP_RV_DECAY] / 127.0f * 0.78f, lvlv = (float)proj.fx[FXP_RV_LEVEL] / 127.0f, a = 1.0f;
-        uint16_t c = mix565(C_BODY, TH_FG, 120 + (127 - proj.fx[FXP_RV_DAMP]) / 2);
         cv_rect(10, 118, 220, 1, C_GRID);
         for (i = 0; i < 54; i++) {
             int h = (int)(a * (0.3f + 0.7f * lvlv) * 100.0f);
             if (h > 0)
-                cv_rect(12 + i * 4, 118 - h, 3, h, c);
+                vheat(12 + i * 4, 18, 3, 100, h);
             a *= decay * 0.12f + 0.86f;
         }
     } else if (pg == 1 || pg == 2) {      /* the delay: the echoes over 2 s, each lower by FEEDBACK; DELAY 2 to the sides */
@@ -9975,10 +10056,16 @@ static void page_fx(void)                 /* the sends' FX: what they do, drawn 
             int x = 12 + (int)((float)n * ms * 216.0f / 2000.0f), h = (int)(a * 46.0f);
             if (x > 228 || h < 1)
                 break;
-            if (wide)
-                rrect(x, n & 1 ? 66 - h : 67, 4, h, 2, c);
-            else
-                rrect(x, 66 - h, 4, 2 * h, 2, c);
+            {                             /* each echo HEAT out from the middle by its height (dim with the delay off) */
+                int r;
+                for (r = 0; r < h; r++) {
+                    uint16_t cc = c == C_GRID ? C_GRID : gradc(GR_HEAT, r, 45);
+                    if (!wide || (n & 1))
+                        cv_rect(x, 65 - r, 4, 1, cc);
+                    if (!wide || !(n & 1))
+                        cv_rect(x, 67 + r, 4, 1, cc);
+                }
+            }
             a *= fb;
         }
         if (wide) {
@@ -10012,7 +10099,7 @@ static void hmeter(int x, int y, int w, int h, const char *name, float lin, floa
     cv_text(x, y - 3, &FONT_XS, name, C_TXT2);
     rrect(x + 30, y, w, h, 3, C_GRID);
     if (v > 0)
-        rrect(x + 30, y, v, h, 3, db > -1.0f ? TH_RED : db > -6.0f ? RGB(240, 190, 80) : C_METER);
+        hheat(x + 30, y, w, h, v);
     cv_rect(x + 30 + w - w * 6 / (int)range, y - 2, 1, h + 4, C_TXT2);   /* -6 dB */
     s[0] = 0;
     if (db <= -60.0f)
@@ -10030,8 +10117,8 @@ static void gr_bar(int x, int y, int w, int h, const char *name, float gr)   /* 
         v = w;
     cv_text(x, y - 3, &FONT_XS, name, C_TXT2);
     rrect(x + 30, y, w, h, 3, C_GRID);
-    if (v > 0)
-        rrect(x + 30 + w - v, y, v, h, 3, TH_RED);
+    for (int c = 0; c < v; c++)           /* a reduction from the right: hotter as it goes deeper */
+        cv_rect(x + 30 + w - 1 - c, y, 1, h, gradc(GR_HEAT, w / 2 + c / 2, w));
     u[0] = 0;
     text_cat(u, "-");
     db1(gr, s);
@@ -10099,8 +10186,8 @@ static void mst_comp(int pg)              /* COMP: the curve, in and out over -4
         rrect(10, 76, 220, 16, 4, C_GRID);
         if (w > 220)
             w = 220;
-        if (w > 0)
-            rrect(230 - w, 76, w, 16, 4, TH_RED);
+        for (i = 0; i < w; i++)           /* the reduction from the right, hotter as it goes deeper */
+            cv_rect(229 - i, 76, 1, 16, gradc(GR_HEAT, 110 + i / 2, 220));
         for (i = 0; i <= 12; i += 3)
             cv_rect(230 - i * 220 / 12, 94, 1, 5, C_TXT2);
         cv_text(10, 104, &FONT_XS, proj.fx[FXP_PUMP] ? "PUMP: DUCKS AT EACH KICK" : "PUMP OFF", C_TXT2);
@@ -10115,8 +10202,10 @@ static void mst_comp(int pg)              /* COMP: the curve, in and out over -4
         y = y0 + s - (int)((in - g + mk + 48.0f) * (float)s / 48.0f);
         if (y < y0)
             y = y0;
-        if (i)
-            thick(x0 + i - 1, py, x0 + i, y, TH_FG);
+        if (i) {
+            glow_col(x0 + i, y, y0 + s);
+            gline(x0 + i - 1, py, x0 + i, y, y0, y0 + s);
+        }
         py = y;
     }
     {
@@ -10137,8 +10226,8 @@ static void mst_comp(int pg)              /* COMP: the curve, in and out over -4
         rrect(138, 42, 92, 8, 3, C_GRID);
         if (w > 92)
             w = 92;
-        if (w > 0)
-            rrect(230 - w, 42, w, 8, 3, TH_RED);
+        for (i = 0; i < w; i++)
+            cv_rect(229 - i, 42, 1, 8, gradc(GR_HEAT, 46 + i / 2, 92));
         cv_text(138, 60, &FONT_XS, proj.fx[FXP_C_RATIO] ? "THE MIX," : "OFF:", C_TXT2);
         cv_text(138, 74, &FONT_XS, proj.fx[FXP_C_RATIO] ? "COMPRESSED" : "RATIO 1:1", C_TXT2);
     }
@@ -10159,8 +10248,10 @@ static void mst_tape(void)                /* TAPE: its curve, in to out, -1..1 *
         if (y > 1.0f) y = 1.0f;
         if (y < -1.0f) y = -1.0f;
         py2 = y0 + s / 2 - (int)(y * (float)(s / 2));
-        if (i)
-            thick(x0 + i - 1, py, x0 + i, py2, on ? TH_FG : mix565(C_BODY, TH_FG, 110));
+        if (i && on)
+            gline(x0 + i - 1, py, x0 + i, py2, y0, y0 + s);
+        else if (i)
+            thick(x0 + i - 1, py, x0 + i, py2, mix565(C_BODY, TH_FG, 110));
         py = py2;
     }
 }
@@ -10177,7 +10268,7 @@ static void mst_stereo(void)              /* STEREO: the image's width as a fan,
         int x = 120 + (int)(um_sin(a) * 100.0f), y = 120 - (int)(um_sin(a + 1.5708f) * 100.0f);
         if (a > 1.5f || a < -1.5f)
             continue;
-        cv_line(120, 120, x, y, mix565(C_BODY, TH_FG, 80 + (20 - (i < 0 ? -i : i)) * 8));
+        cv_line(120, 120, x, y, gradc(GR_HEAT, i < 0 ? -i : i, 20));
     }
     if (proj.fx[FXP_ST_BASS])             /* BASS MONO: the lows centred */
         rrect(114, 70, 13, 50, 4, TH_FG);
@@ -10230,9 +10321,12 @@ static void page_mst(void)
         for (i = 0; i < 112; i++) {
             float d = db[i] < -15.0f ? -15.0f : db[i] > 15.0f ? 15.0f : db[i];
             int x = x0 + i * 2, y = mid - (int)(d * (float)h / 30.0f + (d < 0.0f ? -0.5f : 0.5f));
-            cv_rect(x, y < mid ? y : mid, 2, (y < mid ? mid - y : y - mid) + 1, mix565(C_PANEL, TH_INK, 50));
-            if (i)
-                thick(x - 2, py, x, y, proj.fx[FXP_M_BYPASS] ? C_TXT2 : TH_FG);
+            glow_col(x, y, mid);
+            glow_col(x + 1, y, mid);
+            if (i && proj.fx[FXP_M_BYPASS])
+                thick(x - 2, py, x, y, C_TXT2);
+            else if (i)
+                gline(x - 2, py, x, y, y0, y0 + h);
             py = y;
         }
         break;
