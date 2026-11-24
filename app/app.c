@@ -4603,6 +4603,138 @@ static void held_sub(int32_t e)           /* a step held + ALGORITHM: its subste
     ui.redraw = 1;
 }
 
+/* ---- copy and paste (0.5). SAVE copies, REC pastes, with what is held saying what: a step (its key held on STEPS:
+ * an instrument's notes and locks, the drums' whole column), a drum lane (its black key held on the drums' steps),
+ * or the track's part (SEQ held). The clipboard is a note of where, not a copy: paste takes what is there then */
+enum { CB_NONE, CB_STEP, CB_LANE, CB_PART };
+static struct { uint8_t kind, pat, trk, pad, step; } cb;
+static uint8_t cb_rec;                    /* this press of REC was a paste */
+
+static int cb_lane_key(uint32_t keys)     /* the drums' steps: the pad whose black key is held, -1 none */
+{
+    int k;
+    if (ui.trk != TR_DRUM || ui.page != PG_SEQ)
+        return -1;
+    for (k = 0; k < NPADS; k++)
+        if (keys >> BK[k] & 1u)
+            return k;
+    return -1;
+}
+
+static void cb_copy(int kind, int pad)
+{
+    cb.kind = (uint8_t)kind;
+    cb.pat = (uint8_t)clip_of(ui.trk);
+    cb.trk = ui.trk;
+    cb.pad = (uint8_t)pad;
+    cb.step = (uint8_t)(ui.held_step >= 0 ? ui.held_step : 0);
+    ui.held_used = 1;
+    app_say("COPIED", kind == CB_STEP ? "STEP" : kind == CB_LANE ? "LANE" : "PART");
+}
+
+static void cb_paste(int kind, int pad)
+{
+    const int tr = ui.trk, inst = tr != TR_DRUM, to = ui.held_step;
+    uint32_t f;
+    int i, n, s, full = 0;
+    if (cb.kind != kind) {
+        app_say("PASTE", cb.kind == CB_NONE ? "NOTHING COPIED" : kind == CB_STEP ? "COPY A STEP FIRST"
+                         : kind == CB_LANE ? "COPY A LANE FIRST" : "COPY A PART FIRST");
+        return;
+    }
+    if ((cb.trk != TR_DRUM) != inst) {
+        app_say("PASTE", inst ? "THAT IS A DRUM'S" : "THAT IS A SYNTH'S");
+        return;
+    }
+    undo_mark(0);
+    ui.held_used = 1;
+    f = plat_lock();
+    if (kind == CB_PART && inst) {
+        ipart_t *d = ipart(tr);
+        const ipart_t *o = &proj.p[cb.pat].t[cb.trk - 1];
+        if (d != o)
+            *d = *o;
+    } else if (kind == CB_PART) {
+        dpart_t *d = dcur();
+        const dpart_t *o = &proj.p[cb.pat].d;
+        if (d != o)
+            *d = *o;
+    } else if (kind == CB_STEP && inst) {
+        ipart_t *d = ipart(tr);
+        const ipart_t *o = &proj.p[cb.pat].t[cb.trk - 1];
+        ilock_t keep[8];
+        for (i = n = 0; i < o->nlk && n < 8; i++)   /* (the source's locks first: it may be this very part) */
+            if (o->lk[i].step == cb.step)
+                keep[n++] = o->lk[i];
+        d->st[to] = o->st[cb.step];
+        for (i = d->nlk - 1; i >= 0; i--)
+            if (d->lk[i].step == to)
+                d->lk[i] = d->lk[--d->nlk];
+        for (i = 0; i < n; i++)
+            full |= ilock_put(d, to, keep[i].param, keep[i].val);
+    } else if (kind == CB_STEP) {
+        dpart_t *d = dcur();
+        const dpart_t *o = &proj.p[cb.pat].d;
+        lock_t keep[12];
+        uint16_t hits = 0;
+        const int acc = bit_get(o->acc, cb.step);
+        for (i = 0; i < NPADS; i++)
+            hits |= (uint16_t)(bit_get(o->hit[i], cb.step) << i);
+        for (i = n = 0; i < o->nlk && n < 12; i++)
+            if (o->lk[i].step == cb.step)
+                keep[n++] = o->lk[i];
+        for (i = 0; i < NPADS; i++) {
+            lock_clear_step(d, to, i);
+            if (hits >> i & 1u) bit_set(d->hit[i], to); else bit_clear(d->hit[i], to);
+        }
+        if (acc) bit_set(d->acc, to); else bit_clear(d->acc, to);
+        for (i = 0; i < n; i++)
+            full |= lock_put(d, to, keep[i].pad, keep[i].param, keep[i].val);
+    } else {                              /* a lane: its hits, and its locks where there is room */
+        dpart_t *d = dcur();
+        const dpart_t *o = &proj.p[cb.pat].d;
+        if (d != o || pad != cb.pad) {
+            uint32_t h[STEP_WORDS];
+            for (i = 0; i < STEP_WORDS; i++)
+                h[i] = o->hit[cb.pad][i];
+            for (s = 0; s < NSTEPS; s++)
+                lock_clear_step(d, s, pad);
+            for (i = 0; i < STEP_WORDS; i++)
+                d->hit[pad][i] = h[i];
+            for (i = 0, n = o->nlk; i < n && i < o->nlk; i++)
+                if (o->lk[i].pad == cb.pad && (d != o || 1))
+                    full |= lock_put(d, o->lk[i].step, pad, o->lk[i].param, o->lk[i].val);
+        }
+    }
+    plat_unlock(f);
+    dirty = 1;
+    ui.redraw = 1;
+    app_say("PASTED", full ? "SOME LOCKS DID NOT FIT" : kind == CB_STEP ? "STEP" : kind == CB_LANE ? "LANE" : "PART");
+}
+
+static int cb_button(int save, uint32_t keys)   /* SAVE (copy) or REC (paste) pressed: 1 taken as a copy / paste */
+{
+    const int lane = cb_lane_key(keys);
+    int kind;
+    if (ui.held_step >= 0 && ui.page == PG_SEQ)
+        kind = CB_STEP;
+    else if (lane >= 0)
+        kind = CB_LANE;
+    else if ((ui.btn >> B_SEQ & 1u) && (ui.page == PG_SEQ || ui.seq_prev == PG_SEQ))
+        kind = CB_PART;
+    else
+        return 0;
+    if (kind == CB_PART) {
+        ui.seq_used = 1;
+        ui.page = ui.seq_prev;
+    }
+    if (save)
+        cb_copy(kind, lane);
+    else
+        cb_paste(kind, lane);
+    return 1;
+}
+
 static void held_nudge(int32_t e)         /* a step held + PRESETS: how late it plays, sixteenths of its length */
 {
     int tr = ui.trk, s = ui.held_step, i, n, r = 0;
@@ -8388,7 +8520,7 @@ static void input(void)
     if (pressed >> B_EDIT & 1u)
         ui.edit_used = 0;
     if (pressed >> B_SAVE & 1u) {
-        ui.save_used = 0;
+        ui.save_used = (uint8_t)cb_button(1, keys);   /* (a step, a lane's key or SEQ held: COPY, not the project) */
         ui.save_slot = -1;
     }
     if (pressed >> B_SEL & 1u) {          /* SEL: held + pad keys 1-4: tracks */
@@ -8548,7 +8680,7 @@ static void input(void)
     if ((released >> B_OCTUP & 1u) && (perf.want >> PF_TAPE & 1u))
         pf_release(PF_TAPE);
     if (pressed >> B_REC & 1u) {
-        ui.rec_used = 0;
+        ui.rec_used = cb_rec = (uint8_t)cb_button(0, keys);   /* (the same held: PASTE, not RECORD or its page) */
         ui.rec_t = plat_ms();
     }
     if (released >> B_REC & 1u) {
@@ -12828,7 +12960,7 @@ void app_frame(void)
         ui.help = 0;
         ui.redraw = 1;
     }
-    if ((ui.btn >> B_REC & 1u) && !ui.rec_shown && now - ui.rec_t >= 300u) {
+    if ((ui.btn >> B_REC & 1u) && !ui.rec_shown && !cb_rec && now - ui.rec_t >= 300u) {
         ui.rec_shown = 1;                 /* REC held: its page */
         ui.redraw = 1;
     }
