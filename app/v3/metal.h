@@ -10,6 +10,7 @@ typedef struct {
     float ring1, ring2, old_ring1, old_ring2;
     float body_weight, bright_weight, edge_weight, decay_rate;
     float sweep_rate;
+    float dark, tone;                     /* (0.5) the ring's darkening: 1 at the strike, falling; its low-pass */
     unsigned rise_frames;
     uint32_t age;
     unsigned choke, bell_blend;
@@ -19,6 +20,7 @@ typedef struct {
     uint32_t phase[6], step[6], next_frame;
     unsigned active;
     float low, air_low, air_high_low, mid1, mid2, high1, high2;
+    float lp_p1, lp_p2, lp_n1, lp_n2;     /* (0.5) the pulses' and the noise's 13 kHz low-pass */
     MetalVoice voice[6];
 #ifdef METAL_TEST_COUNTERS
     uint64_t rendered_frames;

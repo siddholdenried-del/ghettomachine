@@ -94,6 +94,7 @@ void metal_hit(Metal *m, int pad, float velocity, const KitPatch *patch)
         b->next_frame = m->frame;
         b->low = b->air_low = b->air_high_low = 0;
         b->mid1 = b->mid2 = b->high1 = b->high2 = 0;
+        b->lp_p1 = b->lp_p2 = b->lp_n1 = b->lp_n2 = 0;
     }
     MetalVoice *v = &b->voice[lane];
     int sounding = !!(b->active & (1u << lane));
@@ -104,6 +105,7 @@ void metal_hit(Metal *m, int pad, float velocity, const KitPatch *patch)
     v->level = v->accent = velocity;
     v->age = v->choke = 0;
     v->movement = 1.0f;
+    v->dark = 1.0f;                       /* (bright again at the strike; the ring's low-pass keeps its state) */
     if (lane == RIDE) {
         /* Re-striking does not abruptly replace the ringing bell. The two
            copies have the same poles: collapse an unfinished crossfade into
@@ -149,6 +151,21 @@ static inline float pulse_mix(const uint32_t phase[6])
          + .26f*pulse[0]*pulse[5] - .21f*pulse[1]*pulse[3] + .22f*pulse[2]*pulse[4];
 }
 
+/* (0.5) The source band-limited: the pulses (their slopes' and their products' partials past 16 kHz, some folded
+   back from past Nyquist) and the noise (white to 22 kHz: the hats' fizz) through a 2-pole low-pass, Butterworth at
+   13 kHz by the bilinear transform: flat to 10 kHz, -9 dB at 16, -28 at 20. Before the resonators and the bands, so
+   the six voices share it; their mixes of the taps are unchanged. */
+#define LP_B0 .380423011f
+#define LP_A1 .330721804f
+#define LP_A2 .190970239f
+static inline float lp13k(float x, float *s1, float *s2)
+{
+    float y = LP_B0 * x + *s1;
+    *s1 = 2.0f * LP_B0 * x - LP_A1 * y + *s2;
+    *s2 = LP_B0 * x - LP_A2 * y;
+    return y;
+}
+
 static void source(MetalBank *b, unsigned p, Taps *tap, unsigned count)
 {
     /* Two broad resonances and two air bands are shared before envelopes.
@@ -164,8 +181,8 @@ static void source(MetalBank *b, unsigned p, Taps *tap, unsigned count)
         tap[n].air = pulse_mix(b->phase);
     }
     for (unsigned n = 0; n < count; n++) {
-        float pulse = tap[n].air;
-        float noise = air_at(b->next_frame++, p);
+        float pulse = lp13k(tap[n].air, &b->lp_p1, &b->lp_p2);
+        float noise = lp13k(air_at(b->next_frame++, p), &b->lp_n1, &b->lp_n2);
         b->low += .19f * (pulse - b->low);
         float exciter = .77f*(pulse-b->low) + .69f*noise;
         b->air_low += .38f*(noise-b->air_low);
@@ -188,6 +205,13 @@ static void source(MetalBank *b, unsigned p, Taps *tap, unsigned count)
 #endif
 }
 
+/* (0.5) A ringing voice's darkening: a one-pole low-pass on it, open at the strike (no filtering), closing as dark
+   falls toward its floor (the coefficient: 0.62 about 7 kHz, 0.70 about 8.5 kHz). Highs die first, as on a real
+   cymbal; the strike itself keeps its edge. */
+#define DARK_HAT .70f
+#define DARK_CRASH .62f
+#define DARK_RIDE .70f
+
 static int render_hat(MetalVoice *v, int lane, const Taps *tap, float *out, unsigned n)
 {
     const float settle = lane == CLOSED ? .9983816f : .9996977f; /* contact or open sizzle */
@@ -199,7 +223,13 @@ static int render_hat(MetalVoice *v, int lane, const Taps *tap, float *out, unsi
         float timbre = lane == CLOSED
             ? v->body_weight*tap[i].bright + (v->edge_weight+v->bright_weight*v->movement)*tap[i].edge
             : v->body_weight*tap[i].body + v->bright_weight*tap[i].bright + v->edge_weight*v->movement*tap[i].edge;
-        out[i] += g * timbre * (lane == CLOSED ? .51f : .61f);
+        float s = g * timbre * (lane == CLOSED ? .51f : .61f);
+        if (lane == OPEN) {               /* (0.5) the open hat's ring darkens: highs first, as a real one's */
+            v->tone += (DARK_HAT + (1.0f - DARK_HAT) * v->dark) * (s - v->tone);
+            v->dark *= .99993521f;        /* (0.35 s) */
+            s = v->tone;
+        }
+        out[i] += s;
         if (v->movement > 1e-8f) v->movement *= settle;
         if ((v->choke && --v->choke == 0) || v->gain < quiet) return 0;
     }
@@ -222,7 +252,9 @@ static int render_cymbal(MetalVoice *v, int lane, unsigned p, const Taps *tap, f
             float plate = drive + v->filter1;
             v->filter1 = plate_a1 * plate + v->filter2;
             v->filter2 = plate_a2 * plate - drive;
-            out[i] += .789f*(wash + (.56f + .63f*v->movement)*plate);
+            v->tone += (DARK_CRASH + (1.0f - DARK_CRASH) * v->dark) * (.789f*(wash + (.56f + .63f*v->movement)*plate) - v->tone);
+            v->dark *= .99998110f;        /* (1.2 s) */
+            out[i] += v->tone;
         } else {
             float bell = bell_a * v->ring1 - .9996512f * v->ring2;
             v->ring2 = v->ring1;
@@ -237,8 +269,11 @@ static int render_cymbal(MetalVoice *v, int lane, unsigned p, const Taps *tap, f
                 bell += (old - bell) * ((float)v->bell_blend * (1.0f / BELL_BLEND));
                 v->bell_blend--;
             }
-            out[i] += v->gain*(v->body_weight*tap[i].body + v->bright_weight*tap[i].bright)
-                    + .165f*bell + .84f*v->accent_gain*(v->edge_weight*tap[i].edge + .48f*tap[i].body);
+            v->tone += (DARK_RIDE + (1.0f - DARK_RIDE) * v->dark)
+                     * (v->gain*(v->body_weight*tap[i].body + v->bright_weight*tap[i].bright)
+                        + .165f*bell + .84f*v->accent_gain*(v->edge_weight*tap[i].edge + .48f*tap[i].body) - v->tone);
+            v->dark *= .99998866f;        /* (2 s) */
+            out[i] += v->tone;
         }
         v->gain += (lane == CRASH ? .0029f : .022f) * (v->level-v->gain);
         if (lane == CRASH && v->movement>1e-8f) v->movement *= .9998740f;
