@@ -151,7 +151,27 @@ steps (on T2–T4 the same press is ACID).
 - Every turn makes the beat again at once and replaces the part's hits and accents up to its length (locks, lane
   mutes and steps past the length stay). **EDIT + OCT−** undoes it. The hits are ordinary hits: edit them on STEPS.
 - Each pattern's drum part keeps its own settings, saved with the project and copied with a pattern.
+- **MORE K4 ROLLS:** how often a closed hat plays as a roll (2, 3 or 4 hits in its step, mostly doubles). They are
+  the hat's substeps, so they use the part's locks.
+- **KEEP** (the fourth page): **K1 LANE** picks a drum, **K2 KEEP** keeps its lane as it is through every new beat,
+  MUTATE and knob; **K3** keeps all (up) or none (down). A kept lane has a white bar before its row. Keep the kick
+  and snare you like and roll the hats again.
 - The screen shows the beat a row a drum, the bass drum at the bottom and the cymbals at the top; accented steps white.
+
+### Microtiming, and copy and paste (every track)
+
+- **Nudge:** hold a step and turn **PRESETS**: the step plays late, up to 15 sixteenths of its own length (the
+  screen says how far, in %). Back to ON TIME takes it off. It uses one of the part's locks. To play a step early,
+  put it on the step before and nudge that late.
+- **Copy and paste:** **SAVE copies, REC pastes**, and what you hold says what:
+  - a **step** (its key held on STEPS): an instrument step's notes, length and locks; on the drums the whole
+    column, every drum's hit with its accent and locks;
+  - a **drum lane** (the drum's black key held on the drums' steps): that drum's hits and locks, onto the drum
+    whose key you hold when you paste;
+  - the **part** (SEQ held): the track's whole part, into the part you're on, on any pattern.
+  The clipboard remembers where you copied from, not a copy of it: paste takes what is there at that moment. A
+  drum's and a synth's don't mix. With one of these held, SAVE doesn't save the project and REC doesn't arm
+  recording. EDIT + OCT− undoes a paste.
 
 ## The instrument tracks (T2–T4)
 
@@ -176,6 +196,8 @@ steps (on T2–T4 the same press is ACID).
     - **PART TOOLS** (every step of the part): **K1** TRANSPOSE in semitones, **K2** SHIFT the part a step later or earlier
       (locks and substeps move with their steps), **K3** VELOCITY and **K4** GATE up or down for all.
     - **PART GROOVE:** **K1** LENGTH, **K2** RATE, **K3** SWING, **K4** TEMPO, as on the drums' steps.
+    - **STEP LOCKS:** hold a step: **K1** LFO RATE, **K2** LFO DEPTH (LFO 1's), **K3** ARP RATE, **K4** ARP GATE,
+      for that step only (until the next step that plays). Turned back to the track's own value, the lock goes.
 - **Recording (REC):**
   - **While playing:** what you play goes to the nearest step, with its gate from how long you held it.
   - **While stopped, on KEYS:** step recording. A note or a chord goes into the cursor's step, and the cursor moves on
@@ -284,7 +306,7 @@ On STEPS an accented note has a white bar over it and a slide a mark at its end.
 ### Modulation: MOD ENV, LFO 2, the matrix and the macros
 
 - **LFO 2** (LFO, third page): each note gets its own, so chords shimmer rather than move together. SHAPE, RATE
-  (0.05–30 Hz), FADE IN, and RESTART: EACH NOTE (from the start of its cycle, for a steady vibrato) or FREE (each
+  (0.05–30 Hz; with RESTART on NOTE SYNC or FREE SYNC, a division of the tempo from 4 BARS to 1/32), FADE IN, and RESTART: EACH NOTE (from the start of its cycle, for a steady vibrato) or FREE (each
   note anywhere in it).
 - **MATRIX** (LFO, fourth page): six slots. Each sends a **SOURCE** to a **DEST** by an **AMOUNT** (−64 to +63).
   **K1** picks the slot; the screen lists all six.
@@ -388,6 +410,10 @@ Turning a knob without recording on, or stopped, only changes the sound.
   - Page 1: MODE (up, down, up and down, random, as played), RATE, OCTAVES, GATE.
   - Page 2: LATCH, and **chord mode** (below).
   - It plays what you hold, and the sequencer's chords too.
+  - **Recording the arpeggio:** with REC on and the sequencer playing, hold keys on a track whose ARP is on: each
+    note the arpeggio plays is written into the step nearest it (replacing what that step had), and the track's own
+    steps keep quiet under it. Turn REC off (or stop) and the arpeggiator switches itself OFF, so the part plays
+    back the way you heard it instead of being arpeggiated again. EDIT + OCT− takes the take back.
 - **Locks on instrument steps:** hold a step on the steps page, tap EDIT (or ENV, or LFO for LFO 2 and the matrix's
   amounts), and turn knobs. SELECT turns pages while the step is held. A mark over the step shows it has locks.
 
@@ -630,7 +656,7 @@ Press HOME on the SONG page.
     back, not for playing in time.
   - **Undo keeps one step while it's on** (its memory is lent to the radio), and the undo history is emptied when
     you turn it on or off. All six steps come back when it's off.
-  - It isn't kept with the project: turn it on each time.
+  - If it's on when you SAVE the project, it comes back on at power-on and reconnects to the last device.
 - **SELECT again: CPU.** Turn SELECT to see where the processor's time goes, live: **DRUMS**, **SYNTH**, **INSERT+COLOR**,
   **REV+DLY CORE2**, **MASTER CORE2**, **OTHER** and the **TOTAL**, each as a share of the time the FM-1 has for each
   block of sound. The bar is the average; a tick past it marks the worst block of the last second or so (a pattern
@@ -650,15 +676,9 @@ Press HOME on the SONG page.
 steps and beats). This build reads every earlier 0.5 save; once it has saved, an earlier 0.5 build starts a fresh
 project instead of reading it (the file stays, and this build reads it again).
 
-**From 0.4:** 0.5 reads 0.4's projects; 0.4 can't read one 0.5 has saved.
-
-**From 0.3:** a project saved by 0.3 loads as it was; its parts' generators start unset. The first SAVE writes 0.4's
-format (0.5's too), which 0.3 can't read: going back to 0.3 starts a fresh project (the file stays, and 0.4 or 0.5
-reads it again).
-
-**From 0.2:** a project saved by 0.2 (or by its performance update) loads with every note, lock, sound and setting it
-had; the synth update's settings start at their defaults, so every sound plays as before. Your USER presets are
-converted the same way. 0.2 can't read the new format either.
+**From 0.2, 0.3 and 0.4:** their projects and 0.2's user presets are no longer read (their converters were cut on
+24 Nov 2026 to make room). Such a project starts fresh here; the file stays in the flash until you SAVE, so an older
+build can still open it before then.
 
 **SAVE lights up when there's something unsaved.** Hold SAVE and press OCT− to take the track picked back to its
 sound as saved (the drums: all their knobs), for when an experiment went too far. With sounds per pattern on, that's
@@ -668,6 +688,10 @@ the sound saved with the pattern it's on.
 
 - **In:** channel 10 plays the pads (General MIDI drum notes), channels 2–4 play T2–T4, and channel 1 plays the
   track picked.
+- **Controllers in:** on channels 2–4 (and 1, the track picked), CC 20–23 turn the track's MACRO 1–4 and the mod
+  wheel (CC 1) MACRO 1.
+- **Song Position:** followed and stopped, a position sent before Continue is where Continue goes on from.
+- **Pressure out:** each held key also sends its own pressure (polyphonic aftertouch) beside the channel's.
 - **Pressure:** lean on a held key (the 20 lower keys sense it; the top seven don't) and the track's hardest-held
   key is the matrix's **PRESSURE** source: MATRIX, SRC PRESSURE, to CUTOFF or anything else. It goes out as
   channel pressure on the track's channel, and channel or key pressure coming in on channels 2–4 does the same.
@@ -741,8 +765,9 @@ the sound saved with the pattern it's on.
   (about 6 ms more delay); recorded from on 21 Nov with MASTER at 0, it had no clicks and the master pair kept its
   level.
 - No stem for the reverb and delay returns (the ten inputs are all used), no 48 kHz or 24-bit stems.
-- No per-track EQ or compression, no multiband compression on the master; no locks on LFO 1 or arpeggiator settings
-  (LFO 2's and the matrix's amounts lock); the arpeggio isn't recorded, only what you play.
+- No per-track EQ or compression, no multiband compression on the master. Of LFO 1 and the arpeggiator, RATE, DEPTH
+  and GATE lock per step (STEP LOCKS); their other settings don't.
+- User drum kits: the DrumEngine's edits are kept with the project, but can't be saved as a kit of your own yet.
 - The matrix can't move another slot's amount, and LFO 2 doesn't follow the tempo (LFO 1 does, and is a source).
 - Projects from earlier builds (before 0.2) start fresh. A project saved by 0.2 loads converted, with no follow
   actions and sounds per pattern off if it was saved before the performance update.

@@ -314,7 +314,8 @@ typedef struct {
     KitPatch dpatch;
     uint16_t dpatch_size;
     uint8_t dpatch_kit;
-    uint8_t mflags;                       /* SETUP > MIDI: bit 0 SEQ OUT (the sequencer's notes sent), 1 BLUETOOTH on
+    uint8_t mflags;                       /* SETUP > MIDI: bit 0 SEQ OUT (the sequencer's notes sent), 1 BLUETOOTH on, 2
+                                           * BT AUDIO on at power-on
                                            * (a spare byte until 0.5's MIDI page: 0 in every older save) */
     uint8_t fx2[8];                       /* format 10: the FX's second pages (fx.h FXP_DL_WIDTH ..: FXP_NUM on) */
     /* format 12: MIX PER PATTERN (SETUP K4; recq bit 7): a track's mixer strip is its clip's, as its sound is (pmix:
@@ -4076,8 +4077,10 @@ void app_panic(void)
     syn_kill();
 }
 
+static void gbta_reset(void);
 void app_init(void)
 {
+    gbta_reset();
 #if FM1B_USB_HOST && defined(PLAT_HOST)
     /* Simulator reboot keeps its data segment; hardware clears BSS on boot. */
     usb_host_selected = 0;
@@ -6864,6 +6867,15 @@ static int gbta_count(void)
     return n;
 }
 
+static uint8_t gbta_boot;                 /* 1: the power-on's reconnect is under way; 2: done (or none asked) */
+static uint32_t gbta_t0;                  /* when the app started */
+static void gbta_reset(void)              /* app_init (the simulator's reboot keeps its data: as a power-on) */
+{
+    memset(&gbta, 0, sizeof gbta);
+    gbta_boot = 0;
+    gbta_t0 = plat_ms();
+    nundo = NUNDO;
+}
 static void gbta_set(int on)
 {
     char nm[BTA_NAME];
@@ -6893,6 +6905,10 @@ static void gbta_set(int on)
         gbta.on = 0;
         gbta.giving = 1;                   /* (the main loop takes the memory back once the radio has let go) */
     }
+    if (gbta_boot != 1) {                 /* (not the power-on's own: the project remembers the player's choice) */
+        proj.mflags = (uint8_t)((proj.mflags & ~4u) | (on ? 4u : 0u));
+        dirty = 1;
+    }
     app_say("BT AUDIO", on ? "ON" : "OFF");
 }
 
@@ -6900,6 +6916,14 @@ static void gbta_poll(void)                /* the main loop */
 {
     if (!FM1B_BT_AUDIO)
         return;
+    if (gbta_boot < 2 && plat_ms() - gbta_t0 > 3000u) {   /* power-on: on again if it was when the project was saved (mflags bit 2),
+                                                 * to the last device */
+        if (proj.mflags & 4u) {
+            gbta_boot = 1;
+            gbta_set(1);
+        }
+        gbta_boot = 2;
+    }
     if (gbta.giving && plat_bta_mem(0) == 0) {
         gbta.giving = 0;
         undo_n = redo_n = 0;
@@ -12617,14 +12641,14 @@ static const char *help_text(void)
     const int inst = ui.trk != TR_DRUM;
     switch (ui.page) {
     case PG_SEQ:
-        return inst ? "SELECT: NOTES / HARMONY / PART / GROOVE\nHOLD STEP + K1-K4: EDIT THAT STEP\n"
-                      "HOLD STEP + SELECT: ONE OF ITS NOTES\nHOLD STEP + ALGO: SUBSTEPS\n"
-                      "HOLD STEP + ARP: PICK ITS NOTES\nHOLD STEP + OCT+: HALF, WHOLE, SLIDE\n"
-                      "HOLD STEP + EDIT / ENV / LFO: LOCKS\nBLACK 1-8: STEP BANK   SEQ: ACID"
+        return inst ? "SELECT: NOTES HARMONY PART GROOVE LOCKS\nHOLD STEP + K1-K4: EDIT THAT STEP\n"
+                      "  + SELECT: A NOTE  + ALGO: SUBSTEPS\n  + PRESETS: NUDGE LATE  + ARP: PICK\n"
+                      "  + OCT+: LENGTH  + EDIT / ENV / LFO: LOCK\n  + SAVE: COPY  + REC: PASTE\n"
+                      "SEQ + SAVE / REC: COPY / PASTE THE PART\nBLACK 1-8: STEP BANK   SEQ: ACID"
                     : "WHITE: STEPS   BLACK: PADS\nSELECT: GROOVE KNOBS / HIT KNOBS\n"
-                      "HOLD STEP + K1-K4: VEL CHANCE SUB ACC\nHOLD STEP + ALGO: SUBSTEPS\n"
-                      "HOLD SEQ + STEP: ACCENT\nSEQ + OCT+: DOUBLE   SEQ + OCT-: HALVE\n"
-                      "OCT- / OCT+: STEP BANK\nENV: LANE MUTES   EDIT: THE DRUM";
+                      "HOLD STEP + K1-K4: VEL CHANCE SUB ACC\n  + ALGO: SUBSTEPS  + PRESETS: NUDGE LATE\n"
+                      "  + SAVE: COPY  + REC: PASTE (PAD: LANE)\nSEQ + SAVE / REC: COPY / PASTE THE PART\n"
+                      "SEQ + STEP: ACCENT   SEQ + OCT: RESIZE\nSEQ: BEAT   ENV: MUTES   EDIT: THE DRUM";
     case PG_EDIT: case PG_ENV: case PG_LFO: case PG_ARP:
         return inst ? "SELECT: PAGES   SAME BUTTON: BACK\nPRESETS: SOUNDS\nSAVE + PRESETS: KEEP AS A USER SOUND\n"
                       "SAVE + OCT-: THE SOUND AS SAVED\nSTEP HELD (STEPS), THEN A KNOB: LOCK\n"
