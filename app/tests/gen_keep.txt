@@ -128,7 +128,7 @@ spin K1 85
 wait 60
 expect dgen6 100
 shot beat_more.png
-turn SELECT 5
+turn SELECT 1
 wait 30
 expect genpage 2
 spin K2 16
@@ -147,3 +147,52 @@ expect dgen2 4
 expect dgen6 100
 expect gkeep2_5 1
 expect note2_5 43
+# ---- BEAT's ROLLS (MORE, K4) and KEEP (its fourth page): nlk: the drum part's locks
+expect trk 1
+expect page 0
+tap SEQ
+wait 30
+expect page 14
+turn SELECT -3
+wait 30
+turn SELECT 1
+wait 30
+expect genpage 1
+expect nlk 0
+spin K4 31
+wait 60
+expect nlk >0
+spin K4 -31
+wait 60
+expect nlk 0
+# KEEP: the bass drum's lane kept; KICK to nothing leaves it, the snare's lane goes with SNARE at nothing
+turn SELECT 2
+wait 30
+expect genpage 3
+spin K1 -20
+wait 30
+spin K2 1
+wait 30
+shot beat_keep.png
+turn SELECT -3
+wait 30
+expect hits0 >0
+spin K2 -100
+wait 60
+expect hits0 >0
+spin K3 -100
+wait 60
+expect hits1 0
+# freed: it goes too
+turn SELECT 3
+wait 30
+spin K2 -1
+wait 30
+turn SELECT -3
+wait 30
+spin K2 -1
+wait 30
+spin K2 1
+wait 60
+expect dgen3 1
+expect hits0 0
