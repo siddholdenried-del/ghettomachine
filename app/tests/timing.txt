@@ -1,0 +1,85 @@
+# Microtiming (a held step + PRESETS) and STEP LOCKS (an instrument's fifth step tool), in the host simulator.
+#   app/build/host/ghettomachine_host app/tests/timing.txt OUTDIR
+# nudgeT_S: track T's step S late, sixteenths of a step; subfires: hits the late / substep slots played;
+# xlkT_I: track T's running lock I (0 LFO RATE 1 LFO DEPTH 2 ARP RATE 3 ARP GATE), -999 none; stool: the step tool
+wait 600
+expect page 0
+expect hit0_1 1
+# ---- the drums: the bass drum's step 1 half a step late
+key 0 down
+wait 60
+turn PRESET 8
+wait 60
+key 0 up
+wait 60
+expect nudge1_1 8
+expect hit0_1 1
+expect subfires 0
+tap PLAY
+wait 700
+tap PLAY
+wait 100
+expect subfires >0
+# back on time: the lock gone
+key 0 down
+wait 60
+turn PRESET -8
+wait 60
+key 0 up
+wait 60
+expect nudge1_1 0
+expect hit0_1 1
+# ---- T2: a note on step 1, a quarter of a step late; undo takes the nudge back, redo brings it
+turn ALGO 1
+wait 30
+expect trk 2
+expect page 0
+key 0 down
+wait 30
+key 0 up
+wait 60
+expect note2_1 >0
+key 0 down
+wait 60
+turn PRESET 4
+wait 60
+key 0 up
+wait 60
+expect nudge2_1 4
+expect note2_1 >0
+# ---- STEP LOCKS (SELECT to the fifth tool): step 1's own LFO DEPTH and ARP GATE
+turn SELECT 4
+wait 60
+expect stool 4
+key 0 down
+wait 60
+spin K2 20
+wait 30
+spin K4 -4
+wait 30
+shot step_locks.png
+key 0 up
+wait 60
+expect note2_1 >0
+expect xlk2_1 -999
+tap PLAY
+wait 400
+expect xlk2_1 >-999
+expect xlk2_3 >-999
+expect xlk2_0 -999
+tap PLAY
+wait 100
+expect xlk2_1 -999
+# turned back to the track's own: the lock goes
+key 0 down
+wait 60
+spin K2 -20
+wait 30
+key 0 up
+wait 60
+tap PLAY
+wait 400
+expect xlk2_1 -999
+expect xlk2_3 >-999
+tap PLAY
+wait 100

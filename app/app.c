@@ -84,6 +84,11 @@ static const char *trial_pad_name(int kit, int pad)
 #define LK_PROB 0x7Fu                     /* lock_t.param: the step's chance, either kit */
 #define LK_VEL 0x7Du                      /* lock_t.param: the hit's velocity (0.5), 1..127 (none: normal, or its accent) */
 #define LK_SUB 0x7Eu                      /* lock_t.param: the step's substeps (0.5), 2..4: it plays that many times */
+#define LK_NUDGE 0x7Cu                    /* lock_t.param: the hit late (0.5), 1..15 sixteenths of its step */
+#define IL_NUDGE 0x7Eu                    /* ilock_t.param: an instrument step late, the same */
+#define IL_X0 0x70u                       /* ilock_t.param IL_X0 + XL_*: the step's LFO 1 RATE (its division, synced) and
+                                           * DEPTH, the arpeggiator's RATE and GATE (0.5; not sound parameters) */
+enum { XL_LRATE, XL_LDEPTH, XL_ARATE, XL_AGATE, XL_NUM };
 #define IL_SUB 0x7Fu                      /* ilock_t.param: an instrument step's substeps (not a sound parameter) */
 #define NTRK 4                            /* tracks: the drums, then T2..T4 */
 #define NINST 3                           /* instrument tracks */
@@ -1099,7 +1104,7 @@ static void project_check(void)           /* a loaded project's values kept in r
             if (p->nlk > NILOCKS)
                 p->nlk = 0;
             for (s = 0; s < p->nlk; s++)
-                if ((p->lk[s].param >= SP_NUM && p->lk[s].param != IL_SUB) || p->lk[s].step >= NSTEPS)
+                if ((p->lk[s].param >= SP_NUM && p->lk[s].param < IL_X0) || p->lk[s].step >= NSTEPS)
                     p->lk[s].param = 0, p->lk[s].step = 0, p->lk[s].val = (int8_t)syn_param(0)->def;
         }
     for (i = 0; i < NPAT; i++)            /* the generators: one never used (seed 0) all zero (every other seed, 1..65535,
@@ -1672,10 +1677,14 @@ static void lfo_init(void)
     }
 }
 
+static int8_t xlk[NTRK][XL_NUM];         /* the step's LFO 1 / arpeggiator locks now, and which are on */
+static uint8_t xlk_on[NTRK];
+#define XL(tr, i, base) ((xlk_on[tr] >> (i) & 1u) ? xlk[tr][i] : (base))
 static float lfo_hz(int t)
 {
     const lfo_t *l = &proj.lfo[t];
-    return l->sync ? (float)proj.bpm10 / 600.0f / DIV_BEATS[l->div] : LFO_HZ[l->rate & 127u];
+    const int r = XL(t, XL_LRATE, l->sync ? l->div : l->rate);   /* (a step's lock: the division, or the rate) */
+    return l->sync ? (float)proj.bpm10 / 600.0f / DIV_BEATS[r < NDIV ? r : NDIV - 1] : LFO_HZ[r & 127];
 }
 
 static float lfo_wave(int shape, float ph, float a, float b)   /* -1..1; SINE and TRI start at 0, rising */
@@ -1848,7 +1857,7 @@ static void arp_fire(int t)               /* the next note of the pattern */
     const track_t *ts = tset(t);
     uint8_t sorted[ARP_MAX];
     int n = arp[t].n, N = n * ts->arp_oct, i, j, k, note, vel;
-    float step = 44100.0f * 60.0f / ((float)proj.bpm10 * 0.1f) * ARP_BEATS[ts->arp_rate];
+    float step = 44100.0f * 60.0f / ((float)proj.bpm10 * 0.1f) * ARP_BEATS[XL(t, XL_ARATE, ts->arp_rate) % NARPRATES];
     for (i = 0; i < n; i++) {             /* the notes low to high */
         uint8_t v = arp[t].note[i];
         for (j = i; j > 0 && sorted[j - 1] > v; j--)
@@ -1878,7 +1887,7 @@ static void arp_fire(int t)               /* the next note of the pattern */
     note += 12 * (k / n);
     if (note > 127)
         note -= 12 * ((note - 116) / 12 + 1);
-    syn_note_on(t, note, (float)vel / 127.0f, (int32_t)(step * (float)ts->arp_gate * 0.01f), ts->type == TY_MONO);
+    syn_note_on(t, note, (float)vel / 127.0f, (int32_t)(step * (float)XL(t, XL_AGATE, ts->arp_gate) * 0.01f), ts->type == TY_MONO);
     lfo_note(t);
 }
 
@@ -1906,7 +1915,7 @@ static void arp_tick(int t, uint32_t n)   /* audio interrupt: n samples on */
         arp[t].to_next = keyed ? 0.015f * 44100.0f : 0.0f;
         arp[t].idx = 0;
     }
-    step = 44100.0f * 60.0f / ((float)proj.bpm10 * 0.1f) * ARP_BEATS[tset(t)->arp_rate];
+    step = 44100.0f * 60.0f / ((float)proj.bpm10 * 0.1f) * ARP_BEATS[XL(t, XL_ARATE, tset(t)->arp_rate) % NARPRATES];
     arp[t].to_next -= (float)n;
     if (arp[t].to_next <= 0.0f) {
         arp_fire(t);
@@ -2000,12 +2009,17 @@ static uint64_t ilk_mask[NTRK];        /* a bit per sound parameter (SP_NUM: 64)
 static void ilocks_apply(int tr, const ipart_t *p, int step)
 {
     uint64_t want = 0, back;
+    uint8_t xon = 0;
     int i;
     for (i = 0; i < p->nlk; i++)
         if (p->lk[i].step == step && p->lk[i].param < SP_NUM) {
             syn_set(tr, p->lk[i].param, p->lk[i].val);
             want |= (uint64_t)1 << p->lk[i].param;
+        } else if (p->lk[i].step == step && p->lk[i].param >= IL_X0 && p->lk[i].param < IL_X0 + XL_NUM) {
+            xlk[tr][p->lk[i].param - IL_X0] = p->lk[i].val;
+            xon |= (uint8_t)(1u << (p->lk[i].param - IL_X0));
         }
+    xlk_on[tr] = xon;
     back = ilk_mask[tr] & ~want;
     for (i = 0; back; i++, back >>= 1)
         if (back & 1u)
@@ -2151,6 +2165,7 @@ static void pump_key(int kit, float vel); /* (a kick for PUMP: at the block's ta
 static struct {
     float to, len;                        /* samples to the next, between them */
     uint8_t left, a;                      /* still to play; a pad's velocity (sub_vel), an instrument's step */
+    int32_t gate;                         /* an instrument step played late, alone: its own gate (0: half a substep) */
 } sub[NPADS + NINST];
 static uint32_t sub_on;                   /* a bit per slot with some left */
 
@@ -2167,6 +2182,21 @@ static void sub_arm(int i, int n, float dur, int a)
     sub[i].to = sub[i].len;
     sub[i].left = (uint8_t)(n - 1);
     sub[i].a = (uint8_t)a;
+    sub[i].gate = 0;
+    sub_on |= 1u << i;
+}
+
+/* microtiming (0.5: a held step + PRESETS): the step plays late16 sixteenths of its length late; with substeps, they
+ * follow from there. Nothing sounds at the step's own time: the slot plays all of it */
+static void sub_late(int i, int n, float dur, int a, int late16, int32_t gate)
+{
+    if (n < 1 || n > 4)
+        n = 1;
+    sub[i].len = dur / (float)n;
+    sub[i].to = dur * (float)late16 * (1.0f / 16.0f);
+    sub[i].left = (uint8_t)n;
+    sub[i].a = (uint8_t)a;
+    sub[i].gate = n == 1 ? gate : 0;
     sub_on |= 1u << i;
 }
 
@@ -2192,9 +2222,10 @@ static void sub_fire(int i)
         if (((perf.rmask | proj.tmute) >> tr & 1u) || clip[tr] < 0)
             return;
         for (k = 0; k < NCHORD && s->note[k]; k++) {
-            syn_note_on_f(tr, s->note[k], (float)ns_vel(s) / 127.0f, (int32_t)(sub[i].len * 0.5f),
+            const int32_t g = sub[i].gate ? sub[i].gate : (int32_t)(sub[i].len * 0.5f);
+            syn_note_on_f(tr, s->note[k], (float)ns_vel(s) / 127.0f, g,
                           tset(tr)->type == TY_MONO, (s->vel & NS_ACC) ? SN_ACCENT : 0);
-            mo_note(tr, s->note[k], ns_vel(s), (int32_t)(sub[i].len * 0.5f));
+            mo_note(tr, s->note[k], ns_vel(s), g);
         }
     }
 }
@@ -2221,6 +2252,12 @@ static void seq_drum(void)                /* audio interrupt: the drum part's ne
         {
             int j = lock_find(p, next, pad, LK_VEL), a = j >= 0 ? p->lk[j].val & 127 : bit_get(p->acc, next) ? 255 : 0;
             float v = sub_vel(a);         /* (its own velocity, else its accent's) */
+            int late = lock_find(p, next, pad, LK_NUDGE);
+            if (late >= 0) {              /* late: the pad's slot plays it, its substeps after */
+                j = lock_find(p, next, pad, LK_SUB);
+                sub_late(pad, j >= 0 ? p->lk[j].val : 1, sq.t[TR_DRUM].dur, a, p->lk[late].val, 0);
+                continue;
+            }
             pad_fire(pad, v);
             mo_pad(pad, v);
             if (pad == 0)                 /* the bass drum: the master's PUMP ducks to it */
@@ -2265,6 +2302,12 @@ static void seq_inst(int tr)              /* audio interrupt: an instrument part
         return;
     ilocks_apply(tr, p, ps);
     gate = note_gate_samples(tr, ps, p->len, s->gate);
+    if (!ts->arp_mode && (i = ilock_find(p, ps, IL_NUDGE)) >= 0) {   /* late: the track's slot plays it */
+        const int j = ilock_find(p, ps, IL_SUB);
+        sub_late(NPADS + tr - 1, j >= 0 ? p->lk[j].val : 1, sq.t[tr].dur, ps, p->lk[i].val, gate);
+        sq.slid[tr] = 0;
+        return;
+    }
     if (!ts->arp_mode && (i = ilock_find(p, ps, IL_SUB)) >= 0) {   /* substeps: this note as short as theirs */
         sub_arm(NPADS + tr - 1, p->lk[i].val, sq.t[tr].dur, ps);
         if (sub_on >> (NPADS + tr - 1) & 1u)
@@ -2940,7 +2983,7 @@ static void syn_block(void)
         lfo_tick(t, SYN_CTL);
     for (t = 1; t < NTRK; t++) {
         arp_tick(t, SYN_CTL);
-        syn_mod(t, proj.lfo[t].dest, lfo_rt[t].out, (float)proj.lfo[t].depth / 64.0f);
+        syn_mod(t, proj.lfo[t].dest, lfo_rt[t].out, (float)XL(t, XL_LDEPTH, proj.lfo[t].depth) / 64.0f);
     }
     syn_prepare();
     {
@@ -4557,6 +4600,103 @@ static void held_sub(int32_t e)           /* a step held + ALGORITHM: its subste
     }
     int_text(n, t);
     app_say("SUBSTEPS", t);
+    ui.redraw = 1;
+}
+
+static void held_nudge(int32_t e)         /* a step held + PRESETS: how late it plays, sixteenths of its length */
+{
+    int tr = ui.trk, s = ui.held_step, i, n, r = 0;
+    dpart_t *d = dcur();
+    ipart_t *p = tr == TR_DRUM ? 0 : ipart(tr);
+    char t[12];
+    uint32_t f;
+    if (p ? !p->st[s].note[0] : !bit_get(d->hit[ui.pad], s))
+        return;
+    i = p ? ilock_find(p, s, IL_NUDGE) : lock_find(d, s, ui.pad, LK_NUDGE);
+    n = clamp((i >= 0 ? (p ? p->lk[i].val : d->lk[i].val) : 0) + e, 0, 15);
+    if (!ui.held_used)
+        undo_mark(0);
+    ui.held_used = 1;
+    f = plat_lock();
+    if (!n) {
+        if (i >= 0 && p)
+            p->lk[i] = p->lk[--p->nlk];
+        else if (i >= 0)
+            lock_del(d, i);
+    } else {
+        r = p ? ilock_put(p, s, IL_NUDGE, n) : lock_put(d, s, ui.pad, LK_NUDGE, n);
+    }
+    plat_unlock(f);
+    if (r) {
+        app_say("NO LOCK LEFT", "");
+        return;
+    }
+    t[0] = 0;
+    if (n) {
+        int_text(n * 100 / 16, t);
+        text_cat(t, "% LATE");
+    } else {
+        text_cat(t, "ON TIME");
+    }
+    app_say("NUDGE", t);
+    ui.redraw = 1;
+}
+
+/* STEP LOCKS (0.5, an instrument's fifth step tool): a held step's own LFO 1 RATE and DEPTH and arpeggiator RATE and
+ * GATE, each a lock of the part's; turned to the track's own value, the lock goes */
+static int xl_base(int tr, int i)
+{
+    const lfo_t *l = &proj.lfo[tr];
+    return i == XL_LRATE ? (l->sync ? l->div : l->rate) : i == XL_LDEPTH ? l->depth : i == XL_ARATE ? tset(tr)->arp_rate
+           : tset(tr)->arp_gate;
+}
+static int xl_value(int tr, int step, int i, char *t)   /* the step's value (its lock, else the track's): 1 locked */
+{
+    int j = step >= 0 ? ilock_find(ipart(tr), step, (int)IL_X0 + i) : -1, v = j >= 0 ? ipart(tr)->lk[j].val : xl_base(tr, i);
+    t[0] = 0;
+    if (i == XL_LRATE && proj.lfo[tr].sync)
+        text_cat(t, DIV_NAME[v < NDIV ? v : NDIV - 1]);
+    else if (i == XL_ARATE)
+        text_cat(t, ARP_RATE_NAME[v % NARPRATES]);
+    else
+        int_text(v, t);
+    if (i == XL_AGATE)
+        text_cat(t, "%");
+    return j >= 0;
+}
+static void xl_knob(int i, int32_t e)
+{
+    static const char *const NM[XL_NUM] = {"LFO RATE", "LFO DEPTH", "ARP RATE", "ARP GATE"};
+    int tr = ui.trk, s = ui.held_step, j, v, lo, hi, r = 0;
+    ipart_t *p = ipart(tr);
+    char t[16];
+    uint32_t f;
+    if (s < 0 || !p->st[s].note[0]) {
+        app_say("STEP LOCKS", "HOLD A STEP");
+        return;
+    }
+    lo = i == XL_LDEPTH ? -64 : i == XL_AGATE ? 5 : 0;
+    hi = i == XL_LRATE ? (proj.lfo[tr].sync ? NDIV - 1 : 127) : i == XL_LDEPTH ? 63 : i == XL_ARATE ? NARPRATES - 1 : 100;
+    j = ilock_find(p, s, (int)IL_X0 + i);
+    v = clamp((j >= 0 ? p->lk[j].val : xl_base(tr, i)) + e * (i == XL_AGATE ? 5 : 1), lo, hi);
+    if (!ui.held_used)
+        undo_mark(0);
+    ui.held_used = 1;
+    f = plat_lock();
+    if (v == xl_base(tr, i)) {
+        if (j >= 0)
+            p->lk[j] = p->lk[--p->nlk];
+    } else {
+        r = ilock_put(p, s, (int)IL_X0 + i, v);
+    }
+    plat_unlock(f);
+    if (r) {
+        app_say("NO LOCK LEFT", "");
+        return;
+    }
+    if (!xl_value(tr, s, i, t))
+        text_cat(t, " (TRACK'S)");
+    app_say(NM[i], t);
     ui.redraw = 1;
 }
 
@@ -7645,8 +7785,8 @@ static void seq_knob(int k, int32_t e)    /* the step and KEYS pages' knobs: LEN
  *                 on its root); none held: the stamp's chord, inversion and octave
  *   PART TOOLS    K1 TRANSPOSE  K2 SHIFT  K3 VELOCITY  K4 GATE: every step of the part
  *   PART GROOVE   K1 LENGTH  K2 RATE  K3 SWING  K4 TEMPO (as the drums' steps) */
-enum { ST_STEP, ST_HARM, ST_PART, ST_GROOVE, NSTOOL };
-static const char *const STOOL_NAME[NSTOOL] = {"STEP NOTES", "STEP HARMONY", "PART TOOLS", "PART GROOVE"};
+enum { ST_STEP, ST_HARM, ST_PART, ST_GROOVE, ST_MOD, NSTOOL };
+static const char *const STOOL_NAME[NSTOOL] = {"STEP NOTES", "STEP HARMONY", "PART TOOLS", "PART GROOVE", "STEP LOCKS"};
 
 static void sort4(int *a, int n)
 {
@@ -7694,6 +7834,10 @@ static void istep_knob(int k, int32_t e)
     uint32_t f;
     if (tool == ST_GROOVE && !held) {
         seq_knob(k, e);
+        return;
+    }
+    if (tool == ST_MOD) {
+        xl_knob(k, e);
         return;
     }
     if (held && tool != ST_HARM) {        /* the step's own */
@@ -8595,6 +8739,8 @@ static void input(void)
         if (ui.btn >> B_SAVE & 1u) {
             ui.save_used = 1;
             save_target(e);
+        } else if (ui.held_step >= 0 && ui.page == PG_SEQ) {   /* a step held: its NUDGE (late) */
+            held_nudge(e);
         } else if (inst && (ui.btn >> B_SEL & 1u)) {
             ui.sel_used = 1;
             preset_bank_turn(e);
@@ -9498,6 +9644,12 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
         const track_t *ts = tset(tr);
         int held = ui.held_step >= 0, root = track_note(tr), inv = ts->chord_inv & 3, ch = ts->chord % NCHORDS, sub = 1;
         const nstep_t *s = held ? &ipart(tr)->st[ui.held_step] : 0;
+        if (page == ST_MOD) {             /* STEP LOCKS: the held step's (else the track's own, to hold a step for) */
+            static const char *const XN[XL_NUM] = {"LFO RATE", "LFO DEPTH", "ARP RATE", "ARP GATE"};
+            const int lk = xl_value(tr, held ? ui.held_step : -1, k, t);
+            card_put(c, XN[k], t, lk, 0, 1, -1);
+            return 1;
+        }
         if (s && s->note[0]) {
             int j = ilock_find(ipart(tr), ui.held_step, IL_SUB);
             ch = step_chord(s, &root, &inv);
@@ -10418,7 +10570,7 @@ static void page_roll(void)               /* an instrument part: its notes, pitc
         if (ns->prob & NS_SLIDE)
             cv_rect(x + 9, H - 3, 4, 3, TH_FG);
     }
-    if (ui.stool == ST_HARM || (ui.held_step < 0 && ui.stool != ST_GROOVE))
+    if (ui.stool == ST_HARM || ui.stool == ST_MOD || (ui.held_step < 0 && ui.stool != ST_GROOVE))
         cards_of(KD_STOOL, ui.stool);
     else if (ui.held_step >= 0)
         cards_of(KD_HELD, 0);
@@ -13297,6 +13449,17 @@ int app_expect(const char *what, int *got)
         int pad = atoi(what + 3);
         const char *u = strchr(what, '_');
         *got = u ? drums_get(drum_model(pad), pad, atoi(u + 1)) : -1;
+    } else if (!strncmp(what, "nudge", 5)) {   /* nudgeT_S: track T's step S late, sixteenths (the drums: the pad picked) */
+        const char *u = strchr(what, '_');
+        int t = atoi(what + 5), st = u ? atoi(u + 1) - 1 : -1, j;
+        if (t < 1 || t > NTRK || st < 0 || st >= NSTEPS) return 0;
+        j = t == 1 ? lock_find(dcur(), st, ui.pad, LK_NUDGE) : ilock_find(ipart(t - 1), st, IL_NUDGE);
+        *got = j < 0 ? 0 : t == 1 ? dcur()->lk[j].val : ipart(t - 1)->lk[j].val;
+    } else if (!strncmp(what, "xlk", 3)) {     /* xlkT_I: track T's lock I running now (XL_*), -999 none */
+        const char *u = strchr(what, '_');
+        int t = atoi(what + 3) - 1, i = u ? atoi(u + 1) : -1;
+        if (t < 1 || t >= NTRK || i < 0 || i >= XL_NUM) return 0;
+        *got = (xlk_on[t] >> i & 1u) ? xlk[t][i] : -999;
     } else if (!strncmp(what, "gkeep", 5)) {   /* gkeepT_S: track T's step S (1-based) kept; gcur: KEEP's step */
         const char *u = strchr(what, '_');
         int t = atoi(what + 5), st = u ? atoi(u + 1) - 1 : -1;
