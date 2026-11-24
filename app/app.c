@@ -4088,6 +4088,8 @@ static struct {
     uint8_t color_page;
     uint8_t setup_view;                   /* SETUP: 0 the clock and the sounds, 1 the CPU by stage (SELECT) */
     uint8_t spage;                        /* the step page, 0..7 */
+    uint8_t stool;                        /* an instrument track's STEPS: its tools' page (ST_*, SELECT) */
+    uint8_t st_vel, st_gate;              /* a new step's velocity and gate there (0: 100, GATE_DEF) */
     uint8_t seq_prev, seq_used;           /* a resize chord leaves the previous SEQ view alone */
     uint8_t epage;                        /* the EDIT page (four knobs each) */
     uint8_t envpage;                      /* an instrument track's ENV page: 0 the amp's, 1 the filter's, 2 MOD ENV */
@@ -4550,7 +4552,9 @@ static void step_stamp(int tr, nstep_t *s)
     const track_t *t = tset(tr);
     int i, note[NCHORD], n = chord_of(t->chord | t->chord_inv << 4, track_note(tr), note);
     for (i = 0; i < n; i++)
-        nstep_add(s, note[i], 100);
+        nstep_add(s, note[i], ui.st_vel ? ui.st_vel : 100);
+    if (ui.st_gate && s->note[0])
+        s->gate = ui.st_gate;
 }
 
 static void preview(int tr, const nstep_t *s)   /* a step heard by itself (stopped): its notes for one step */
@@ -6969,6 +6973,184 @@ static void seq_knob(int k, int32_t e)    /* the step and KEYS pages' knobs: LEN
     }
 }
 
+/* ---- an instrument track's STEPS: four pages of tools (0.5; SELECT turns them), for lines and for harmony.
+ *   STEP NOTES    K1 NOTE  K2 VELOCITY  K3 GATE  K4 CHANCE: the step held; none held: what a new step gets (the stamp)
+ *   STEP HARMONY  K1 CHORD  K2 INVERT  K3 OCTAVE  K4 SUBSTEPS: the step held (its chord found from its notes, rebuilt
+ *                 on its root); none held: the stamp's chord, inversion and octave
+ *   PART TOOLS    K1 TRANSPOSE  K2 SHIFT  K3 VELOCITY  K4 GATE: every step of the part
+ *   PART GROOVE   K1 LENGTH  K2 RATE  K3 SWING  K4 TEMPO (as the drums' steps) */
+enum { ST_STEP, ST_HARM, ST_PART, ST_GROOVE, NSTOOL };
+static const char *const STOOL_NAME[NSTOOL] = {"STEP NOTES", "STEP HARMONY", "PART TOOLS", "PART GROOVE"};
+
+static void sort4(int *a, int n)
+{
+    int i, j;
+    for (i = 1; i < n; i++)
+        for (j = i; j > 0 && a[j] < a[j - 1]; j--) {
+            int x = a[j];
+            a[j] = a[j - 1];
+            a[j - 1] = x;
+        }
+}
+
+static int step_chord(const nstep_t *s, int *root, int *inv)   /* the chord a step's notes make (0: none of them), its
+                                                                * root (else its lowest note) and inversion */
+{
+    int n = nstep_count(s), c, v, i, a[NCHORD], b[NCHORD];
+    for (i = 0; i < n; i++)
+        a[i] = s->note[i];
+    sort4(a, n);
+    *root = n ? a[0] : 60;
+    *inv = 0;
+    for (c = 1; c < NCHORDS && n > 1; c++)
+        for (v = 0; v < n; v++) {
+            if (chord_of(c | v << 4, 60, b) != n)
+                break;
+            sort4(b, n);
+            for (i = 0; i < n && a[i] - a[0] == b[i] - b[0]; i++)
+                ;
+            if (i == n) {
+                *root = a[0] - (b[0] - 60);
+                *inv = v;
+                return c;
+            }
+        }
+    return 0;
+}
+
+static void istep_knob(int k, int32_t e)
+{
+    int tr = ui.trk, held = ui.held_step >= 0, tool = ui.stool, i, n, lo = 127, hi = 1;
+    ipart_t *p = ipart(tr);
+    track_t *ts = tset(tr);
+    nstep_t *s = held ? &p->st[ui.held_step] : 0;
+    char t[16];
+    uint32_t f;
+    if (tool == ST_GROOVE && !held) {
+        seq_knob(k, e);
+        return;
+    }
+    if (held && tool != ST_HARM) {        /* the step's own */
+        if (k < 3)
+            iheld_knob(k, e);
+        else
+            iheld_chance(e);
+        return;
+    }
+    t[0] = 0;
+    if (!held && tool != ST_PART) {       /* the stamp: what a new step gets */
+        if (k == 3) {
+            app_say(tool == ST_STEP ? "CHANCE" : "SUBSTEPS", "HOLD A STEP");
+        } else if (tool == ST_STEP && k == 1) {
+            ui.st_vel = (uint8_t)clamp((ui.st_vel ? ui.st_vel : 100) + e, 1, 127);
+            int_text(ui.st_vel, t);
+            app_say("NEW VELOCITY", t);
+        } else if (tool == ST_STEP && k == 2) {
+            ui.st_gate = (uint8_t)clamp((ui.st_gate ? ui.st_gate : GATE_DEF) + e, 1, 255);
+            gate_text(ui.st_gate, t);
+            app_say("NEW GATE", t);
+        } else if (tool == ST_HARM && k < 2) {
+            if (k == 0)
+                ts->chord = (uint8_t)clamp(ts->chord + e, 0, NCHORDS - 1);
+            else
+                ts->chord_inv = (uint8_t)clamp(ts->chord_inv + e, 0, 3);
+            dirty = 1;
+            app_say(k ? "INVERSION" : "CHORD", k ? INV_NAME[ts->chord_inv & 3u] : CHORD_NAME[ts->chord]);
+        } else {                          /* NOTE; OCTAVE */
+            ui.last_note[tr] = (uint8_t)clamp(track_note(tr) + (tool == ST_HARM ? 12 * e : e), 12, 115);
+            note_text(ui.last_note[tr], t);
+            app_say("NEW NOTE", t);
+        }
+        return;
+    }
+    if (held) {                           /* HARMONY on the step held */
+        int root, inv, c, b[NCHORD], m;
+        if (!s->note[0])
+            return;
+        if (k == 3) {
+            held_sub(e);
+            return;
+        }
+        n = nstep_count(s);
+        c = step_chord(s, &root, &inv);
+        if (k == 1 && !c) {
+            app_say("INVERSION", "PICK A CHORD: K1");
+            return;
+        }
+        if (k == 2) {
+            for (i = 0; i < n; i++) {
+                if (s->note[i] < lo) lo = s->note[i];
+                if (s->note[i] > hi) hi = s->note[i];
+            }
+            if (lo + 12 * e < 1 || hi + 12 * e > 127)
+                return;
+        }
+        if (!ui.held_used)
+            undo_mark(0);
+        ui.held_used = 1;
+        if (k == 0)
+            c = clamp(c + e, 0, NCHORDS - 1);
+        else if (k == 1)
+            inv = clamp(inv + e, 0, 3);
+        m = chord_of(c | inv << 4, root, b);
+        f = plat_lock();
+        for (i = 0; i < NCHORD; i++)
+            s->note[i] = (uint8_t)(k == 2 ? (i < n ? s->note[i] + 12 * e : 0) : i < m ? b[i] : 0);
+        plat_unlock(f);
+        if (k == 2)
+            note_text(s->note[0], t);
+        app_say(k == 0 ? "CHORD" : k == 1 ? "INVERSION" : "OCTAVE", k == 0 ? CHORD_NAME[c] : k == 1 ? INV_NAME[inv] : t);
+        preview(tr, s);
+        return;
+    }
+    /* PART TOOLS: every step */
+    for (i = 0; i < NSTEPS; i++)
+        for (n = 0; n < NCHORD && p->st[i].note[n]; n++) {
+            if (p->st[i].note[n] < lo) lo = p->st[i].note[n];
+            if (p->st[i].note[n] > hi) hi = p->st[i].note[n];
+        }
+    if (hi < lo)
+        return;                           /* (an empty part) */
+    if (k == 0)
+        e = clamp(e, 1 - lo, 127 - hi);
+    if (!e)
+        return;
+    undo_mark(5u + (uint32_t)k);
+    f = plat_lock();
+    if (k == 1) {                         /* SHIFT: the part's steps round, later for > 0 (their locks with them) */
+        int len = p->len ? p->len : 1, d = ((e % len) + len) % len, r;
+        for (r = 0; r < d; r++) {
+            nstep_t last = p->st[len - 1];
+            for (i = len - 1; i > 0; i--)
+                p->st[i] = p->st[i - 1];
+            p->st[0] = last;
+        }
+        for (i = 0; i < p->nlk; i++)
+            if (p->lk[i].step < len)
+                p->lk[i].step = (uint8_t)((p->lk[i].step + d) % len);
+    } else {
+        for (i = 0; i < NSTEPS; i++) {
+            nstep_t *q = &p->st[i];
+            if (!q->note[0])
+                continue;
+            if (k == 0)
+                for (n = 0; n < NCHORD && q->note[n]; n++)
+                    q->note[n] = (uint8_t)(q->note[n] + e);
+            else if (k == 2)
+                q->vel = (uint8_t)((q->vel & NS_ACC) | (uint32_t)clamp(ns_vel(q) + 2 * e, 1, 127));
+            else
+                q->gate = (uint16_t)clamp(q->gate + e, 1, GATE_MAX);
+        }
+    }
+    plat_unlock(f);
+    {
+        static const char *const N[4] = {"TRANSPOSE", "SHIFT", "ALL VELOCITY", "ALL GATE"};
+        if (k == 0)
+            note_text(lo + e, t);
+        app_say(N[k], k == 0 ? t : k == 1 ? (e > 0 ? "LATER" : "EARLIER") : e > 0 ? "UP" : "DOWN");
+    }
+}
+
 static const char *const CLICK_NAME[3] = {"OFF", "ON", "REC"};
 static const char *const COUNT_NAME[3] = {"OFF", "1 BAR", "2 BARS"};
 static const char *const GRID_NAME[NRATES][3] = {
@@ -7256,8 +7438,8 @@ static void knob(int k, int32_t e)        /* KNOB 1..4 (k 0..3) on the page show
         arp_knob(k, e);
     } else if (inst && ui.page == PG_GEN) {
         gen_knob(k, e);
-    } else if (inst && ui.page == PG_SEQ && ui.held_step >= 0) {
-        iheld_knob(k, e);
+    } else if (inst && ui.page == PG_SEQ) {
+        istep_knob(k, e);
     } else {
         seq_knob(k, e);
     }
@@ -7777,6 +7959,9 @@ static void input(void)
             ui.srec_held = ui.srec_n = 0;
             int_text(ui.cursor[ui.trk] + 1, t);
             app_say("STEP", t);
+        } else if (inst && ui.page == PG_SEQ) {   /* an instrument's steps: its tools' pages (the banks: the black keys) */
+            ui.stool = (uint8_t)clamp(ui.stool + e, 0, NSTOOL - 1);
+            app_say("TOOLS", STOOL_NAME[ui.stool]);
         } else {
             ui.spage = (uint8_t)clamp(ui.spage + e, 0, npages() - 1);
             ui.spage_t = plat_ms();
@@ -8511,7 +8696,7 @@ static void strip(void)                   /* four cells, K1..K4 as the knobs sit
 }
 
 /* ---- each kind of page's four knobs */
-enum { KD_SEQ, KD_HELD, KD_DRUM, KD_KIT, KD_MODEL, KD_INST, KD_ENV, KD_LFO, KD_ARP, KD_MIX, KD_FX, KD_MST, KD_SONG, KD_REC, KD_PF,
+enum { KD_SEQ, KD_HELD, KD_STOOL, KD_DRUM, KD_KIT, KD_MODEL, KD_INST, KD_ENV, KD_LFO, KD_ARP, KD_MIX, KD_FX, KD_MST, KD_SONG, KD_REC, KD_PF,
        KD_SETUP, KD_FOLLOW, KD_GEN, KD_COLOR, KD_QMIX };
 
 static int fx_mid(int i)                  /* a two-way FX knob's middle, or -1 */
@@ -8551,6 +8736,41 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
             int_text(proj.bpm10 / 10, t);
             card_put(c, N[3], t, proj.bpm10 / 10, 60, 240, -1);
         }
+        return 1;
+    }
+    case KD_STOOL: {                      /* an instrument's step tools: STEP (the stamp), HARMONY, PART */
+        static const char *const N[3][4] = {{"NOTE", "VELOCITY", "GATE", "CHANCE"},
+                                            {"CHORD", "INVERT", "OCTAVE", "SUBSTEPS"},
+                                            {"TRANSPOSE", "SHIFT", "VELOCITY", "GATE"}};
+        const track_t *ts = tset(tr);
+        int held = ui.held_step >= 0, root = track_note(tr), inv = ts->chord_inv & 3, ch = ts->chord % NCHORDS, sub = 1;
+        const nstep_t *s = held ? &ipart(tr)->st[ui.held_step] : 0;
+        if (s && s->note[0]) {
+            int j = ilock_find(ipart(tr), ui.held_step, IL_SUB);
+            ch = step_chord(s, &root, &inv);
+            if (!ch && nstep_count(s) > 1)
+                ch = -1;
+            sub = j >= 0 ? ipart(tr)->lk[j].val : 1;
+        }
+        if (page == ST_PART) {
+            text_cat(t, "ALL");
+        } else if (k == 3) {
+            if (held && page == ST_HARM)
+                int_text(sub, t);
+            else
+                text_cat(t, "HOLD STEP");
+        } else if (page == ST_STEP && k == 1) {
+            int_text(ui.st_vel ? ui.st_vel : 100, t);
+        } else if (page == ST_STEP && k == 2) {
+            gate_text(ui.st_gate ? ui.st_gate : GATE_DEF, t);
+        } else if (page == ST_HARM && k == 0) {
+            text_cat(t, ch < 0 ? "CUSTOM" : CHORD_NAME[ch]);
+        } else if (page == ST_HARM && k == 1) {
+            text_cat(t, INV_NAME[inv]);
+        } else {
+            note_text(root, t);
+        }
+        card_put(c, N[page % 3][k], t, 0, 0, 1, -1);
         return 1;
     }
     case KD_HELD: {
@@ -9329,7 +9549,7 @@ static void page_roll(void)               /* an instrument part: its notes, pitc
         text_cat(cx, t + 6);              /* (STEPS 1-16: the steps, then what a key does) */
         text_cat(cx, " ");
         text_cat(cx, u);
-        band_set(col, TRK_NAME[tr], "SYNTH STEPS", cx, npages(), ui.spage);
+        band_set(col, TRK_NAME[tr], STOOL_NAME[ui.stool % NSTOOL], cx, npages(), ui.spage);
     }
     for (s = 0; s < p->len; s++)
         for (i = 0; i < NCHORD && p->st[s].note[i]; i++) {
@@ -9401,7 +9621,9 @@ static void page_roll(void)               /* an instrument part: its notes, pitc
         if (ns->prob & NS_SLIDE)
             cv_rect(x + 9, H - 3, 4, 3, TH_FG);
     }
-    if (ui.held_step >= 0)
+    if (ui.stool == ST_HARM || (ui.held_step < 0 && ui.stool != ST_GROOVE))
+        cards_of(KD_STOOL, ui.stool);
+    else if (ui.held_step >= 0)
         cards_of(KD_HELD, 0);
     else
         cards_of(KD_SEQ, 0);
@@ -10552,10 +10774,10 @@ static void mst_chain(void)
     rrect(3, 98, 234, 32, 6, C_PANEL);
     cv_text(10, 106, &FONT_XS, "LUFS", C_TXT2);
     if (lu <= -69.0f) {
-        cv_text(44, 99, &FONT_M, "--", C_GRID);
+        cv_text(44, 100, &FONT_MB, "--", C_GRID);
     } else {
         db1(lu, s);
-        cv_text(44, 99, &FONT_M, s, TH_TXT);
+        cv_text(44, 100, &FONT_MB, s, TH_TXT);
         {   /* (0.5) the momentary loudness over the last 22 s (-48..0 LUFS), HEAT; now in numbers */
             hist_feed(3, (int)((lm + 48.0f) * 255.0f / 48.0f), 100);
             hist_draw(122, 101, 112, 26);
@@ -11531,6 +11753,11 @@ int app_expect(const char *what, int *got)
         *got = trial_lane_gate((unsigned)atoi(what + 8));
     else if (!strncmp(what, "lanepk", 6))     /* lanepkN: drum pad N's lane peak out since last asked, dB (-200 silent) */
         *got = trial_lane_peak((unsigned)atoi(what + 6));
+    else if (!strncmp(what, "settool", 7))   /* settoolN: an instrument's step tools turned to page N (older suites:
+                                              * 3, the GROOVE knobs they were written with); stool: the page */
+        *got = ui.stool = (uint8_t)(atoi(what + 7) % NSTOOL);
+    else if (!strcmp(what, "stool"))
+        *got = ui.stool;
     else if (!strcmp(what, "subfires"))   /* substeps played since last asked */
     {
         *got = sub_fires;

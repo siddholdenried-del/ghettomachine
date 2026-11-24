@@ -2,6 +2,7 @@
 # FILL, STUTTER, FILTER, THROW, WASH, CRUSH (black keys 10 13 15 17 20 22 25), TAPE STOP (OCT+), solo (a track key +
 # OCT+), tap tempo (OCT-), nudge (SEL + SELECT).  app/build/host/ghettomachine_host app/tests/perform.txt OUTDIR
 # pfon: the effects on (bits: 1 ROLL 2 FILL 4 STUTTER 8 FILTER 16 THROW 32 WASH 64 CRUSH 128 TAPE STOP)
+expect settool3 3   # (0.5: an instrument's steps open on STEP NOTES; these knobs are PART GROOVE's)
 expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 # T2: REC while stopped, on the KEYS page: a note a step; SELECT skips a step (a rest)

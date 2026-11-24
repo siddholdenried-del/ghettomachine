@@ -1,6 +1,7 @@
 # GhettoMachine: a demo groove, built by step recording as on the FM-1, then 8 s of it to demo.wav
 #   app/build/host/ghettomachine_host app/tests/demo.txt OUTDIR
 # T2 SQR BASS (an octave down), T3 PLUCK stabs, T4 SOFT PAD chords; the default beat on the drums
+expect settool3 3   # (0.5: an instrument's steps open on STEP NOTES; these knobs are PART GROOVE's)
 expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
 # T2: REC while stopped, on the KEYS page: a note a step; SELECT skips a step (a rest)

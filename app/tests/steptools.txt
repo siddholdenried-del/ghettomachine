@@ -1,0 +1,115 @@
+# An instrument track's STEPS (0.5): four pages of tools, SELECT turns them.
+#   STEP NOTES (0): a step held: K1 note K2 velocity K3 gate K4 chance; none held: what a new step gets
+#   STEP HARMONY (1): a step held: K1 chord K2 inversion K3 octave K4 substeps; none held: the stamp's chord
+#   PART TOOLS (2): K1 transpose K2 shift K3 velocity K4 gate, every step
+#   PART GROOVE (3): K1 length K2 rate K3 swing K4 tempo
+listen
+wait 200
+turn ALGO 2
+wait 30
+tap SEQ
+wait 30
+expect trk 3
+expect page 0
+expect stool 0
+# no step held: K1 the new step's note (C4 + 2 = D4, 62), K2 its velocity (90); step 1 gets them
+turn K1 2
+wait 30
+said NEW NOTE
+turn K2 -10
+wait 30
+key 0 down
+wait 30
+key 0 up
+wait 30
+expect nsteps3 1
+expect note3_1_0 62
+expect vel3_1 90
+# held on STEP NOTES: K4 is its chance
+key 0 down
+wait 30
+turn K4 -5
+wait 30
+expect chance3_1 75
+key 0 up
+wait 30
+expect nsteps3 1
+shot steptools_notes.png
+# STEP HARMONY: the step held: K1 a major chord on its root, K2 first inversion (the root up an octave), K3 down an
+# octave, K4 three substeps
+turn SELECT 1
+wait 30
+expect stool 1
+said TOOLS STEP HARMONY
+key 0 down
+wait 30
+turn K1 1
+wait 30
+said CHORD MAJ
+expect note3_1_0 62
+expect note3_1_1 66
+expect note3_1_2 69
+turn K2 1
+wait 30
+said INVERSION 1ST
+expect note3_1_0 74
+expect note3_1_1 66
+turn K3 -1
+wait 30
+expect note3_1_0 62
+expect note3_1_1 54
+expect note3_1_2 57
+turn K4 2
+wait 30
+said SUBSTEPS 3
+expect inlk3 1
+shot steptools_harmony.png
+key 0 up
+wait 30
+expect nsteps3 1
+expect vel3_1 90
+expect chance3_1 75
+# none held: K1 the stamp's chord (the track's), and a new step 5 is one
+turn K1 2
+wait 30
+said CHORD MIN
+key 7 down
+wait 30
+key 7 up
+wait 30
+expect nsteps3 2
+expect note3_5_0 62
+expect note3_5_1 65
+expect note3_5_2 69
+# PART TOOLS: K1 everything up 3 semitones, K2 a step later (the substeps' lock with its step)
+turn SELECT 1
+wait 30
+expect stool 2
+turn K1 3
+wait 30
+said TRANSPOSE
+expect note3_5_0 65
+expect note3_1_1 57
+turn K2 1
+wait 30
+said SHIFT LATER
+expect note3_1_0 0
+expect note3_2_1 57
+expect note3_6_0 65
+expect nsteps3 2
+expect inlk3 1
+shot steptools_part.png
+# PART GROOVE: the old knobs: K1 the part's length
+turn SELECT 1
+wait 30
+expect stool 3
+turn K1 -4
+wait 30
+expect ilen3 12
+# the drums' steps: SELECT still turns their step pages, their knobs as they were
+turn ALGO -2
+wait 30
+expect trk 1
+turn K1 -4
+wait 30
+expect len 12

@@ -154,6 +154,15 @@ A very dense collection of long parts can exceed the fixed FM-1 project save slo
     playing octave. Press **ARP** or **SEQ** to get back to STEPS.
   - Hold a step: **K1** moves its note (or chord), **K2** sets velocity, **K3** sets gate (up to 128 steps; slow eighth-step edits, fast musical-bar snaps),
     **SELECT** sets chance.
+  - **Four pages of tools, turned with SELECT** (the screen's title names the page; the step banks are on black keys 1–8 and OCT− / OCT+):
+    - **STEP NOTES** (where STEPS opens): hold a step for **K1** NOTE, **K2** VELOCITY, **K3** GATE, **K4** CHANCE. With no
+      step held the knobs set what the next new step gets: its note, velocity and gate.
+    - **STEP HARMONY:** hold a step for **K1** CHORD (built on the step's root: MAJ, MIN, 7 ...), **K2** INVERT, **K3** OCTAVE,
+      **K4** SUBSTEPS. The chord is read from the step's own notes; a set of notes that is no known chord shows CUSTOM,
+      and K1 rebuilds it on its lowest note. With no step held, K1–K3 set the chord, inversion and octave new steps are stamped with.
+    - **PART TOOLS** (every step of the part): **K1** TRANSPOSE in semitones, **K2** SHIFT the part a step later or earlier
+      (locks and substeps move with their steps), **K3** VELOCITY and **K4** GATE up or down for all.
+    - **PART GROOVE:** **K1** LENGTH, **K2** RATE, **K3** SWING, **K4** TEMPO, as on the drums' steps.
 - **Recording (REC):**
   - **While playing:** what you play goes to the nearest step, with its gate from how long you held it.
   - **While stopped, on KEYS:** step recording. A note or a chord goes into the cursor's step, and the cursor moves on
