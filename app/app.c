@@ -45,11 +45,17 @@
 #define drums_governor_release_tail(p) 0
 #endif
 static volatile uint8_t v3_mode = 1;
+#ifdef PLAT_HOST
+#define V3ON v3_mode                      /* the DrumEngine plays (the simulator's older suites run the stock kits: 0) */
+#else
+#define V3ON 1                            /* the FM-1: always (0.5). Written so, the stock 808 / 909's pages, knobs and
+                                           * locks compile away there */
+#endif
 static void v3_set_mode(unsigned mode)
 {
     if (mode < V3_MODE_MIN || mode > 2 || v3_mode == mode) return;
-    if (!mode || !v3_mode) trial_quiet();
-    if (mode && !v3_mode)                 /* (the stock kits stop where they are: not to ring on when they come back) */
+    if (!mode || !V3ON) trial_quiet();
+    if (mode && !V3ON)                 /* (the stock kits stop where they are: not to ring on when they come back) */
         for (int r = 0; r < DRUMS_NPADS; r++)
             drums_cut_pad(r);
     v3_mode = (uint8_t)mode;
@@ -59,7 +65,7 @@ static void v3_set_mode(unsigned mode)
 static const char *trial_pad_name(int kit, int pad)
 {
     static const char *const names[] = {"BD","SD","CP","LT","MT","HT","CH","OH","CY","P1","P2"};
-    return v3_mode && (unsigned)pad < 11u ? names[pad] : drums_pad_name(kit, pad);
+    return V3ON && (unsigned)pad < 11u ? names[pad] : drums_pad_name(kit, pad);
 }
 
 #define NPADS DRUMS_NPADS
@@ -350,6 +356,11 @@ static const plat_file_t PROJ_FILE = {0x97000u, 0x9F000u, 8u * 4096u};
 static project_t proj PLAT_POOL;
 static uint8_t *fxv(int i) { return i < FXP_NUM ? &proj.fx[i] : &proj.fx2[(i - FXP_NUM) & 7]; }
 static color_state_t drum_color_rt;
+#ifdef PLAT_HOST
+#define DRUM_COLOR_RESET() color_reset(&drum_color_rt)
+#else
+#define DRUM_COLOR_RESET() ((void)0)      /* (the drums' Color is the stock kits': not on the FM-1) */
+#endif
 static color_sends_t color_drums_send;
 static uint8_t (*kit_pots(int k))[NPOTS] { return k == KIT_707 ? proj.pots707 : k == KIT_606 ? proj.pots606 : proj.pots[k]; }
 static int drum_model(int pad) { return drums_model(proj.kit, proj.model, pad); }
@@ -372,7 +383,7 @@ static int kit_is_custom(const uint8_t *map)
 static const char *drum_kit_title(void)   /* the drums' kit: the DrumEngine's genre kit, or the stock engine's */
 {
     static char t[16];
-    if (v3_mode) {
+    if (V3ON) {
         const char *n = kit_genre_name(dpreset_genre_of(proj.dpreset));
         int i;
         for (i = 0; n && n[i] && i < 15; i++)
@@ -384,7 +395,7 @@ static const char *drum_kit_title(void)   /* the drums' kit: the DrumEngine's ge
 }
 static const char *drum_kit_short(void)   /* the same in three letters (the small track labels) */
 {
-    return v3_mode ? GENRE_SHORT[dpreset_genre_of(proj.dpreset)] : drum_kit_title();
+    return V3ON ? GENRE_SHORT[dpreset_genre_of(proj.dpreset)] : drum_kit_title();
 }
 static uint8_t dirty;                     /* changed since the last save: SAVE is lit */
 
@@ -437,7 +448,7 @@ static int drum_lane_muted(int pad)
  * mute is its audio: its hits go on underneath, so letting the mute go brings back a tail still ringing: trial_mute) */
 static int drum_hits_off(int pad)
 {
-    return track_is_muted(TR_DRUM) || (!v3_mode && (dcur()->mute >> pad & 1u));
+    return track_is_muted(TR_DRUM) || (!V3ON && (dcur()->mute >> pad & 1u));
 }
 
 /* Same lock as the DSP: refresh after a pattern/FILL change as well as the UI.
@@ -447,7 +458,7 @@ static void sync_drum_mutes(void)
     uint16_t mask = track_is_muted(TR_DRUM) ? (uint16_t)((1u << NPADS) - 1u) : dcur()->mute;
     uint16_t cut;
     int pad;
-    if (v3_mode) {                        /* the DrumEngine: the lanes' mutes are their audio; only the track's cuts */
+    if (V3ON) {                        /* the DrumEngine: the lanes' mutes are their audio; only the track's cuts */
         for (pad = 0; pad < NPADS; pad++)
             trial_mute((unsigned)pad + 1u, (int)(dcur()->mute >> pad & 1u));
         mask = track_is_muted(TR_DRUM) ? (uint16_t)((1u << NPADS) - 1u) : 0u;
@@ -457,7 +468,7 @@ static void sync_drum_mutes(void)
         return;
     drum_mutes_applied = mask;
     roll_inhibit_pads |= cut;
-    if (cut) color_reset(&drum_color_rt); /* no history from a newly cut lane */
+    if (cut) DRUM_COLOR_RESET(); /* no history from a newly cut lane */
     for (pad = 0; cut && pad < NPADS; pad++)
         if (cut >> pad & 1u) {
             drums_cut_mapped(proj.kit, proj.model, pad);
@@ -558,7 +569,7 @@ static void pad_fire(int pad, float vel)
     if (pad < 0 || pad >= NPADS || drum_hits_off(pad))
         return;
     drum_lfo_moved = 0;
-    if (v3_mode) {                        /* the drums' LFO on one of this pad's controls: moved for this hit */
+    if (V3ON) {                        /* the drums' LFO on one of this pad's controls: moved for this hit */
         const lfo_t *lf = &proj.lfo[TR_DRUM];
         if (lf->rsv[0] == LFO_V3 && lf->dest != LFO_OFF && lf->depth && lf->pad == pad) {
             const float move = lfo_out_drums() * (float)lf->depth * (1.0f / 127.0f);
@@ -2198,7 +2209,7 @@ static void seq_drum(void)                /* audio interrupt: the drum part's ne
     sq.t[TR_DRUM].step = next;
     sq.t[TR_DRUM].dur = step_samples(TR_DRUM, next);
     for (pad = 0; pad < NPADS && !(perf.rmask & 1u); pad++) {   /* (ROLL: silent underneath) */
-        if (!bit_get(p->hit[pad], next) || (!v3_mode && (p->mute >> pad & 1u)))   /* (DrumEngine: audio, drum_hits_off) */
+        if (!bit_get(p->hit[pad], next) || (!V3ON && (p->mute >> pad & 1u)))   /* (DrumEngine: audio, drum_hits_off) */
             continue;
         if (sq.skip_once[pad] == next) {
             sq.skip_once[pad] = -1;
@@ -2757,7 +2768,7 @@ static void midi_in(void)                 /* audio interrupt */
             continue;
         }
         if (ch == 15u && st == 0x9Fu && d1 >= 36u && d1 <= 46u) {
-            if (v3_mode && d2) pad_fire((int)(d1 - 36u), (float)d2 / 127.0f);
+            if (V3ON && d2) pad_fire((int)(d1 - 36u), (float)d2 / 127.0f);
             continue;
         }
         if (st >= 0xF8u) {                /* real time: MIDI CLOCK followed (SETUP) */
@@ -3415,7 +3426,7 @@ static void govern(uint32_t t_drums, uint32_t t_synth, uint32_t t_fxin, uint32_t
     {   /* One release per block even when both the drum stage and the total run over. */
         float m = 0.5f * (d + gov.d_prev);
         gov.d_prev = d;
-        if (!v3_mode && (m > BUD_US(BUD_DRUMS) || guard))
+        if (!V3ON && (m > BUD_US(BUD_DRUMS) || guard))
             govern_drum_tail();
     }
     {   /* Keep the shared returns running. Drum Color can restart from silence when the combined cost falls. */
@@ -3428,7 +3439,7 @@ static void govern(uint32_t t_drums, uint32_t t_synth, uint32_t t_fxin, uint32_t
             gov.sheds++;
             gov.act[2] = gov.clock;
         } else if (gov.fx_shed && gov.fx_mean < 0.6f * BUD_US(BUD_FX)) {
-            color_reset(&drum_color_rt);
+            DRUM_COLOR_RESET();
             gov.fx_shed = 0;
             gov.fx_wait = 688;
         }
@@ -3482,7 +3493,7 @@ static void drum_chunk(uint32_t done, uint32_t chunk)   /* either core: a chunk'
     uint32_t i;
     const unsigned core = plat_core() & 1u;
     const uint32_t dc0 = plat_ticks24(), own0 = dr_t[core] + fxin_t[core];
-    if (v3_mode) {                        /* the DrumEngine: no drum Color (its bus has SAT, COMP, TRANS, LIMIT) */
+    if (V3ON) {                        /* the DrumEngine: no drum Color (its bus has SAT, COMP, TRANS, LIMIT) */
         unsigned vt = 0, bt = 0;
         trial_render(buf_l + done, buf_r + done, bus_rev + done, bus_dly + done, chunk, v3_mode, &vt, &bt);
         v3_voice_ticks += vt;
@@ -3945,8 +3956,8 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         }
         govern(cs_t[CS_DRUMS], cs_t[CS_SYNTH], cs_t[CS_FXIN], cs_t[CS_FX], cs_t[CS_TOTAL]);   /* the budgets, for the
                                                                                              * next block */
-        trial_metrics_block(v3_mode ? v3_voice_ticks : cs_t[CS_DRUMS],
-                            v3_mode ? v3_bus_ticks : cs_t[CS_FXIN],
+        trial_metrics_block(V3ON ? v3_voice_ticks : cs_t[CS_DRUMS],
+                            V3ON ? v3_bus_ticks : cs_t[CS_FXIN],
                             plat_ticks24() - cs_start, (unsigned)syn_voices(-1), v3_mode);
     }
 }
@@ -3997,7 +4008,7 @@ void app_init(void)
     syn_pool(pool_max);
     user_load();
     project_load();
-    color_reset(&drum_color_rt);
+    DRUM_COLOR_RESET();
     drum_color_quiet = 0;
     seq_reset_tracks();
     sq.queued = -1;
@@ -5417,7 +5428,7 @@ static int dpreset_ok(int display)       /* in PRESETS' list now: the genre kits
                                            * kits and the user kits saved */
 {
     int i = dpreset_id(display);
-    if (v3_mode)
+    if (V3ON)
         return dpreset_genre(i) >= 0;
     return dpreset_factory(i) >= 0 || (dpreset_user(i) && user.kit[i - 2].used && drums_kit_present(user.kit[i - 2].kit));
 }
@@ -5530,7 +5541,7 @@ static void preset_bank_turn(int32_t e)
 
 static void kit_turn(int32_t e)
 {
-    const int from = v3_mode ? DPRESET_GENRE + dpreset_genre_of(proj.dpreset)   /* (a stock id: its genre's place) */
+    const int from = V3ON ? DPRESET_GENRE + dpreset_genre_of(proj.dpreset)   /* (a stock id: its genre's place) */
                    : dpreset_genre(proj.dpreset) >= 0 ? GENRE_STOCK[dpreset_genre(proj.dpreset)]   /* (its stock kit's) */
                    : dpreset_display(proj.dpreset);
     const int i = dpreset_id(preset_step(from, e, DPRESET_COUNT, dpreset_ok));
@@ -5550,7 +5561,7 @@ static void kit_turn(int32_t e)
 static void save_target(int32_t e)        /* SAVE held + PRESETS: the user slot that letting go of SAVE saves to */
 {
     int inst = ui.trk != TR_DRUM, n = inst ? NUSER : NUKIT, s = ui.save_slot, k, used;
-    if (!inst && v3_mode) {               /* a user kit keeps the stock engine's knobs: nothing of the DrumEngine's yet */
+    if (!inst && V3ON) {               /* a user kit keeps the stock engine's knobs: nothing of the DrumEngine's yet */
         app_say("DRUM KITS", "NOT SAVED YET");
         return;
     }
@@ -5728,19 +5739,19 @@ static void mod_knob(int k, int32_t e)    /* an instrument's LFO 2 and MATRIX pa
 
 /* the drums' LFO: with the DrumEngine it moves one of the pad's own controls (its rsv[0] LFO_V3), with the stock
  * 808 / 909 one of the kit's knobs (the model + 1); one set up for the other engine does nothing until it's back */
-static int lfo_drum_tag(int pad) { return v3_mode ? LFO_V3 : drum_model(pad) + 1; }
+static int lfo_drum_tag(int pad) { return V3ON ? LFO_V3 : drum_model(pad) + 1; }
 static int lfo_drum_live(const lfo_t *l)
 {
     if (l->dest == LFO_OFF || l->pad >= NPADS)
         return 0;
     if (l->rsv[0] == LFO_V3)
-        return v3_mode && kit_param_spec(l->pad + 1, l->dest) && !kit_param_option(l->pad + 1, l->dest, 0);
-    return !v3_mode && (!l->rsv[0] || l->rsv[0] == drum_model(l->pad) + 1) && drums_param(drum_model(l->pad), l->pad, l->dest);
+        return V3ON && kit_param_spec(l->pad + 1, l->dest) && !kit_param_option(l->pad + 1, l->dest, 0);
+    return !V3ON && (!l->rsv[0] || l->rsv[0] == drum_model(l->pad) + 1) && drums_param(drum_model(l->pad), l->pad, l->dest);
 }
 static int lfo_drum_knobs(int pad, int *idx)   /* the knobs the drums' LFO can move on a pad (not switches or sends) */
 {
     int i, n = 0, np = drums_nparams(drum_model(pad), pad);
-    if (v3_mode) {                        /* the DrumEngine: the drum's controls, its choices (MODEL ...) left out */
+    if (V3ON) {                        /* the DrumEngine: the drum's controls, its choices (MODEL ...) left out */
         np = kit_param_count(pad + 1);
         for (i = 0; i < np && i < NPOTS; i++)
             if (!kit_param_option(pad + 1, i, 0))
@@ -6791,7 +6802,7 @@ static void set_track_mutes(uint8_t mask)
     sync_drum_mutes();
     if (cut & 1u) {
         drum_pk = 0.0f;
-        color_reset(&drum_color_rt);
+        DRUM_COLOR_RESET();
     }
     for (t = 1; t < NTRK; t++)
         if (cut >> t & 1u) {
@@ -7929,7 +7940,7 @@ static void v3_bus_mode(int delta, int toggle)
 
 static int v6_voice_page(void)
 {
-    return v3_mode && ui.trk == TR_DRUM && ui.page == PG_EDIT && ui.pad < NPADS;
+    return V3ON && ui.trk == TR_DRUM && ui.page == PG_EDIT && ui.pad < NPADS;
 }
 
 static const char *v6_voice_name(void)
@@ -8319,7 +8330,7 @@ static void input(void)
     if ((released >> B_EDIT & 1u) && !ui.edit_used) {   /* EDIT tapped: the editor, on the page it was left on (SELECT
                                                          * turns them); again: back to the screen it was opened from */
         if (ui.page != PG_EDIT) {
-            if (ui.epage >= (inst ? inst_epages(ui.trk) : v3_mode && ui.pad < NPADS ? v6_pages() : drum_epages()))
+            if (ui.epage >= (inst ? inst_epages(ui.trk) : V3ON && ui.pad < NPADS ? v6_pages() : drum_epages()))
                 ui.epage = 0;
             ed_open(ED_EDIT, PG_EDIT);
         } else {
@@ -11514,7 +11525,7 @@ static void page_qmix(void)               /* the QUICK MIXER: the tracks (the pi
             text_c(x + 18, y + 2, &FONT_B, trial_pad_name(drum_model(k), k), muted ? C_TXT2 : C_INK);
             text_c(x + 18, y + 21, &FONT_XS, muted ? "MUTE" : "ON", muted ? C_MUTED : C_INK);
         }
-        foot("WHITE: MUTE LANE", v3_mode ? "AUDIO ONLY" : "", 0);
+        foot("WHITE: MUTE LANE", V3ON ? "AUDIO ONLY" : "", 0);
     } else {                              /* the moves: a white key each, four a row; held: yellow (now), HELD below */
         char h[40], u[4];
         h[0] = 0;
@@ -12498,7 +12509,7 @@ static void speak(void)                   /* a screen reader that has just start
             }
         }
         ann_say(t, 0, ANN_NOW);
-        trial_metrics_speak(v3_mode);
+        trial_metrics_speak(V3ON);
         {   /* and the processor (0.5: read remotely while someone plays, tools/fm1_remote.py screen): each stage's
              * share of a block, its mean and its worst block of the last 10 s; the blocks late; the voices
              * sounding, the budget's cap and the pool; what the budgets gave up (drum sounds cut, voices shed,

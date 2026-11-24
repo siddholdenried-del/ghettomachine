@@ -8,9 +8,6 @@
 static drum909_t d909;
 static drum808_t d808;
 static float k8_l[DRUMS_MAX_BLOCK], k8_r[DRUMS_MAX_BLOCK], k8_rev[DRUMS_MAX_BLOCK], k8_dly[DRUMS_MAX_BLOCK];
-#else                                      /* the FM-1 plays the DrumEngine only (0.5): of the stock kits it keeps their
-                                            * knobs' positions, which projects and user kits still carry; no voices */
-static uint8_t stock_pot[2][DRUMS_NPADS + 1][DR_MAX_PARAMS];
 #endif
 
 /* pad -> the engine's own track */
@@ -118,19 +115,12 @@ int drums_governor_release_tail(int pad)
     return a || b;
 }
 
-#else
-void drums_init(void)
-{
-    int k, pad, i;
-    for (k = 0; k < 2; k++)
-        for (pad = 0; pad <= DRUMS_NPADS; pad++)
-            for (i = 0; i < DR_MAX_PARAMS; i++) {
-                const x0x_param_t *d = drums_param(k, pad, i);
-                stock_pot[k][pad][i] = d ? d->def : 0;
-            }
-}
+#else                                      /* the FM-1 plays the DrumEngine only (0.5): the stock kits have no voices,
+                                            * knobs or pages there; their names and pad maps stay for old projects */
+void drums_init(void) {}
 #endif
 
+#ifdef PLAT_HOST
 int drums_nparams(int kit, int pad)
 {
     int v = voice(kit, pad);
@@ -146,6 +136,11 @@ const x0x_param_t *drums_param(int kit, int pad, int i)
         return 0;
     return kit == KIT_808 ? drum808_param(v, i) : drum909_param(v, i);
 }
+
+#else
+int drums_nparams(int kit, int pad) { (void)kit; (void)pad; return 0; }
+const x0x_param_t *drums_param(int kit, int pad, int i) { (void)kit; (void)pad; (void)i; return 0; }
+#endif
 
 #ifdef PLAT_HOST
 int drums_get(int kit, int pad, int i)
@@ -168,17 +163,8 @@ void drums_set(int kit, int pad, int i, int value)
 }
 
 #else
-int drums_get(int kit, int pad, int i)
-{
-    return drums_param(kit, pad, i) ? stock_pot[kit][pad][i] : 0;
-}
-
-void drums_set(int kit, int pad, int i, int value)
-{
-    const x0x_param_t *d = drums_param(kit, pad, i);
-    if (d)
-        stock_pot[kit][pad][i] = (uint8_t)(value < 0 ? 0 : value > d->max ? d->max : value);
-}
+int drums_get(int kit, int pad, int i) { (void)kit; (void)pad; (void)i; return 0; }
+void drums_set(int kit, int pad, int i, int value) { (void)kit; (void)pad; (void)i; (void)value; }
 #endif
 
 const char *drums_pad_name(int kit, int pad)
