@@ -42,6 +42,8 @@ wait 30
 expect mixpage 3
 turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap GLO')
 wait 80
+expect mixpage 4  # (0.5: the mixer's RETURNS, then the master bus)
+turn SELECT 1
 wait 30
 expect page 12
 expect mstpage 0
@@ -49,7 +51,7 @@ shot master_chain_idle.png
 turn SELECT -1
 wait 30
 expect page 9
-expect mixpage 3
+expect mixpage 4
 turn SELECT 1
 wait 30
 expect page 12

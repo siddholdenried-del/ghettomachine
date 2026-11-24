@@ -5633,7 +5633,13 @@ static void arp_knob(int k, int32_t e)
 }
 
 /* ----------------------------------------------------------------- MIXER and FX --- */
-static const char *const MIX_NAME[4] = {"LEVEL", "PAN", "REVERB", "DELAY"};
+#define NMIXPAGE 5                        /* the mixer's pages: the tracks' LEVEL, PAN, REVERB, DELAY; the RETURNS */
+static const char *const MIX_NAME[NMIXPAGE] = {"LEVEL", "PAN", "REVERB", "DELAY", "RETURNS"};
+/* RETURNS (0.5, for dub): the shared FX's own knobs, the same values as the FX pages': K1 BongVerb's return, K2
+ * BongDelay's (both to +15.5 dB over the preset's: dsp/fx.c LVL_MAX), K3 the delay's feedback, K4 the verb's decay */
+#define MIX_RET 4
+static const int8_t RET_P[4] = {FXP_RV_LEVEL, FXP_DL_LEVEL, FXP_DL_FDBK, FXP_RV_DECAY};
+static const char *const RET_LABEL[4] = {"VERB RTN", "DELAY RTN", "FEEDBACK", "VERB DECAY"};
 #define NFXPAGE 4
 static const char *const FX_PAGE_NAME[NFXPAGE] = {"BongVerb", "BongDelay", "FX MODE", "DJ FILTER"};
 static const int8_t FX_PAGE_P[NFXPAGE][4] = {
@@ -5712,9 +5718,14 @@ static void mix_turn(int t, int page, int32_t e)   /* track t's mixer value page
     app_say(u, s);
 }
 
-static void mix_knob(int k, int32_t e)    /* the mixer: K1..K4 are the drums, T2, T3 and T4 */
+static void fx_knob_i(int i, int32_t e);
+
+static void mix_knob(int k, int32_t e)    /* the mixer: K1..K4 are the drums, T2, T3 and T4 (RETURNS: the FX's) */
 {
-    mix_turn(k, ui.mixpage, e);
+    if (ui.mixpage == MIX_RET)
+        fx_knob_i(RET_P[k], e);
+    else
+        mix_turn(k, ui.mixpage, e);
 }
 
 /* ---- the QUICK MIXER (HOME, then HOME again): the track picked (a track key: one press), its K1 LEVEL, K2 REVERB,
@@ -7573,12 +7584,12 @@ static void input(void)
         } else if (ui.page == PG_SONG) {
             ui.scur = (uint8_t)clamp(ui.scur + e, 0, proj.song_n);
         } else if (ui.page == PG_MIX || ui.page == PG_MST) {   /* one row of pages: the mixer's, the master bus's */
-            int g = clamp((ui.page == PG_MIX ? ui.mixpage : 4 + ui.mstpage) + e, 0, 4 + NMSTPAGE - 1);
-            ui.page = g < 4 ? PG_MIX : PG_MST;
-            if (g < 4)
+            int g = clamp((ui.page == PG_MIX ? ui.mixpage : NMIXPAGE + ui.mstpage) + e, 0, NMIXPAGE + NMSTPAGE - 1);
+            ui.page = g < NMIXPAGE ? PG_MIX : PG_MST;
+            if (g < NMIXPAGE)
                 ui.mixpage = (uint8_t)g;
             else
-                ui.mstpage = (uint8_t)(g - 4);
+                ui.mstpage = (uint8_t)(g - NMIXPAGE);
         } else if (ui.page == PG_FX) {
             ui.fxpage = (uint8_t)clamp(ui.fxpage + e, 0, NFXPAGE - 1);
         } else if (ui.page == PG_LFO) {
@@ -8285,6 +8296,12 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
         c->acc = trk_rgb(ui.trk);
         return 1;
     case KD_MIX:
+        if (page == MIX_RET) {            /* RETURNS: the FX's knobs */
+            const x0x_param_t *p = fx_param(RET_P[k]);
+            fx_text(RET_P[k], t);
+            card_put(c, RET_LABEL[k], t, proj.fx[RET_P[k]], 0, p->max, -1);
+            return 1;
+        }
         mix_text(k, page, t);
         card_put(c, k == TR_DRUM ? "DRUMS" : TRK_NAME[k], t, mix_value(k, page), 0, 127, page == 1 ? 64 : -1);
         c->acc = trk_rgb(k);
@@ -9862,7 +9879,38 @@ static void page_mix(void)                /* the mixer: a strip a track, its met
         ttl[0] = 0;
         text_cat(ttl, "MIX / ");
         text_cat(ttl, MIX_NAME[ui.mixpage]);
-        band_set(C_CREAM, "ALL", ttl, "K1-K4: TRACKS", 4 + NMSTPAGE, ui.mixpage);
+        band_set(C_CREAM, "ALL", ttl, ui.mixpage == MIX_RET ? "SHARED FX" : "K1-K4: TRACKS", NMIXPAGE + NMSTPAGE,
+                 ui.mixpage);
+    }
+    if (ui.mixpage == MIX_RET) {          /* RETURNS: the two returns, large; past 0 dB (the preset's) the boost, yellow */
+        static const char *const NM[2] = {"VERB", "DELAY"};
+        int r;
+        for (r = 0; r < 2; r++) {
+            int x = 14 + r * 86, v = proj.fx[RET_P[r]], mx = fx_param(RET_P[r])->max, h = v * 92 / mx;
+            int y0 = 122 - 85 * 92 / mx, yb = 122 - 127 * 92 / mx;
+            char u[16];
+            rrect(x, 30, 44, 92, 4, C_GRID);
+            if (h > 0)
+                rrect(x, 122 - h, 44, h, 4, TH_FG);
+            if (v > 127)                  /* the boost past the old top: yellow */
+                rrect(x, 122 - h, 44, h - (122 - yb), 4, C_NOW);
+            cv_rect(x - 4, y0, 52, 1, TH_TXT);   /* 0 dB: the preset's return */
+            text_c(x + 22, 4, &FONT_B, NM[r], TH_TXT);
+            fx_text(RET_P[r], u);
+            text_c(x + 22, 17, &FONT_XS, u, v > 127 ? C_NOW : C_TXT2);
+        }
+        {                                 /* FEEDBACK and DECAY: two bars */
+            int k, v;
+            for (k = 2; k < 4; k++) {
+                v = proj.fx[RET_P[k]];
+                cv_text(186, 26 + (k - 2) * 46, &FONT_XS, k == 2 ? "FDBK" : "DECAY", C_TXT2);
+                rrect(186, 42 + (k - 2) * 46, 46, 8, 2, C_GRID);
+                if (v > 0)
+                    rrect(186, 42 + (k - 2) * 46, v * 46 / 127, 8, 2, TH_FG);
+            }
+        }
+        cards_of(KD_MIX, ui.mixpage);
+        return;
     }
     levels_take();
     for (t = 0; t < NTRK; t++) {
@@ -10170,7 +10218,7 @@ static void page_mst(void)
         ttl[0] = 0;
         text_cat(ttl, "MASTER ");
         text_cat(ttl, MST_PAGE_NAME[pg]);
-        band_set(C_MSTCOL, "ALL", ttl, t, 4 + NMSTPAGE, 4 + pg);
+        band_set(C_MSTCOL, "ALL", ttl, t, NMIXPAGE + NMSTPAGE, NMIXPAGE + pg);
     }
     switch (pg) {
     case 0: mst_chain(); break;

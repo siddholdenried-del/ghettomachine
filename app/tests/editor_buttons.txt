@@ -80,7 +80,7 @@ expect page 19
 tap GLO
 wait 30
 expect page 9
-turn SELECT 5
+turn SELECT 6
 wait 30
 expect page 12
 expect mstpage 1

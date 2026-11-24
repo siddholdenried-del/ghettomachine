@@ -19,7 +19,7 @@ static bongverb_t verb FX_POOL;           /* its lines: 31 KB */
 static bongdelay_t dly;                   /* its ring is the lent line (fx_init) */
 static uint8_t send_pot[12];              /* the sends' knobs (FXP_RV_DECAY .. FXP_RSV11) */
 static uint8_t dl_off;                    /* the line lent out: the delay out of the chain */
-static float bpm_now = 120.0f, gain_rv, gain_dl;
+static float bpm_now = 120.0f, gain_rv, gain_dl, gain_rv_now, gain_dl_now;   /* the returns' gains: set; now (gliding) */
 static master_t mst;
 static mbus_t mb;
 static int16_t *line;
@@ -89,9 +89,18 @@ static const float DIV_BEATS[13] = {0.125f, 1.0f / 6.0f, 0.25f, 1.0f / 3.0f, 0.3
                                     4.0f / 3.0f, 1.5f, 2.0f, 3.0f};
 static const char *const MODE_N[2] = {"PLATE", "HALL"};
 static const char *const RSV_N[1] = {"-"};
+/* (0.5) The returns' LEVEL: 0..127 as it always was (linear, 85 the preset's return: 0 dB), then on past 127 in
+   quarter-dB steps to +12 dB more (175: +15.5 dB over the preset's), for dub: returns louder than the dry. A saved
+   project's 0..127 sounds the same. */
+#define LVL_MAX 175
+static float lvl_gain(int v)              /* LEVEL -> times the preset's return */
+{
+    return v <= 127 ? (float)v * (1.0f / 85.0f) : (127.0f / 85.0f) * fm_exp2f((float)(v - 127) * (0.25f / 6.0206f));
+}
+
 static const x0x_param_t SEND_P[12] = {
-    {"Decay", 127, 62, 0}, {"Damp", 127, 56, 0}, {"PreDly", 127, 20, 0}, {"RvLvl", 127, 85, 0},
-    {"DlTime", 12, 2, DIV_N}, {"Regen", 127, 58, 0}, {"Tone", 127, 66, 0}, {"DlLvl", 127, 85, 0},
+    {"Decay", 127, 62, 0}, {"Damp", 127, 56, 0}, {"PreDly", 127, 20, 0}, {"RvLvl", LVL_MAX, 85, 0},
+    {"DlTime", 12, 2, DIV_N}, {"Regen", 127, 58, 0}, {"Tone", 127, 66, 0}, {"DlLvl", LVL_MAX, 85, 0},
     {"Mode", 1, 0, MODE_N}, {"Drive", 127, 27, 0}, {"-", 0, 0, RSV_N}, {"-", 0, 0, RSV_N},
 };
 #define RV_GAIN 0.48f                     /* the returns' gains at LEVEL 85 */
@@ -113,11 +122,11 @@ static void send_set(int i, int v)
     case FXP_RV_DECAY: bongverb_set(&verb, BV_DECAY, x); break;
     case FXP_RV_DAMP: bongverb_set(&verb, BV_DAMP, x); break;
     case FXP_RV_PREDELAY: bongverb_set(&verb, BV_PREDELAY, x); break;
-    case FXP_RV_LEVEL: gain_rv = RV_GAIN * (float)v * (1.0f / 85.0f); break;
+    case FXP_RV_LEVEL: gain_rv = v <= 127 ? RV_GAIN * (float)v * (1.0f / 85.0f) : RV_GAIN * lvl_gain(v); break;   /* (to 127: as it was, to the bit) */
     case FXP_DL_TIME: retime(); break;
     case FXP_DL_FDBK: bongdelay_set(&dly, BD_REGEN, x); break;
     case FXP_DL_TONE: bongdelay_set(&dly, BD_TONE, x); break;
-    case FXP_DL_LEVEL: gain_dl = DL_GAIN * (float)v * (1.0f / 85.0f); break;
+    case FXP_DL_LEVEL: gain_dl = v <= 127 ? DL_GAIN * (float)v * (1.0f / 85.0f) : DL_GAIN * lvl_gain(v); break;
     case FXP_RV_MODE: bongverb_set(&verb, BV_MODE, (float)v); break;
     case FXP_DL_DRIVE: bongdelay_set(&dly, BD_DRIVE, x); break;
     default: break;
@@ -136,6 +145,8 @@ void fx_init(int16_t *dly_line, int dly_len)
     dl_off = 0;
     for (i = 0; i < 12; i++)
         send_set(i, SEND_P[i].def);
+    gain_rv_now = gain_rv;                /* (the glide starts where they're set) */
+    gain_dl_now = gain_dl;
     master_init(&mst);
     master_set(&mst, MST_PUMPSRC, PUMP_BOTH);   /* PUMP follows the kick of either kit */
     master_set(&mst, MST_THRESH, 79);     /* the compressor on, gently: -18 dB (on the bus's level: after BUS_TRIM) */
@@ -195,6 +206,29 @@ void fx_format(int i, char *buf)
     buf[0] = 0;
     if (i < 0 || i >= FXP_NUM)
         return;
+    if (i == FXP_RV_LEVEL || i == FXP_DL_LEVEL) {   /* the returns: dB against the preset's return */
+        int v = send_pot[i];
+        float db = v > 0 ? 6.0206f * fm_log2f(lvl_gain(v)) : -99.0f;
+        int t = (int)(db * 10.0f + (db < 0.0f ? -0.5f : 0.5f)), j = 0, a;
+        char d[8];
+        if (v == 0) {
+            buf[0] = 'O'; buf[1] = 'F'; buf[2] = 'F'; buf[3] = 0;
+            return;
+        }
+        buf[j++] = t < 0 ? '-' : '+';
+        a = t < 0 ? -t : t;
+        {
+            int n = 0, q = a / 10;
+            do { d[n++] = (char)('0' + q % 10); q /= 10; } while (q);
+            while (n) buf[j++] = d[--n];
+        }
+        buf[j++] = '.';
+        buf[j++] = (char)('0' + a % 10);
+        buf[j++] = 'd';
+        buf[j++] = 'B';
+        buf[j] = 0;
+        return;
+    }
     if (MAP[i].sec == S_MST)
         master_format(&mst, MAP[i].idx, buf);
     else if (MAP[i].sec == S_MB)
@@ -219,9 +253,16 @@ void fx_process(const float *dry_l, const float *dry_r, const float *rev, const 
             out_l[i] = dry_l[i];
             out_r[i] = dry_r[i];
         }
-    GM_FAR(bongverb_block)(&verb, rev, out_l, out_r, gain_rv, n);   /* (RAM code: gm_ram.h) */
+    /* the returns' gains glide to what they're set to (a fifth of the way a block: a big turn of LEVEL, no click) */
+    gain_rv_now += (gain_rv - gain_rv_now) * 0.2f;
+    gain_dl_now += (gain_dl - gain_dl_now) * 0.2f;
+    if (gain_rv - gain_rv_now < 1e-5f && gain_rv_now - gain_rv < 1e-5f)
+        gain_rv_now = gain_rv;
+    if (gain_dl - gain_dl_now < 1e-5f && gain_dl_now - gain_dl < 1e-5f)
+        gain_dl_now = gain_dl;
+    GM_FAR(bongverb_block)(&verb, rev, out_l, out_r, gain_rv_now, n);   /* (RAM code: gm_ram.h) */
     if (!dl_off)
-        GM_FAR(bongdelay_block)(&dly, dly_in, out_l, out_r, gain_dl, n);
+        GM_FAR(bongdelay_block)(&dly, dly_in, out_l, out_r, gain_dl_now, n);
 }
 
 int fx_returns_asleep(void) { return bongverb_asleep(&verb) | (dl_off || bongdelay_asleep(&dly)) << 1; }
