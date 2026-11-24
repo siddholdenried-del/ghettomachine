@@ -1855,6 +1855,15 @@ static void arp_key(int t, int note, int vel, int on)   /* a key (or MIDI) on an
             }
 }
 
+/* the arpeggio recorded (0.5): REC on and playing, keys held on a track whose arpeggiator is on: each note it plays
+ * goes into the step nearest it (that step's old notes out), and the track's own steps stay silent meanwhile. When
+ * recording ends the arpeggiator turns itself off, so the part plays back as it was heard (arp_print_end) */
+static volatile uint8_t arp_print;        /* a bit a track: its arpeggio is being recorded */
+static int rec_target(int st, float fr, int len);
+static float base_step(int tr);
+static void arp_rec(int t, int note, int vel, float step);
+static void arp_print_end(void);
+
 static void arp_fire(int t)               /* the next note of the pattern */
 {
     const track_t *ts = tset(t);
@@ -1892,6 +1901,7 @@ static void arp_fire(int t)               /* the next note of the pattern */
         note -= 12 * ((note - 116) / 12 + 1);
     syn_note_on(t, note, (float)vel / 127.0f, (int32_t)(step * (float)XL(t, XL_AGATE, ts->arp_gate) * 0.01f), ts->type == TY_MONO);
     lfo_note(t);
+    arp_rec(t, note, vel, step);
 }
 
 static void arp_feed(int t, int note, int vel, int32_t life) { arp_add(t, note, vel, life > 0 ? life : 1); }
@@ -2317,6 +2327,14 @@ static void seq_inst(int tr)              /* audio interrupt: an instrument part
             gate = (int32_t)(sub[NPADS + tr - 1].len * 0.5f);
     }
     marks = (s->vel & NS_ACC) ? SN_ACCENT : 0;   /* a 303's marks: on any sound (a slide: the chord's first note) */
+    if (arp_print >> tr & 1u) {           /* its arpeggio being recorded: the steps silent under the keys' arpeggio, and
+                                           * plain (not arpeggiated again) once the keys are up */
+        if (arp[tr].n)
+            return;
+        for (i = 0; i < NCHORD && s->note[i]; i++)
+            syn_note_on_f(tr, s->note[i], (float)ns_vel(s) / 127.0f, gate, ts->type == TY_MONO, marks);
+        return;
+    }
     for (i = 0; i < NCHORD && s->note[i]; i++) {
         if (ts->arp_mode)                 /* arpeggiated: the notes are the arpeggiator's, for the gate */
             arp_feed(tr, s->note[i], ns_vel(s), gate);
@@ -2554,6 +2572,37 @@ static void seq_continue(void)            /* (as seq_begin) */
     sq.clock = cont.clock;
 }
 
+static void spp_set(int pos16)            /* a Song Position, sixteenths from the top: where Continue will go on from */
+{
+    const float at = (float)pos16 * bar_samples() * (1.0f / 16.0f);
+    int t;
+    for (t = 0; t < NTRK; t++) {
+        const int len = t == TR_DRUM ? dcur()->len : ipart(t)->len;
+        float loop = 0.0f, x;
+        int s;
+        for (s = 0; s < len; s++)
+            loop += step_samples(t, s);
+        x = at - loop * (float)(int32_t)(at / loop);   /* into the part's loop */
+        for (s = 0; s < len && x >= step_samples(t, s) - 0.5f; s++)
+            x -= step_samples(t, s);
+        if (s >= len)
+            s = 0, x = 0.0f;
+        /* inside step s (x into it): it has sounded; the next comes when it ends. On its edge: it sounds at once */
+        cont.t[t].step = x < 0.5f ? s - 1 : s;
+        cont.t[t].to_next = x < 0.5f ? 0.0f : step_samples(t, s) - x;
+        cont.t[t].dur = step_samples(t, s);
+        cont.t[t].frac = 0.0f;
+    }
+    {
+        const float bar = bar_samples(), into = at - bar * (float)(int32_t)(at / bar);
+        cont.bar_left = into < 0.5f ? 0.0f : bar - into;
+    }
+    cont.clock = (uint32_t)at;
+    cont.pat = proj.pat;
+    cont.spos = -1;
+    cont.ok = 1;
+}
+
 static void seq_start(void)
 {
     uint32_t f = plat_lock();
@@ -2615,6 +2664,7 @@ static void seq_stop(void)
             qclip[t] = -1;
         }
     plat_unlock(f);
+    arp_print_end();                      /* (an arpeggio being recorded: done) */
 }
 
 /* ------------------------------------------------------------------- audio --- */
@@ -2817,6 +2867,11 @@ static void midi_in(void)                 /* audio interrupt */
             if (V3ON && d2) pad_fire((int)(d1 - 36u), (float)d2 / 127.0f);
             continue;
         }
+        if (st == 0xF2u) {                /* Song Position (0.5): followed and stopped, a Continue goes on from there */
+            if ((proj.recq >> 2 & 3u) == 2u && !sq.playing && !(proj.song_on && proj.song_n))
+                spp_set((int)(d1 | d2 << 7));
+            continue;
+        }
         if (st >= 0xF8u) {                /* real time: MIDI CLOCK followed (SETUP) */
             if ((proj.recq >> 2 & 3u) != 2u)
                 continue;
@@ -2857,6 +2912,12 @@ static void midi_in(void)                 /* audio interrupt */
         }
         int on = (st & 0xF0u) == 0x90u && d2, off = (st & 0xF0u) == 0x80u || ((st & 0xF0u) == 0x90u && !d2);
         int tr = ch == 9u ? TR_DRUM : ch == 0u ? (int)sel_trk : ch <= 3u ? (int)ch : -1;
+        if ((st & 0xF0u) == 0xB0u && tr > 0 && (d1 == 1u || (d1 >= 20u && d1 <= 23u))) {
+            const int m = d1 == 1u ? 0 : (int)d1 - 20;   /* CC 1 (the wheel) and 20: MACRO 1; 21-23: MACRO 2-4 */
+            tset(tr)->snd[SP_M1 + m] = (int8_t)d2;
+            syn_set(tr, SP_M1 + m, (int)d2);
+            continue;
+        }
         if ((st & 0xF0u) == 0xD0u || (st & 0xF0u) == 0xA0u) {   /* pressure (channel, or a key's): the matrix's PRESSURE */
             if (tr > 0)
                 syn_pressure(tr, (float)((st & 0xF0u) == 0xD0u ? d1 : d2) / 127.0f);
@@ -4965,6 +5026,37 @@ static void preview(int tr, const nstep_t *s)   /* a step heard by itself (stopp
     plat_unlock(f);
 }
 
+static void arp_rec(int t, int note, int vel, float step)   /* audio interrupt: an arpeggio's note, recorded */
+{
+    const track_t *ts = tset(t);
+    if ((arp_print >> t & 1u) && ui.rec && sq.playing && sq.t[t].step >= 0) {   /* into the nearest step */
+        ipart_t *p = ipart(t);
+        nstep_t *st = &p->st[rec_target(sq.t[t].step, sq.t[t].frac, p->len)];
+        nstep_clear(st);
+        nstep_add(st, note, vel);
+        st->gate = (uint16_t)clamp((int32_t)(step * (float)ts->arp_gate * 0.01f / base_step(t) * 8.0f + 0.5f), 1, GATE_MAX);
+        dirty = 1;
+    }
+}
+
+static void arp_print_end(void)           /* the main loop: recording over (REC off, or stopped) */
+{
+    int t;
+    uint32_t f;
+    if (!arp_print)
+        return;
+    f = plat_lock();
+    for (t = 1; t < NTRK; t++)
+        if (arp_print >> t & 1u) {
+            tset(t)->arp_mode = AM_OFF;
+            arp_clear(t);
+            syn_release(t, 0);
+        }
+    arp_print = 0;
+    plat_unlock(f);
+    app_say("ARP RECORDED", "ARP NOW OFF");
+}
+
 static void live_rec_on(int key, int tr, int note, int vel)   /* REC while playing: to the nearest step */
 {
     ipart_t *p = ipart(tr);
@@ -5243,7 +5335,11 @@ static void note_down(int key)            /* a key on the KEYS (or EDIT) page of
     ui.key_mode[key] = 0;
     ui.key_step[key] = -1;
     ui.last_note[tr] = (uint8_t)note;
-    if (ui.rec && sq.playing) {
+    if (ui.rec && sq.playing && tset(tr)->arp_mode) {   /* the arpeggio is what's recorded, not the keys held */
+        if (!(arp_print >> tr & 1u))
+            undo_mark(0);
+        arp_print |= (uint8_t)(1u << tr);
+    } else if (ui.rec && sq.playing) {
         for (i = 0; i < nc; i++)
             live_rec_on(key, tr, cn[i], vel);
     } else if (ck.count > 0) {            /* the count-in: only its last half beat records (on step 1) */
@@ -8556,9 +8652,15 @@ static void input(void)
         int t;
         for (k = 0; k < NKEYS; k++)
             if (ui.key_note[k] && (keys >> k & 1u) && ui.key_trk[k] < NTRK) {
+                static uint8_t kwas[NKEYS];
                 const uint8_t v = touch_pressure(k);
                 if (v > pr[ui.key_trk[k]])
                     pr[ui.key_trk[k]] = v;
+                if (ui.key_trk[k] && v != kwas[k] && (v > kwas[k] + 3 || v + 3 < kwas[k] || !v)) {   /* the key's own */
+                    kwas[k] = v;
+                    plat_midi_send(0x0Au | (0xA0u | (uint32_t)ui.key_trk[k]) << 8 | (uint32_t)ui.key_note[k] << 16 |
+                                   (uint32_t)v << 24, MIDI_TO);
+                }
             }
         for (t = 1; t < NTRK; t++)
             if (pr[t] != was[t] && (!pr[t] || pr[t] > was[t] + 1 || pr[t] + 1 < was[t])) {
@@ -8752,6 +8854,8 @@ static void input(void)
         ui.rec ^= 1u;
         ui.srec_held = ui.srec_n = 0;
         app_say("RECORD", ui.rec ? "ON" : "OFF");
+        if (!ui.rec)
+            arp_print_end();
     }
     if ((released >> B_SEL & 1u) && ui.help) {   /* (HELP shown: let go, the page back) */
         ui.help = 0;

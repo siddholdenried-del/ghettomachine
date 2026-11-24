@@ -1,0 +1,76 @@
+# MIDI extras and the arpeggio recorded (0.5), in the host simulator.
+#   app/build/host/ghettomachine_host app/tests/midi2.txt OUTDIR
+# snd2_34..37: T2's MACRO 1..4; step: the drums' step playing; nsteps2: T2's steps with notes; arpset2_0: its arp mode
+wait 600
+# ---- CC in: 20-23 are the track's MACRO 1-4, the wheel (1) MACRO 1; channel 2 is T2
+midi B1 14 50
+wait 30
+expect snd2_34 80
+midi B1 17 21
+wait 30
+expect snd2_37 33
+midi B1 01 20
+wait 30
+expect snd2_34 32
+# ---- the arpeggio recorded: T2, ARP on (K1 MODE up), the keys, REC, PLAY, a key held a bar
+turn ALGO 1
+wait 30
+tap ARP
+wait 30
+spin K1 1
+wait 30
+expect arpset2_0 1
+tap SEQ
+wait 30
+tap SEQ
+wait 30
+tap SEQ
+wait 30
+expect page 5
+expect nsteps2 0
+listen
+tap REC
+wait 30
+tap PLAY
+wait 100
+key 7 down
+wait 1900
+key 7 up
+wait 100
+expect nsteps2 >3
+tap REC
+wait 100
+said ARP RECORDED
+expect arpset2_0 0
+tap PLAY
+wait 200
+expect nsteps2 >3
+# ---- Song Position: MIDI CLOCK followed (SETUP K1 twice); position 8 sixteenths, then Continue: from step 9
+turn ALGO -1
+wait 30
+tap HOME
+wait 30
+tap HOME
+wait 30
+tap HOME
+wait 30
+tap HOME
+wait 30
+expect page 13
+spin K1 2
+wait 30
+expect mclock 2
+midi F2 08 00
+wait 10
+midi FB
+wait 10
+midi F8
+wait 20
+midi F8
+wait 20
+expect playing 1
+expect step >6
+expect step <11
+midi FC
+wait 100
+expect playing 0
