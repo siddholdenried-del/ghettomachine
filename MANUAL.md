@@ -75,30 +75,27 @@ route still works for getting M-VAVE's firmware back.
 
 ### The screen
 
-The screen follows Bong Cult's Dungeon BBS look: a near-black canvas, bone text and thin rules, square corners.
-**Violet marks what is selected** (the knob you're turning, the page you're on, the pad, slot or song entry picked),
-**acid green is only for live readings** (the meters), and each section keeps its own colour for its name and for
-what it draws: the drums orange (909) or blue (808); T2 green, T3 purple, T4 yellow; HOME, SONG and the mixer bone;
-FX cyan; the master bus rose. Labels are in condensed capitals; the counters and the line under the title are in a
-monospace face. Three parts, top to bottom:
+The screen is the **Acid Dub Deck** look: three fixed bands, deep purple above and below a black work area.
+**Acid green** marks notes, set values and what's selected (with black type on it); **yellow** marks what is
+happening right now: the playhead (with its flag), a held move (which also says HELD), a level as it moves, the knob
+you're turning. Purple draws the grids, the empty steps and the boxes. Top to bottom:
 
-- **The band**, ruled off from the page:
-  - Left: what this is in big type, the page, and what it's on (the sound, the pad, the preset). Small dashes under it
-    show which page of how many, the one you're on violet.
-  - Right: the pattern (>02 blinks when one is waiting), the tempo (S03 while a song plays), a triangle while playing,
-    a red dot while recording.
-  - Far right: **two output meters** (left and right, before MASTER) in green, with a red cap when the output reaches
-    the top.
-  - **Turn a knob or press a button and the band shows the change large** for a moment: "RESO 76".
-- **The page:** a picture of what you're editing. The steps, the filter's curve, the envelope's shape, the
-  oscillator's wave, the LFO with a dot where it is now, the arpeggio's order, the EQ's curve, the
-  compressor's and the tape's curves, the stereo width. On the other pages, every knob of the sound in rows, the row
-  the knobs are on now lit. Meters move live: each track's level on HOME and in the mixer, the pads lighting as they
-  sound, the voices in use, the compressor's and the limiter's reduction, the loudness.
-- **The knob strip:** four cells in one ruled grid, **K1 to K4 in the order the knobs sit.** Each shows what the knob
-  does, its value and a gauge in the section's colour. Two-way knobs (pan, EQ, depth) fill from the middle; switches
-  show a step each. The cell you're turning turns **violet**. A **locked** value is pale violet with an **L**. A cell
-  on the bare canvas with a green gauge is a reading, not a knob (the compressor's reduction, the stereo phase).
+- **The header**, ruled off in acid green:
+  - Line 1: **GM /** and the family: the track (DR, T2, T3, T4), or ALL on the shared pages (PATTERNS, SONG, SETUP,
+    the mixer, FX, the master bus). At the right the pattern (the next one beside it, blinking yellow, when one is
+    waiting; S03 while a song plays), the tempo, a yellow triangle while playing, a red dot while recording.
+  - Line 2: **the page's title**, large: PATTERNS, QUICK MIXER, KICK / BODY, AMP ENV, MASTER COMP. To its right, small,
+    what it's on (the sound, the kit, the preset) where it fits.
+  - **Turn a knob or press a button and the change shows in yellow** on line 1 for a moment ("T3 LEVEL 99", "CY
+    MUTED"), in place of the pattern and tempo. The title never moves.
+- **The work area:** only what you're working on. Curves (the filter, the envelopes, the LFO, the oscillators, the EQ,
+  the compressor, the tape) on a purple grid; the steps; the drums' lanes; a drum's voice drawn on its own page (an
+  illustration of its sound, its decay and pitch following the lane's DECAY and TUNE). Where there's room, a last
+  line gives a hint at the left ("WHITE: SCENE") and a state at the right, yellow when it's happening now ("P01
+  PLAYING", "W4 HELD").
+- **The knob strip:** four cells, **K1 to K4 in the order the knobs sit**: the knob's number, what it does, its value
+  large. The value you're turning goes acid green with a yellow bar under it; a **locked** value is acid green with
+  an **L**; an empty cell shows K3 and a dash; a reading (the compressor's reduction, the stereo phase) is dimmed.
 - **PATTERNS** (HOME) also shows the processor's load (CPU) and the voices sounding.
 
 ## The drum track
@@ -449,7 +446,7 @@ HOME is for playing live. Its first page, **PATTERNS**, is a grid: **16 patterns
 T3, T4, the pad keys 1–4). Each track plays its own pattern, its **clip**, so you can mix the drums of pattern 3 with the
 bass of pattern 7. The playing clip is solid with a bar showing where it is; a clip waiting to start blinks. The band
 reads **PLAYING 01** (PATTERN 01 when stopped) and, while another pattern waits for its turn, **NEXT 02** beside it,
-its number blinking violet in the header; it starts when it always has (LAUNCH, below).
+its number blinking yellow in the header and its clips yellow on the grid; it starts when it always has (LAUNCH, below).
 
 | On HOME | What it does |
 | --- | --- |
