@@ -1,0 +1,19 @@
+# The master EQ's spectrum (0.5): its two halves (the highs, the lows) taken in turn, each asked for as the other is
+# drawn: about 24 updates a second playing (it was half that: each turn dropped a capture and began again).
+# specn: its updates since last asked
+listen
+wait 200
+tap PLAY
+wait 1000
+tap GLO
+wait 60
+turn SELECT -40 0
+wait 60
+turn SELECT 6 0
+wait 300
+expect page 12
+expect mstpage 1
+expect specn >0
+wait 2000
+expect specn >40
+tap PLAY

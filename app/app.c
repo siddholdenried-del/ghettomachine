@@ -2933,20 +2933,25 @@ static struct {
     volatile uint8_t src, state;          /* what's asked (a track 0..3, SC_MASTER); 0 idle, 1 filling, 2 full */
     uint8_t dec, pairs, k;
     uint16_t n;
+    float acc, inv;                       /* the master's mono sum: the dec samples' mean (1 / dec), not one of them */
     int16_t buf[SC_N];
-} sc = {SC_NONE, 0, 1, 0, 0, 0, {0}};
+} sc = {SC_NONE, 0, 1, 0, 0, 0, 0.0f, 1.0f, {0}};
 
 static void scope_feed(int src, const float *l, const float *r, uint32_t n, float scale)
 {
     uint32_t i;
+    int mean = src == SC_MASTER && !sc.pairs;   /* (the spectrum's: every 4th sample alone folded the highs into its lows) */
     if (sc.state != 1 || sc.src != (uint8_t)src)
         return;
     for (i = 0; i < n; i++) {
         float a;
+        if (mean)
+            sc.acc += (l[i] + r[i]) * 0.5f;
         if (++sc.k < sc.dec)
             continue;
         sc.k = 0;
-        a = (sc.pairs ? l[i] : (l[i] + r[i]) * 0.5f) * scale;
+        a = (sc.pairs ? l[i] : mean ? sc.acc * sc.inv : (l[i] + r[i]) * 0.5f) * scale;
+        sc.acc = 0.0f;
         sc.buf[sc.n++] = (int16_t)(a >= 1.0f ? 32767 : a <= -1.0f ? -32767 : (int)(a * 32767.0f));
         if (sc.pairs) {
             a = r[i] * scale;
@@ -8071,30 +8076,34 @@ static void gline(int x0, int y0, int x1, int y1, int ytop, int ybot)   /* a 2-p
 }
 
 /* ---- live pictures (0.5): the scope's capture asked and taken; a history of one reading; a yellow dot (now) */
+static void scope_ask(int src, int dec, int pairs)   /* a new capture of src from here (the one filling: dropped) */
+{
+    sc.state = 0;
+    sc.src = (uint8_t)src;
+    sc.dec = (uint8_t)dec;
+    sc.pairs = (uint8_t)pairs;
+    sc.n = sc.k = 0;
+    sc.acc = 0.0f;
+    sc.inv = dec == 4 ? 0.25f : dec == 2 ? 0.5f : 1.0f;
+    sc.state = 1;
+}
+
 static int scope_take(int src, int dec, int pairs)   /* 1: a full capture of src is in sc.buf (draw it, then again) */
 {
     if (sc.src != src || sc.dec != dec || sc.pairs != pairs) {
-        sc.state = 0;
-        sc.src = (uint8_t)src;
-        sc.dec = (uint8_t)dec;
-        sc.pairs = (uint8_t)pairs;
-        sc.n = sc.k = 0;
-        sc.state = 1;
+        scope_ask(src, dec, pairs);
         return 0;
     }
     if (sc.state == 2)
         return 1;
-    if (sc.state == 0) {
-        sc.n = sc.k = 0;
-        sc.state = 1;
-    }
+    if (sc.state == 0)
+        scope_ask(src, dec, pairs);
     return 0;
 }
 
 static void scope_again(void)
 {
-    sc.n = sc.k = 0;
-    sc.state = 1;
+    scope_ask(sc.src, sc.dec, sc.pairs);
 }
 
 /* the history: one reading (0..255) of the page on screen, every `every` ms, the newest at the right; another page's
@@ -10579,17 +10588,28 @@ static void mst_limit(void)               /* LIMIT: the reduction and the output
 }
 
 /* (0.5) The master's spectrum behind the EQ's curve: 24 bands, 40 Hz to 16 kHz in even octaves, by Goertzel on the
- * scope's capture (Welch window); in turn the highs (every sample) and the lows (every 4th: 43 Hz apart), falling 3 dB a
- * frame; -66..0 dB, HEAT */
-static float spec_db[24];
+ * scope's capture (Welch window); in turn the highs (every sample) and the lows (4 samples' mean: 43 Hz apart), each
+ * asked for as the other is drawn (a half 15 times a second); a bar up at once, down 3 dB a frame drawn to its
+ * last reading (a steady tone: a steady bar); -66..0 dB, HEAT */
+static float spec_db[24], spec_to[24];
+#ifdef PLAT_HOST
+static int spec_n;
+#endif
 static void mst_spectrum(int x0, int y0, int w, int h)
 {
     static uint8_t phase, ready;
+    static uint32_t fall_t;
     int lo = phase & 1, b, i;
+    uint32_t now = plat_ms();
     if (!ready) {                         /* (from silence) */
         for (b = 0; b < 24; b++)
-            spec_db[b] = -120.0f;
+            spec_db[b] = spec_to[b] = -120.0f;
         ready = 1;
+    }
+    if (now - fall_t >= 30u) {            /* (a frame drawn, not a redraw for a knob between two) */
+        fall_t = now;
+        for (b = 0; b < 24; b++)
+            spec_db[b] = spec_db[b] - 3.0f > spec_to[b] ? spec_db[b] - 3.0f : spec_to[b];
     }
     if (scope_take(SC_MASTER, lo ? 4 : 1, 0)) {
         const float fs = lo ? 11025.0f : 44100.0f;
@@ -10605,10 +10625,15 @@ static void mst_spectrum(int x0, int y0, int w, int h)
             }
             pw = s1 * s1 + s2 * s2 - c * s1 * s2;
             db = 0.5f * um_db(pw > 1.0f ? pw : 1.0f) - 132.3f;   /* (a full-scale sine: 0 dB) */
-            spec_db[b] = db > spec_db[b] - 3.0f ? db : spec_db[b] - 3.0f;
+            spec_to[b] = db;
+            if (db > spec_db[b])
+                spec_db[b] = db;
         }
         phase++;
-        scope_again();
+        scope_ask(SC_MASTER, lo ? 1 : 4, 0);   /* the other half's, from now (not this one's again, then dropped) */
+#ifdef PLAT_HOST
+        spec_n++;
+#endif
     }
     for (b = 0; b < 24; b++) {
         int bh = (int)((spec_db[b] + 66.0f) * (float)h / 66.0f), x = x0 + b * w / 24;
@@ -11377,6 +11402,11 @@ int app_expect(const char *what, int *got)
         *got = trial_lane_gate((unsigned)atoi(what + 8));
     else if (!strncmp(what, "lanepk", 6))     /* lanepkN: drum pad N's lane peak out since last asked, dB (-200 silent) */
         *got = trial_lane_peak((unsigned)atoi(what + 6));
+    else if (!strcmp(what, "specn"))      /* the EQ page's spectrum: its updates (a half each) since last asked */
+    {
+        *got = spec_n;
+        spec_n = 0;
+    }
     else if (!strcmp(what, "qmheld"))     /* the QUICK MIXER's moves held (a bit each), and the track they're on */
         *got = qm.held;
     else if (!strcmp(what, "qmtrk"))
