@@ -34,3 +34,5 @@ install = ""
 site = "https://ghettomachine.bongcult.com"
 title = "BongTech GhettoMachine"
 screenshot = ""
+ble_central = 3                # the FM-1 connects out to a Bluetooth MIDI keyboard or controller (no pairing: smaller)
+headphones = true              # the headphone jack's switch read (plat_headphones)

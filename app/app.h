@@ -24,6 +24,7 @@ void app_splash(void);
 int app_ble_wanted(void);               /* Bluetooth MIDI (the own stack: fm1.toml): on only where the project's
                                          * SETUP > MIDI says so (off by default: the radio quiet) */
 #define APP_BLE_AT_BOOT app_ble_wanted()
+#define APP_BTDEV                        /* a Bluetooth keyboard or controller the FM-1 connects out to (lib/btdev.h) */
 enum { OBJ_USER, OBJ_PANEL, OBJ_BLE, OBJ_NOBJ };   /* OBJ_USER: the user presets (app.c user_t) */
 #define APP_STORE_MAP {0xFC000u, 0xDC000u, 0xDE000u}
 

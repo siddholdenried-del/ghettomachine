@@ -616,6 +616,11 @@ Press HOME on the SONG page.
   radio quiet, the default) or **ON**: the FM-1 shows up as a Bluetooth MIDI device for a computer, phone or
   tablet, and the page says STARTING, then ON, then CONNECTED. Everything MIDI goes over it as over USB: notes in
   and out, clock. The switch is kept with the project (SAVE), so it comes back on at power-on.
+  **K3 DEVICE** and **K4 CONNECT:** a Bluetooth keyboard or controller the FM-1 connects out to. With Bluetooth
+  on, this view looks for MIDI devices while it's up and lists the ones it finds; K3 picks one, K4 up connects it
+  and K4 down lets it go. It plays as USB MIDI does (channel 10 the pads, 2–4 the tracks, 1 the track picked).
+  One link at a time: while a keyboard is connected, a computer can't connect, and the other way round. A device
+  that wants a passkey isn't supported.
 - **SELECT again: BT AUDIO.** The FM-1's sound to Bluetooth headphones or a speaker. **K1 AUDIO** on: it connects
   to the last device it knew, or looks for devices (about 10 s; put the headphones in pairing mode). **K2 DEVICE**
   moves down the list (SAVED: remembered, up to four; FOUND: around now), **K3 CONNECT** up connects the one picked
@@ -743,10 +748,10 @@ the sound saved with the pattern it's on.
   actions and sounds per pattern off if it was saved before the performance update.
 - MIDI clock is timed to the audio block it arrives in, so following, the FM-1 sits about 3 ms behind the clock on
   average (up to 6). No Song Position Pointer: Continue is from the last Stop, not from a place the clock names.
-- Bluetooth: MIDI with one computer or phone; the FM-1 doesn't connect out to Bluetooth keyboards. No WiFi (it
-  can't share a build with Bluetooth).
-- The headphone jack's switch isn't read: nothing changes by itself when headphones go in (the speaker mutes
-  itself in hardware).
+- Bluetooth: one MIDI link at a time (a computer or phone, or a keyboard), and no keyboards that need a passkey.
+- No WiFi: it can't share a build with Bluetooth or USB audio, needs more flash than there is, and its libraries
+  can't ship under this firmware's licence.
+- The headphone jack is read and said (OUTPUT: HEADPHONES / SPEAKER) but changes nothing else yet.
 - Mix per pattern keeps the mixer, the FX and the master bus, not the tracks' insert effects or Color.
 - The 303 generator: no 303-style transpose track. The beat generator keeps no steps (the 303's KEEP has no drum
   twin) and writes no ratchets. A part of any length, up to 128 steps, gets a line of that length, not a 16-step line repeated. The arpeggiator

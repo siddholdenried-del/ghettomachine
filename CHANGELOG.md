@@ -10,6 +10,7 @@ have not played there since the DrumEngine took over), which is what made room f
 **24 Nov 2026, later still:** Bluetooth audio out (SETUP, SELECT: BT AUDIO; its buffers lent from the undo history
 while it is on); the keys' pressure as a matrix source and as channel pressure; the battery in the band. The delay's
 line 63000 -> 59400 samples (0.71 -> 0.67 s) for the pool.
+Then Bluetooth keyboards (the FM-1 as the central: SETUP > MIDI, K3 / K4) and the headphone jack read and said.
 
 **Historical hardware test: 0.5** (first installed over USB on 20 Nov). The first recording from it clicked now and then, so
 0.5 now keeps a deeper USB buffer, MASTER no longer changes what a computer records, and the drum steps' beats glow

@@ -5029,7 +5029,8 @@ static void step_rec_off(int tr)          /* every key of the chord let go: the 
  * gate); locks go with their steps. LEGATO (hold REC + OCT+, T2-T4): each step's gate to the next note's start (and
  * a little past, so a MONO sound with LEGATO ties them), the last to the first's, round the loop (at most 16 steps).
  * Both undoable (EDIT + OCT-) */
-static nstep_t q_old[NSTEPS];
+static nstep_t gen_buf[2][NSTEPS];       /* (the generators' scratch, defined below: the main loop's, one user at a time) */
+#define q_old gen_buf[1]
 
 static int q_to(int s, int g, int len)
 {
@@ -6864,6 +6865,23 @@ static void setup_knob(int k, int32_t e)  /* SETUP: K1 MIDI CLOCK, K2 SOUNDS, K3
             proj.mflags = (uint8_t)((proj.mflags & ~2u) | (uint32_t)v << 1);
             plat_ble_enable(v);
             app_say("BLUETOOTH", v ? "ON" : "OFF");
+#if FM1B_BLE_CENTRAL
+        } else if (k == 2 && e) {         /* K3 DEVICE: which of the keyboards found */
+            char nm[24];
+            if (!ble_wanted()) {
+                app_say("BLUETOOTH", "TURN IT ON: K2");
+                return;
+            }
+            btdev_choose(btdev_pick() + e);
+            app_say("DEVICE", btdev_found(btdev_pick(), nm, 0) ? nm : "NONE FOUND");
+            return;
+        } else if (k == 3 && e) {         /* K4 CONNECT: up connects the one picked, down lets it go */
+            if (!ble_wanted() || (e > 0) == (btdev_busy() != 0))
+                return;
+            v = btdev_save();
+            app_say("DEVICE", v == BTDEV_CONNECTING ? btdev_name() : btdev_word(v));
+            return;
+#endif
         } else {
             return;
         }
@@ -9504,30 +9522,30 @@ static int db_h(float lin, int h, float range)   /* a meter's height: lin over -
 
 /* ---- the band: the header (the Acid Dub Deck look). Line 1: "GM / " the family (the track, or ALL), the pattern
  * (the next one beside it, blinking yellow) and the tempo; a change just made in yellow in their place a moment.
- * Line 2: the page's title, large; its context small to the right where it fits. (bd.npg, bd.pg: no dots now) */
+ * Line 2: the page's title, large; its context small to the right where it fits. (bnd.npg, bnd.pg: no dots now) */
 static struct {
     uint16_t col;                         /* the section's colour */
     char id[12], title[24], ctx[32];
     uint8_t npg, pg;
-} bd;
+} bnd;
 
 static void band_set(uint16_t col, const char *id, const char *title, const char *ctx, int npg, int pg)
 {
     int i;
-    bd.col = col;
-    for (i = 0; id[i] && i < (int)sizeof bd.id - 1; i++)
-        bd.id[i] = id[i];
-    bd.id[i] = 0;
-    for (i = 0; title[i] && i < (int)sizeof bd.title - 1; i++)
-        bd.title[i] = title[i];
-    bd.title[i] = 0;
-    upper(bd.title);
-    for (i = 0; ctx[i] && i < (int)sizeof bd.ctx - 1; i++)
-        bd.ctx[i] = ctx[i];
-    bd.ctx[i] = 0;
-    upper(bd.ctx);
-    bd.npg = (uint8_t)npg;
-    bd.pg = (uint8_t)pg;
+    bnd.col = col;
+    for (i = 0; id[i] && i < (int)sizeof bnd.id - 1; i++)
+        bnd.id[i] = id[i];
+    bnd.id[i] = 0;
+    for (i = 0; title[i] && i < (int)sizeof bnd.title - 1; i++)
+        bnd.title[i] = title[i];
+    bnd.title[i] = 0;
+    upper(bnd.title);
+    for (i = 0; ctx[i] && i < (int)sizeof bnd.ctx - 1; i++)
+        bnd.ctx[i] = ctx[i];
+    bnd.ctx[i] = 0;
+    upper(bnd.ctx);
+    bnd.npg = (uint8_t)npg;
+    bnd.pg = (uint8_t)pg;
 }
 
 static void band(void)
@@ -9540,7 +9558,7 @@ static void band(void)
     cv_rect(0, 43, 240, 1, C_ACID);       /* the acid rule under the header */
     t[0] = 0;
     text_cat(t, "GM / ");
-    text_cat(t, bd.id);
+    text_cat(t, bnd.id);
     xl = cv_text(8, 2, &FONT_MS, t, C_BONE);
     if (now < ui.msg_until) {             /* a change just made: what, and its value, in yellow */
         t[0] = 0;
@@ -9600,11 +9618,11 @@ static void band(void)
                 cv_rect(xr - 16 + j * 3, 8, 2, 4, C_BONE);
         }
     }
-    f = text_w(&FONT_MT, bd.title) <= 224 ? &FONT_MT : text_w(&FONT_MB, bd.title) <= 224 ? &FONT_MB : &FONT_B;
-    fit(f, bd.title, 224, t);
+    f = text_w(&FONT_MT, bnd.title) <= 224 ? &FONT_MT : text_w(&FONT_MB, bnd.title) <= 224 ? &FONT_MB : &FONT_B;
+    fit(f, bnd.title, 224, t);
     xl = cv_text(8, f == &FONT_MT ? 17 : 21, f, t, C_BONE);
-    if (bd.ctx[0] && 232 - xl - 10 >= 40) {   /* the context, small, where it fits */
-        fit(&FONT_XS, bd.ctx, 232 - xl - 10, u);
+    if (bnd.ctx[0] && 232 - xl - 10 >= 40) {   /* the context, small, where it fits */
+        fit(&FONT_XS, bnd.ctx, 232 - xl - 10, u);
         text_r(232, 24, &FONT_XS, u, C_MUTED);
     }
     cv_blit(0, 0);
@@ -9634,7 +9652,7 @@ static void card_put(card_t *c, const char *label, const char *text, int v, int 
     c->mid = (int16_t)mid;
     c->on = 1;
     c->lock = c->ro = 0;
-    c->acc = bd.col;
+    c->acc = bnd.col;
 }
 
 static void strip(void)                   /* four cells, K1..K4 as the knobs sit: the knob, its name, its value */
@@ -9947,6 +9965,13 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
                 card_put(c, "SEQ OUT", seq_out() ? "ON" : "OFF", seq_out(), 0, 1, -1);
             else if (k == 1 && FM1B_BLE)
                 card_put(c, "BLUETOOTH", ble_wanted() ? "ON" : "OFF", ble_wanted(), 0, 1, -1);
+#if FM1B_BLE_CENTRAL
+            else if (k == 2) {
+                int_text(btdev_count() ? btdev_pick() + 1 : 0, t);
+                card_put(c, "DEVICE", t, btdev_pick(), 0, 7, -1);
+            } else if (k == 3)
+                card_put(c, "CONNECT", btdev_busy() ? "DOWN: LET GO" : "UP", btdev_busy(), 0, 1, -1);
+#endif
             else
                 return 0;
             return 1;
@@ -11647,8 +11672,26 @@ static void page_midi(void)               /* SETUP's second view: SEQ OUT and Bl
     ble_word_now = ble_word();
     cv_text(10, 64, &FONT_S, BW[ble_word_now], TH_TXT);
     rrect(3, 90, 234, 40, 6, C_PANEL);
+#if FM1B_BLE_CENTRAL
+    {   /* a Bluetooth keyboard or controller the FM-1 connects out to (lib/btdev): the scan runs while this is up */
+        char t[32], nm[24];
+        btdev_title(t);
+        upper(t);
+        cv_text(10, 92, &FONT_XS, ble_wanted() ? t : "A BLUETOOTH KEYBOARD: BLUETOOTH ON FIRST", C_TXT2);
+        if (ble_wanted() && !btdev_busy() && btdev_found(btdev_pick(), nm, 0)) {
+            upper(nm);
+            cv_text(10, 108, &FONT_S, nm, TH_TXT);
+            text_r(230, 110, &FONT_XS, "K4 UP: CONNECT", C_TXT2);
+        } else if (ble_wanted() && btdev_busy()) {
+            cv_text(10, 108, &FONT_XS, "K4 DOWN: LET IT GO. NO COMPUTER MEANWHILE", C_TXT2);
+        } else {
+            cv_text(10, 108, &FONT_XS, "IT PLAYS CH 10 PADS, 2-4 TRACKS, 1 THE PICKED", C_TXT2);
+        }
+    }
+#else
     cv_text(10, 92, &FONT_XS, "IN: CH 10 PADS, CH 2-4 TRACKS", C_TXT2);
     cv_text(10, 108, &FONT_XS, "CH 1 PLAYS THE TRACK PICKED", C_TXT2);
+#endif
     cards_of(KD_SETUP, 1);
 }
 
@@ -12922,6 +12965,30 @@ void app_frame(void)
     shed();
     late_watch();
     gbta_poll();
+#if FM1B_BLE_CENTRAL
+    {   /* Bluetooth keyboards: the scan while the MIDI view is up; what happened, said */
+        static uint8_t seen;
+        const int up = ui.page == PG_SETUP && ui.setup_view == 1 && ble_wanted();
+        int ev;
+        btdev_page(up);
+        while ((ev = btdev_event()) != BTDEV_NONE)
+            if (ev != BTDEV_COMPUTER && ev != BTDEV_COMPUTER_GONE)
+                app_say("DEVICE", btdev_word(ev));
+        ev = btdev_count() * 4 + btdev_busy() * 2 + btdev_ready();
+        if (up && ev != seen)
+            ui.redraw = 1;
+        seen = (uint8_t)ev;
+    }
+#endif
+    {   /* the headphone jack (0.5): said as it changes */
+        static int8_t hp = -1;
+        const int now_hp = plat_headphones();
+        if (now_hp >= 0 && now_hp != hp) {
+            if (hp >= 0)
+                app_say("OUTPUT", now_hp ? "HEADPHONES" : "SPEAKER");
+            hp = (int8_t)now_hp;
+        }
+    }
     if (plat_battery() != ui.batt)
         ui.redraw = 1;                    /* the band's battery */
     if (ui.page == PG_SETUP && ui.setup_view == 1 && ble_word() != ble_word_now)
@@ -13190,6 +13257,10 @@ int app_expect(const char *what, int *got)
         if (q < 0 || q >= NPAT)
             return 0;
         *got = (proj.follow[q] >> 3) + 1;
+    } else if (!strcmp(what, "bdevs")) {  /* Bluetooth keyboards found; bdevok: one connected */
+        *got = FM1B_BLE_CENTRAL ? btdev_count() : -1;
+    } else if (!strcmp(what, "bdevok")) {
+        *got = FM1B_BLE_CENTRAL ? btdev_ready() : -1;
     } else if (!strcmp(what, "btaon")) {  /* Bluetooth audio: on; btast: plat_bta_state; nundo: undo's steps now */
         *got = gbta.on;
     } else if (!strcmp(what, "btast")) {
