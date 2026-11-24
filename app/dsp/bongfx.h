@@ -35,6 +35,11 @@ typedef struct {
     int base_len[BV_LINES];               /* the tank's lines at SIZE's full length */
     float mscale;                         /* MOTION: times the kernel's modulation depth (1) */
     float lc, lc_coef;                    /* LOW CUT: a one-pole high-pass on the send (coef 0: none) */
+    /* SPRING (GhettoMachine's own third mode): two springs on the tank's first two lines, each a loop of its line, a
+     * chain of BV_SPRING_AP all-passes (the dispersion: the highs later each pass, the "boing"), the damping and a
+     * low cut; DECAY, DAMP, PRE-DELAY and SIZE mean what they do on the plate */
+    uint8_t spring;
+    float sp[2][12], sp_hp[2];
 } bongverb_t;
 
 void bongverb_init(bongverb_t *v);
@@ -42,7 +47,8 @@ void bongverb_set(bongverb_t *v, int id, float value);
 /* GhettoMachine's own controls, 0..1: BVX_SIZE the tank's lines from 35 % to their full length (1: the kernel's);
  * BVX_MOTION the modulation's depth from the kernel's (0) to 15 times it; BVX_LOWCUT a high-pass on the send, off
  * (0) to 500 Hz */
-enum { BVX_SIZE, BVX_MOTION, BVX_LOWCUT };
+enum { BVX_SIZE, BVX_MOTION, BVX_LOWCUT, BVX_SPRING };   /* (BVX_SPRING: 1 the spring mode, its lines emptied) */
+enum { BV_SPRING_AP = 12 };
 void bongverb_extra(bongverb_t *v, int id, float value);
 /* n samples of the send in; the return added into l and r times gain (0: not added, the engine still runs) */
 void bongverb_block(bongverb_t *v, const float *in, float *l, float *r, float gain, int n);

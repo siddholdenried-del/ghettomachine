@@ -3161,9 +3161,10 @@ static void synth_add(float *l, float *r, float *rv, float *dl, uint32_t n, uint
     }
 }
 
-/* the delay's line, lent to STUTTER and TAPE STOP while they play: int16, 1.5 s and a little (it was also the sampler's
- * recording buffer until 0.5: the same size, so the effects are as they were) */
-#define DLY_LEN 66160
+/* the delay's line, lent to STUTTER and TAPE STOP while they play: int16, 0.71 s of stereo (66160 until format 11's
+ * locks needed 6 KB of the pool: the sampler's recording buffer's size, which went in 0.5. STUTTER's longest slice,
+ * 1/8 of a bar at 60 BPM, is 0.5 s; TAPE STOP winds down what's in it) */
+#define DLY_LEN 63000
 static int16_t shared_buf[DLY_LEN] PLAT_POOL;
 
 /* the render's buses: the dry mix and the reverb and delay sends of a block. Two sets (0.5, the second CPU pass): the

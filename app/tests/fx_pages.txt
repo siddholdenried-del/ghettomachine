@@ -29,6 +29,11 @@ wait 30
 said LOW CUT
 expect fx47 50
 shot fx_verb2.png
+# MODE: PLATE, HALL, and SPRING (GhettoMachine's own: two springs, their boing)
+turn K4 2
+wait 30
+said VERB MODE SPRING
+expect fx8 2
 turn SELECT 2
 wait 30
 expect fxpage 3
@@ -65,3 +70,18 @@ expect fx44 64
 expect fx45 67
 expect fx46 40
 expect fx47 50
+expect fx8 2
+# T3 into the spring (its reverb send): a note's tail sounds, and dies
+turn ALGO 2
+wait 30
+midi 92 3C 64
+wait 200
+midi 82 3C 00
+wait 300
+peakreset
+wait 200
+expect peak_db_min -95
+wait 6000
+peakreset
+wait 300
+expect peak_db_max <-70

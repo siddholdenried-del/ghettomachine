@@ -101,6 +101,19 @@ void bongverb_extra(bongverb_t *v, int id, float value)
                 v->pos[i] = 0;
         }
         bv_recalc(v);
+    } else if (id == BVX_SPRING) {        /* into or out of the spring: the lines emptied (the other mode's sound in
+                                           * them would ring on as noise) */
+        const uint8_t on = x >= .5f;
+        if (on != v->spring) {
+            for (int i = 0; i < BV_RING; i++)
+                v->ring[i] = 0.f;
+            for (int i = 0; i < 2 * BV_SPRING_AP; i++)
+                v->sp[0][i] = 0.f;
+            for (int i = 0; i < BV_LINES; i++)
+                v->lp[i] = 0.f;
+            v->sp_hp[0] = v->sp_hp[1] = 0.f;
+            v->spring = on;
+        }
     } else if (id == BVX_MOTION) {
         v->mscale = 1.f + 14.f * x * x;
     } else {
@@ -185,6 +198,33 @@ GM_INLINE void bv_core(bongverb_t *v, float in, float *left, float *right)
     const float early_r = mode * bv_pred(v, v->delay + v->rate * .022f) * .076f;
     if (++v->pre_pos >= v->pre_len)
         v->pre_pos = 0;
+    if (v->spring) {                      /* SPRING: two loops, each its line, the all-pass chain, damping, a low cut */
+        float out[2];
+        for (int s = 0; s < 2; s++) {
+            float *line = v->ring + v->off[s];
+            float x = line[v->pos[s]];
+            for (int j = 0; j < BV_SPRING_AP; j++) {   /* (a + 1/z) / (1 + a/z): the highs take longer */
+                const float y = .68f * x + v->sp[s][j];
+                v->sp[s][j] = x - .68f * y;
+                x = y;
+            }
+            v->gain[s] = approach(v->gain[s], v->gain_target[s], k);
+            const float lp = approach(x, v->lp[s], v->damp * v->damp);   /* (a pass every 30 ms: DAMP gentler than on
+                                                                          * the plate, or no tail is left) */
+            v->lp[s] = fm_fabsf(lp) < 1.e-20f ? 0.f : lp;
+            v->sp_hp[s] += .034f * (v->lp[s] - v->sp_hp[s]);   /* (about 120 Hz: a spring carries no lows) */
+            out[s] = v->lp[s] - v->sp_hp[s];
+        }
+        for (int s = 0; s < 2; s++) {     /* each fed by the send, its own tail and a little of the other's */
+            /* (a small rotation between the two: nothing lost in it) */
+            v->ring[v->off[s] + v->pos[s]] = .45f * src + v->gain[s] * (.9982f * out[s] + (s ? .06f : -.06f) * out[s ^ 1]);
+            if (++v->pos[s] >= v->len[s])
+                v->pos[s] = 0;
+        }
+        *left = .62f * out[0] + .12f * out[1];
+        *right = .62f * out[1] + .12f * out[0];
+        return;
+    }
     const float a = bv_allpass(v, 0, src, .68f - .09f * mode), b = bv_allpass(v, 1, a, -.62f + .13f * mode);
     float f[BV_LINES], d[BV_LINES];
     for (int i = 0; i < BV_LINES; i++) {

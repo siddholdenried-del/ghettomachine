@@ -88,7 +88,7 @@ static const char *const DIV_N[13] = {"1/32", "1/16T", "1/16", "1/8T", "1/16.", 
                                       "1/4.", "1/2", "1/2."};
 static const float DIV_BEATS[13] = {0.125f, 1.0f / 6.0f, 0.25f, 1.0f / 3.0f, 0.375f, 0.5f, 2.0f / 3.0f, 0.75f, 1.0f,
                                     4.0f / 3.0f, 1.5f, 2.0f, 3.0f};
-static const char *const MODE_N[2] = {"PLATE", "HALL"};
+static const char *const MODE_N[3] = {"PLATE", "HALL", "SPRING"};
 static const char *const RSV_N[1] = {"-"};
 /* (0.5) The returns' LEVEL: 0..127 as it always was (linear, 85 the preset's return: 0 dB), then on past 127 in
    quarter-dB steps to +12 dB more (175: +15.5 dB over the preset's), for dub: returns louder than the dry. A saved
@@ -103,7 +103,7 @@ static float lvl_gain(int v)              /* LEVEL -> times the preset's return 
 static const x0x_param_t SEND_P[12] = {
     {"Decay", 127, 62, 0}, {"Damp", 127, 56, 0}, {"PreDly", 127, 20, 0}, {"RvLvl", LVL_MAX, 85, 0},
     {"DlTime", 12, 2, DIV_N}, {"Regen", 127, 58, 0}, {"Tone", 127, 66, 0}, {"DlLvl", LVL_MAX, 85, 0},
-    {"Mode", 1, 0, MODE_N}, {"Drive", 127, 27, 0}, {"-", 0, 0, RSV_N}, {"-", 0, 0, RSV_N},
+    {"Mode", 2, 0, MODE_N}, {"Drive", 127, 27, 0}, {"-", 0, 0, RSV_N}, {"-", 0, 0, RSV_N},
 };
 /* the second pages': the delay's WIDTH, WOBBLE and LOW CUT, the reverb's SIZE (full), MOTION and LOW CUT; at these
  * defaults both sound as their kernels do */
@@ -144,7 +144,10 @@ static void send_set(int i, int v)
     case FXP_DL_FDBK: bongdelay_set(&dly, BD_REGEN, x); break;
     case FXP_DL_TONE: bongdelay_set(&dly, BD_TONE, x); break;
     case FXP_DL_LEVEL: gain_dl = v <= 127 ? DL_GAIN * (float)v * (1.0f / 85.0f) : DL_GAIN * lvl_gain(v); break;
-    case FXP_RV_MODE: bongverb_set(&verb, BV_MODE, (float)v); break;
+    case FXP_RV_MODE:                     /* PLATE, HALL; SPRING (the kernel's own two, then GhettoMachine's) */
+        bongverb_set(&verb, BV_MODE, v == 1 ? 1.0f : 0.0f);
+        bongverb_extra(&verb, BVX_SPRING, v == 2 ? 1.0f : 0.0f);
+        break;
     case FXP_DL_DRIVE: bongdelay_set(&dly, BD_DRIVE, x); break;
     default: break;
     }

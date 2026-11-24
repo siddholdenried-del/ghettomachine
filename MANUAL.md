@@ -30,7 +30,7 @@ the package over USB-MIDI and the FM-1's loader writes only the 4 KiB sectors th
 cd third_party/fm1-base/tools && ../../../.venv/bin/python fm1_install.py ../../../app/build/ghettomachine.fwsc --yes
 ```
 
-**A project saved by this build is format 10** (it holds the drums' edits and the FX's second pages). Builds before 24 Nov 2026 can't read it and start with an empty project instead, so don't go back to one after saving here unless you mean to.
+**A project saved by this build is format 11** (it holds the drums' edits, the FX's second pages and 32 locks a part). Builds before 24 Nov 2026 can't read it and start with an empty project instead, so don't go back to one after saving here unless you mean to.
 
 **Tap SAVE first:** an install restarts the FM-1, and the saved project is what comes back. The project is
 kept; only the firmware is written, never the boot code. A project and user presets saved by 0.2, 0.3 or
@@ -122,7 +122,7 @@ you're turning. Purple draws the grids, the empty steps and the boxes. Top to bo
 - **Knobs on the steps page:** LENGTH and RATE of this track's part, SWING and TEMPO (**PART GROOVE**). Turn **SELECT**
   for **DRUM HIT**, or just hold a lit step: **K1 VELOCITY** (that hit's own, 1–127; none set, it plays normal or
   accented), **K2 CHANCE**, **K3 SUBSTEPS**, **K4 ACCENT** (the step's, for every pad). Velocity, chance and substeps
-  each use one of the part's 16 locks. The step banks are on OCT− / OCT+.
+  each use one of the part's 32 locks (16 until project format 11). The step banks are on OCT− / OCT+.
 - **The snare's DECAY** (its editor, page 2, K3): the whole drum's length, body and wires together, −100 % to +100 %.
 
 Hold **SEQ** and tap **OCT+** to repeat the selected track’s part into a second half, or **OCT−** to keep its first half (rounding an odd length down). This copies notes, accents, chance and locks without changing the track’s rate. The second half is erased on halving. A full repeat is blocked if it would exceed 128 steps or the part’s lock capacity. **EDIT + OCT−** undoes, **EDIT + OCT+** redoes. On instrument STEPS, black keys 1–8 pick the available banks of 16.
@@ -381,7 +381,9 @@ Turning a knob without recording on, or stopped, only changes the sound.
     the Motion Plate preset.
   - **BongVerb 2:** **SIZE** (the tank from full down to about a third: a smaller, denser room with a shorter tail),
     **MOTION** (how far the tail's lines move: 0 is the plate's own slow drift, up for a chorused, shimmering tail),
-    **LOW CUT** (keeps the sends' lows out of the reverb, off to 500 Hz: bass stays dry and tight), **MODE** (Plate or Hall).
+    **LOW CUT** (keeps the sends' lows out of the reverb, off to 500 Hz: bass stays dry and tight), **MODE**: **PLATE**,
+    **HALL** or **SPRING**. The spring is two springs side by side: a darker, bouncing tail with the "boing" of a spring
+    tank on sharp sounds, no lows, DECAY from a short slap to about three seconds. Changing to or from SPRING empties the tail.
   - **BongDelay:** TIME in note values (45–950 ms; longer values are halved), REGEN, TONE, LEVEL (its return, to
     +15.5dB). Defaults are the Clock Echo preset, at 1/16.
   - **BongDelay 2:** **WIDTH** (0 is centre; up, the echoes change sides once every delay time: ping-pong), **WOBBLE**

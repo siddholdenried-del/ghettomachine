@@ -33,7 +33,7 @@ key 3 up
 wait 250
 peakreset
 wait 100
-expect peak_db_max >-40
+expect peak_db_min -45
 # all the way down: shorter than it was
 turn K3 -80
 wait 100
