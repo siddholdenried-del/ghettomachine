@@ -3,7 +3,7 @@
 GhettoMachine, part of the BongWare firmware line engineered by BongTech, turns the M-VAVE FM-1 into a four-track groovebox:
 
 - **Drums:** the DrumEngine, with twelve genre kits (ELECTRO, HOUSE, TECHNO, TRAP, BOOM BAP, DRUM & BASS, GARAGE, DISCO, DUB,
-  LO-FI, INDUSTRIAL, MINIMAL) and a preset per genre for every drum. (The stock 808 / 909 engine's sound is not in the FM-1's firmware since 0.5: the drums' bus page turns between DRY and BUS only. It lives on in the simulator, whose tests play it.)
+  LO-FI, INDUSTRIAL, MINIMAL) and a preset per genre for every drum. The drums' bus page turns between DRY and BUS.
 - **T2, T3, T4:** instrument tracks. Each is a MONO synth or a POLY synth.
 - **One sequencer** of up to 128 steps a track, 16 patterns, and a song chain.
 - **An LFO for every clip** (each track's part of each pattern has its own), an arpeggiator and one optional insert effect on T2–T4, and per-step locks.
@@ -18,26 +18,8 @@ GhettoMachine, part of the BongWare firmware line engineered by BongTech, turns 
 - **A 303 pattern generator** on T2–T4: acid lines with slides and accents, made from a few knobs.
 - **Stems over USB:** a computer records the master and each track on its own pair of inputs, all at once.
 
-> **Historical hardware test: 0.5** (first installed over USB on 20 Nov). The first recording from it clicked now and then, so
-> 0.5 now keeps a deeper USB buffer, MASTER no longer changes what a computer records, and the drum steps' beats glow
-> (1, 5, 9, 13): that build went on the FM-1 on 21 Nov, and a recording from it had no clicks. REC + GLO (erase the
-> track's part, to record it again) went on it the same day, and later the 808 brought up to the 909's level with the
-> Dungeon BBS screen. The CPU pass (SETUP's CPU view; a cheaper 606, Color and phaser; effects that sleep on silence) went
-> on it the same day, and a second pass (the reverb at half the rate; the synth's voices, the reverb, the delay and the
-> master bus run from RAM) later that day. A third (the reverb, the delay and the master bus on the second core, a block
-> behind the first; the CPU view's peaks) went on it that evening. The sections' budgets went on it that night at 20 %
-> for the drums, 30 % for the synth and 25 % for the effects: played, it had no late blocks, but the budgets cut 138 drum
-> sounds in a minute and held the synth to 4 or 5 voices with a third of the first core unused. Loosened to 30 %, 40 %
-> and 25 %, that went on it the same night (7 to 9 voices, few drum cuts; the first core at about 70 %). The 606 and
-> the 707 were then cut (their code and memory given to the processor's budget) and FILL made to leave the drum clip
-> where it would have been: on the FM-1 since that night. The synth made cheaper without changing its sound (below)
-> went on it later that night (the synth's mix from 450 to about 250 us a block; steady playing at about 60 % of the
-> first core, the only late blocks at kit changes). Then, asked for: the budgets back at 20 %, 30 % and 25 % with a
-> guard for the block that takes too long, the LFO made each clip's own (project format 8), and no spike as clips
-> change (a kit that leaves stops sounding): on the FM-1 since 22 Nov. The tracks' mix, with their inserts and Color,
-> shared between the two cores: in the source, not on the FM-1 yet. 0.5 is 0.4 plus the USB stems. 0.4 is 0.3 plus the 303 generator, the new name and the boot screen's logo; 0.3 is 0.2 plus the performance
-> update (the scene grid onwards) and the synth update. 0.5 passes its simulator tests (2,194 checks, 39 more on the
-> synth itself and 48 on the master bus's sound). It reads a project saved by 0.2, 0.3 or 0.4, and by 0.5 before each clip had its own LFO.
+> Development preview 0.5. The build history that used to open this manual is in [CHANGELOG.md](CHANGELOG.md).
+> **Hold SEL** on any page for HELP: the held combinations that page understands.
 
 ## Installing it, and getting back
 
@@ -47,6 +29,8 @@ the package over USB-MIDI and the FM-1's loader writes only the 4 KiB sectors th
 ```
 cd third_party/fm1-base/tools && ../../../.venv/bin/python fm1_install.py ../../../app/build/ghettomachine.fwsc --yes
 ```
+
+**A project saved by this build is format 10** (it holds the drums' edits and the FX's second pages). Builds before 24 Nov 2026 can't read it and start with an empty project instead, so don't go back to one after saving here unless you mean to.
 
 **Tap SAVE first:** an install restarts the FM-1, and the saved project is what comes back. The project is
 kept; only the firmware is written, never the boot code. A project and user presets saved by 0.2, 0.3 or
@@ -83,7 +67,7 @@ you're turning. Purple draws the grids, the empty steps and the boxes. Top to bo
 - **The header**, ruled off in acid green:
   - Line 1: **GM /** and the family: the track (DR, T2, T3, T4), or ALL on the shared pages (PATTERNS, SONG, SETUP,
     the mixer, FX, the master bus). At the right the pattern (the next one beside it, blinking yellow, when one is
-    waiting; S03 while a song plays), the tempo, a yellow triangle while playing, a red dot while recording.
+    waiting; S03 while a song plays), the tempo, a yellow triangle while playing, a red dot while recording, and a hollow green box while the project has changes SAVE hasn't kept.
   - Line 2: **the page's title**, large: PATTERNS, QUICK MIXER, KICK / BODY, AMP ENV, MASTER COMP. To its right, small,
     what it's on (the sound, the kit, the preset) where it fits.
   - **Turn a knob or press a button and the change shows in yellow** on line 1 for a moment ("T3 LEVEL 99", "CY
@@ -135,7 +119,11 @@ you're turning. Purple draws the grids, the empty steps and the boxes. Top to bo
   6 dB against 3; the KIT page's Accent sets it.
   - Hold a step and turn a knob: that value for that step only (a lock). Held step + OCT− clears its locks.
 - **ENV:** the LANE MUTE page. Tap a black pad key to toggle that drum lane in this pattern, or hold **ENV** and tap a pad from the drum editor. The grid shows each lane as ON or MUTE. OCT+ unmutes them all. With the DrumEngine (the default) a lane mute is the lane's sound only: it fades out in 1.5 ms and its hits go on underneath, so unmuting brings back a tail that's still ringing. (On the stock 808/909 engine a mute stops the lane's hits, and unmuting waits for the next one.) The QUICK MIXER's white keys are the same mutes.
-- **Knobs on the steps page:** LENGTH and RATE of this track's part, SWING and TEMPO.
+- **Knobs on the steps page:** LENGTH and RATE of this track's part, SWING and TEMPO (**PART GROOVE**). Turn **SELECT**
+  for **DRUM HIT**, or just hold a lit step: **K1 VELOCITY** (that hit's own, 1–127; none set, it plays normal or
+  accented), **K2 CHANCE**, **K3 SUBSTEPS**, **K4 ACCENT** (the step's, for every pad). Velocity, chance and substeps
+  each use one of the part's 16 locks. The step banks are on OCT− / OCT+.
+- **The snare's DECAY** (its editor, page 2, K3): the whole drum's length, body and wires together, −100 % to +100 %.
 
 Hold **SEQ** and tap **OCT+** to repeat the selected track’s part into a second half, or **OCT−** to keep its first half (rounding an odd length down). This copies notes, accents, chance and locks without changing the track’s rate. The second half is erased on halving. A full repeat is blocked if it would exceed 128 steps or the part’s lock capacity. **EDIT + OCT−** undoes, **EDIT + OCT+** redoes. On instrument STEPS, black keys 1–8 pick the available banks of 16.
 
@@ -170,11 +158,6 @@ A very dense collection of long parts can exceed the fixed FM-1 project save slo
   - **While playing:** what you play goes to the nearest step, with its gate from how long you held it.
   - **While stopped, on KEYS:** step recording. A note or a chord goes into the cursor's step, and the cursor moves on
     when you let go. SELECT moves the cursor, to leave a rest.
-
-### Color (retired)
-
-The unified engine has no Color, reverb or delay inside a track. Older projects keep their Color and insert settings as
-saved data; nothing applies them. The FX button now goes through the four FX pages and back to the track's own page.
 
 ### Instrument insert effects
 
@@ -305,16 +288,11 @@ On STEPS an accented note has a white bar over it and a slide a mark at its end.
   before them plays), HOUSE, TECHNO, TRAP, BOOM BAP, DRUM & BASS, GARAGE, DISCO, DUB, LO-FI, INDUSTRIAL, MINIMAL. A kit
   puts every drum on its genre's preset (PERC 2 on another genre's percussion, so the two differ). In a drum's editor
   PRESETS goes through that drum's own presets, also one per genre, so you can put a TRAP kick in a HOUSE kit. The kit
-  is saved with the project (and with each pattern, with SOUNDS PER PATTERN); a drum's edits on top of it aren't saved
-  yet, and neither are drum kits of your own (SAVE + PRESETS on the drums says NOT SAVED YET). The **909**, **808** and
-  **USER KIT 1–8** are the stock engine's, in its test mode only.
+  is saved with the project (and with each pattern, with SOUNDS PER PATTERN), and so are **a drum's edits on top of it**
+  (since project format 10): SAVE keeps them, a restart brings them back. Picking another kit, or a pattern with its own
+  kit, puts every drum back on that kit's presets. Drum kits of your own can't be saved as presets yet (SAVE + PRESETS
+  on the drums says NOT SAVED YET).
 - Your presets are kept apart from projects, the moment you save them.
-
-### The sampler is gone (0.5)
-
-The SAMPLER track type was taken out in 0.5 (it wasn't being used). A saved project with a SAMPLER track loads it as
-**POLY** with its own synth sound, and an LFO that moved a sample's START moves nothing (CUTOFF at depth 0). Samples
-already in the FM-1's flash are left where they are, unused; nothing erases them. REC + SEL no longer does anything.
 
 ## Chord mode
 
@@ -377,8 +355,7 @@ Turning a knob without recording on, or stopped, only changes the sound.
   - On T2–T4, DEST is cutoff, pitch, level, PWM, resonance, detune, mix, drive, noise or sub.
   - **On the drums,** pick a pad, then turn DEST to pick one of its controls. The LFO moves that control at each of the
     pad's hits, for that hit alone (your sound stays as you set it): S&H on the hat's decay makes every hat different.
-    With the DrumEngine the controls are the drum's own (TUNE, BODY, DECAY, TONE, DRIVE...; not MODEL or MODE); with the
-    stock 808 / 909 they're the kit's knobs. An LFO set up for one engine moves nothing while the other plays.
+    The controls are the drum's own (TUNE, BODY, DECAY, TONE, DRIVE...; not MODEL or MODE).
 - **ARP** (T2–T4):
   - Page 1: MODE (up, down, up and down, random, as played), RATE, OCTAVES, GATE.
   - Page 2: LATCH, and **chord mode** (below).
@@ -400,12 +377,17 @@ Turning a knob without recording on, or stopped, only changes the sound.
   about 50 ms instead of clicking. Projects saved before sound as they did.
 - **FX:** one shared **BongVerb** and one shared **BongDelay**. Each track's REVERB and DELAY sends feed them; their
   returns join the dry tracks before **BongMaster**, and never go back into a send.
-  - BongVerb: decay, damp, pre-delay (0–100 ms), level (its return, in dB: to +15.5dB, as on RETURNS). Defaults are
+  - **BongVerb:** DECAY, DAMP, PRE-DELAY (0–100 ms), LEVEL (its return, in dB: to +15.5dB, as on RETURNS). Defaults are
     the Motion Plate preset.
-  - BongDelay: time in note values (45–950 ms; longer values are halved), regen, tone, level (its return, to
-    +15.5dB). Defaults are the Clock
-    Echo preset, at 1/16.
-  - MODE: BongVerb's Plate or Hall, and BongDelay's drive.
+  - **BongVerb 2:** **SIZE** (the tank from full down to about a third: a smaller, denser room with a shorter tail),
+    **MOTION** (how far the tail's lines move: 0 is the plate's own slow drift, up for a chorused, shimmering tail),
+    **LOW CUT** (keeps the sends' lows out of the reverb, off to 500 Hz: bass stays dry and tight), **MODE** (Plate or Hall).
+  - **BongDelay:** TIME in note values (45–950 ms; longer values are halved), REGEN, TONE, LEVEL (its return, to
+    +15.5dB). Defaults are the Clock Echo preset, at 1/16.
+  - **BongDelay 2:** **WIDTH** (0 is centre; up, the echoes change sides once every delay time: ping-pong), **WOBBLE**
+    (tape wow on the echoes, to 3 ms), **LOW CUT** (a high-pass inside the loop, to 800 Hz: each repeat thinner, the dub
+    echo), **DRIVE**.
+  - At their starting values (WIDTH, WOBBLE, both LOW CUTs and MOTION at 0, SIZE full) both effects sound exactly as before.
   - FILTER: a DJ filter (left of centre low-pass, right high-pass) and its resonance, for sweeping the whole mix.
   - Projects saved before BongFX keep decay, delay time, feedback (as regen), tone and both levels. The old reverb tone
     becomes damp (reversed); pre-delay, mode and drive take their defaults.
@@ -595,7 +577,7 @@ Press HOME on the SONG page.
   **REV+DLY CORE2**, **MASTER CORE2**, **OTHER** and the **TOTAL**, each as a share of the time the FM-1 has for each
   block of sound. The bar is the average; a tick past it marks the worst block of the last second or so (a pattern
   starting, a switch), and the band's **PEAK** is the total's. **LATE**: the blocks that weren't ready in time since it
-  started (each a glitch). The reverb, the delay and the master bus run on the FM-1's second core (CORE2) while the
+  started (each a glitch). After one, the page names the last: **LAST LATE**, the stage that ran longest then and the page that was on screen. The reverb, the delay and the master bus run on the FM-1's second core (CORE2) while the
   first renders the next block; TOTAL is the first core's, and it waits for the second at the end of a block (in
   OTHER) and for its half of the synth's voices (in SYNTH). Turn SELECT back for the clock and the sounds.
 
@@ -603,7 +585,7 @@ Press HOME on the SONG page.
 
 | What | Where | When |
 | --- | --- | --- |
-| The project: patterns, song, sounds (each pattern's too), mixer, FX, the master bus, LFOs, arps, follow actions, SETUP | a file with two copies, so a power cut while saving keeps the old one | when you tap SAVE (while playing: at the stop) |
+| The project: patterns, song, sounds (each pattern's too), the drums' edits, mixer, FX, the master bus, LFOs, arps, follow actions, SETUP | a file with two copies, so a power cut while saving keeps the old one | when you tap SAVE (while playing: at the stop) |
 | User presets and kits | a store of their own | as soon as you save one |
 
 **From 0.4:** the same format; 0.4 and 0.5 read each other's projects.
