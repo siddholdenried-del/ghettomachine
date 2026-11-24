@@ -426,7 +426,7 @@ expect gen2_0 65535
 tap SAVE
 wait 400
 expect dirty 0
-expect projfmt 9
+expect projfmt 10
 expect linemark2 0
 reboot
 wait 600

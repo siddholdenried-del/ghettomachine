@@ -315,6 +315,16 @@ static unsigned patch_snapshot(KitPatch *copy)
     return version;
 }
 
+void trial_restore(const KitPatch *p)     /* the whole patch as it was saved (a project's drum edits) */
+{
+    unsigned flags = edit_lock();
+    patch = *p;
+    ++patch_version;
+    for (unsigned i = 0; i < KIT_PADS; ++i)
+        trim_goal[i] = pad_trim(i);
+    edit_unlock(flags);
+}
+
 void trial_snapshot(unsigned pad, KitPatch *copy)
 {
     if (pad && pad <= KIT_PADS && copy) patch_snapshot(copy);

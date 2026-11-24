@@ -88,9 +88,10 @@ static const char *trial_pad_name(int kit, int pad)
 #define NKEYS 27
 #define KEY_NOTE0 53                      /* key 0 (F3) at octave 0 */
 #define PROJ_MAGIC 0x31544745u            /* "EGT1": fm1-eight 0.1's project; another magic loads the default project */
-#define PROJ_VERSION 9                    /* 9: BongVerb's and BongDelay's knobs in the sends' slots (fx_migrate; the layout
-                                           * is 8's); 8: each clip its own LFO (plfo); 7: combined Color and mixed kits;
-                                           * 1–5, 7 and 8 readable, private divergent v6 rejected */
+#define PROJ_VERSION 10                   /* 10: the DrumEngine's patch (the drums' edits) appended (9's layout before
+                                           * it); 9: BongVerb's and BongDelay's knobs in the sends' slots (fx_migrate; the
+                                           * layout is 8's); 8: each clip its own LFO (plfo); 7: combined Color and mixed
+                                           * kits; 1-5 and 7-9 readable, private divergent v6 rejected */
 #define EIGHT_VERSION "0.4"
 #define NSONG 32                          /* the song chain's entries */
 #define NUSER 16                          /* user sounds (T2..T4) */
@@ -282,6 +283,11 @@ typedef struct {
      * clip each track plays now: set_clip swaps them as SOUNDS PER PATTERN swaps sounds; a format-7 file loads with
      * every clip given its track's) */
     lfo_t plfo[NPAT][NTRK];
+    /* format 10: the DrumEngine's patch as SAVE found it: the drums' edits on top of their kit (dpatch_kit: the kit
+     * they belong to; dpatch_size: sizeof(KitPatch) then, 0 none: another size or kit and the kit plays as it comes) */
+    KitPatch dpatch;
+    uint16_t dpatch_size;
+    uint8_t dpatch_kit, dpatch_rsv;
 } project_t;
 /* Freeze the persisted 64-step layouts; legacy files end before the 606 pots. */
 typedef struct {
@@ -314,6 +320,8 @@ typedef struct { dpart_old_t d; ipart_old_t t[NINST]; } pattern_old_t;
 #define PROJ_V4_TAIL_BYTES (((offsetof(project_t, insert) + 3u) & ~3u) - PROJ_TAIL)
 #define PROJ_V7_META_BYTES (offsetof(project_t, plfo) - PROJ_TAIL)   /* format 7 ended before the clips' LFOs */
 #define PROJ_V7_TAIL_BYTES ((PROJ_V7_META_BYTES + 3u) & ~3u)
+#define PROJ_V9_TAIL_BYTES (offsetof(project_t, dpatch) - PROJ_TAIL)   /* formats 8 and 9 ended before the drums' patch */
+_Static_assert((offsetof(project_t, dpatch) & 3u) == 0, "formats 8/9 ended on a word");
 
 /* project format 1 (0.1, 0.2 and 0.2's performance update), frozen: a file saved by them is read a part at a time
  * into format 2 (project_load_v1). Its sounds had 26 parameters, its steps a spare byte; 0.2 saved it up to psnd */
@@ -1145,7 +1153,9 @@ static int proj_file_format(void)
         return 0;
     if (sz >= (int)PROJ_META && sz <= (int)PROJ_CAPACITY && ver == PROJ_VERSION)
         return PROJ_VERSION;
-    if (sz >= (int)PROJ_META && sz <= (int)PROJ_CAPACITY && ver == 8)
+    if (sz >= (int)(PROJ_PREFIX + PROJ_V9_TAIL_BYTES) && sz <= (int)PROJ_CAPACITY && ver == 9)
+        return 9;                         /* (10's layout without the drums' patch) */
+    if (sz >= (int)(PROJ_PREFIX + PROJ_V9_TAIL_BYTES) && sz <= (int)PROJ_CAPACITY && ver == 8)
         return 8;                         /* (9's layout; the sends' knobs meant ROOM's and DIGI's) */
     if (sz >= (int)(PROJ_PREFIX + PROJ_V7_TAIL_BYTES) && sz <= (int)PROJ_CAPACITY && ver == 7)
         return 7;
@@ -1369,6 +1379,8 @@ static int project_load(void)
         proj.lfo[i] = proj.plfo[proj.pat][i];
     psnd_fetch_all();                     /* SOUNDS PER PATTERN: the focused pattern's, before they reach the engines */
     trial_kit(dpreset_genre_of(proj.dpreset));   /* the DrumEngine's kit: the project's (an older one's: ELECTRO) */
+    if (fmt >= 10 && proj.dpatch_size == sizeof(KitPatch) && proj.dpatch_kit == proj.dpreset)
+        trial_restore(&proj.dpatch);      /* (format 10) and the edits saved on top of it */
     pots_to_engines();
     tracks_to_voices();
     return 1;
@@ -1389,6 +1401,9 @@ static int project_save(void)             /* main loop, stopped (each erase stop
         for (t = 0; t < NTRK; t++)
             proj.plfo[clip_of(t)][t] = proj.lfo[t];
     }
+    trial_snapshot(1, &proj.dpatch);      /* the drums' edits, with the kit they're on */
+    proj.dpatch_size = (uint16_t)sizeof(KitPatch);
+    proj.dpatch_kit = proj.dpreset;
     result = project_encode();
     if (result != 0)
         return result;
@@ -6468,6 +6483,12 @@ static void reload_sound(void)            /* SAVE + OCT-: the track's sound (the
             drum_map_apply(saved_kit, saved_map);
             proj.dpreset = !dpreset_valid(saved_preset) ? (uint8_t)kit_factory(saved_kit) : saved_preset;
             trial_kit(dpreset_genre_of(proj.dpreset));
+            if (fmt >= 10) {              /* and the drums' edits saved on it */
+                static struct { KitPatch p; uint16_t size; uint8_t kit, rsv; } sv;
+                if (!plat_file_read(&PROJ_FILE, PROJ_PREFIX + (uint32_t)offsetof(project_t, dpatch) - PROJ_TAIL, &sv,
+                                    sizeof sv) && sv.size == sizeof(KitPatch) && sv.kit == proj.dpreset)
+                    trial_restore(&sv.p);
+            }
         }
         plat_unlock(f);
         pots_to_engines();                /* (a pad at a time under the lock) */
@@ -7477,6 +7498,7 @@ static void v6_value_text(int pad, int param, int tick, char *text)
 static void v6_voice_turn(int knob_index, int delta)
 {
     int pad = ui.pad+1;
+    dirty = 1;                            /* (format 10: SAVE keeps the drums' edits) */
     int fine = (ui.btn >> B_SEL) & 1u;
     if (fine) ui.sel_used = 1;
     if (knob_index < 0) {
@@ -11964,6 +11986,12 @@ int app_expect(const char *what, int *got)
         *got = ui.stool = (uint8_t)(atoi(what + 7) % NSTOOL);
     else if (!strncmp(what, "oldpick", 7))   /* oldpickN: 1 a track change as before 0.5 (the older suites) */
         *got = old_pick = (uint8_t)(what[7] == '1');
+    else if (!strncmp(what, "dparam", 6)) {   /* dparamPAD_I: the DrumEngine's parameter I of pad PAD (1..11), its tick */
+        const char *u = strchr(what, '_');
+        KitPatch cur;
+        trial_snapshot(1, &cur);
+        *got = u ? kit_param_get(&cur, atoi(what + 6), atoi(u + 1)) : -1;
+    }
     else if (!strcmp(what, "dtool"))      /* the drums' STEPS: 0 PART GROOVE's knobs, 1 the HIT's */
         *got = ui.dtool;
     else if (!strncmp(what, "dvel", 4)) { /* dvelPAD_STEP: the hit's velocity lock (0: none) */

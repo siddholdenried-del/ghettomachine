@@ -77,7 +77,8 @@ wait 50
 said DRUM KITS NOT SAVED YET
 release SAVE
 wait 100
-# the kit is the project's: saved, back after a restart, every drum on TRAP again
+# the kit is the project's: saved, back after a restart; and (0.5, format 10) the drums' edits on it too: the kick
+# still on the BOOM BAP preset it was turned to
 tap SAVE
 wait 300
 said SAVED
@@ -98,7 +99,7 @@ tap EDIT
 wait 100
 where
 wait 100
-said KICK Trap
+said KICK Boom Bap
 tap SEQ
 wait 50
 # the stock engine: its own list (the 808 / 909), the genre kit's stock kit (TRAP's: the 808) in place

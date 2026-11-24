@@ -77,10 +77,10 @@ wait 600
 tap SAVE
 wait 400
 expect dirty 0
-expect projfmt 9
+expect projfmt 10
 reboot
 wait 600
-expect projfmt 9
+expect projfmt 10
 expect preset2 24
 expect snd2_8 70
 expect ilock2_1_8 100
@@ -118,7 +118,7 @@ expect snd2_9 108
 expect snd2_39 60
 tap SAVE
 wait 400
-expect projfmt 9
+expect projfmt 10
 reboot
 wait 600
 expect sounds 1

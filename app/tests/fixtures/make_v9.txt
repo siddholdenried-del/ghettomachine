@@ -1,0 +1,31 @@
+# Made once with the last format-9 build (24 Nov 2026, 2d94adc, before the drums' patch was saved: format 10), to keep
+# a project as that build saved it for app/tests/drum_save.txt: proj_v9.img. Run from the repository's top with the
+# format-9 build only (kept for the record)
+wait 600
+# the drums: step 3 on for the BD, a chance on step 1; T3: a note on step 1; the tempo 133
+key 4 down
+wait 30
+key 4 up
+wait 30
+expect hit0_3 1
+key 0 down
+wait 30
+turn SELECT -5
+wait 30
+key 0 up
+wait 30
+expect prob0_1 75
+turn K4 13
+wait 30
+turn ALGO 2
+wait 30
+key 0 down
+wait 30
+key 0 up
+wait 30
+expect nsteps3 1
+tap SAVE
+wait 400
+expect dirty 0
+expect projfmt 9
+flash_dump app/tests/fixtures/proj_v9.img

@@ -1,0 +1,51 @@
+# The drums' edits are saved (0.5, project format 10): the DrumEngine's patch goes with SAVE and comes back at the
+# start, on the kit it was made on. A format-9 project (proj_v9.img, fixtures/make_v9.txt) loads as it was, its drums
+# on their kit's presets, and saves as 10. dparamPAD_I: the DrumEngine's parameter I of pad PAD (1..11), its tick
+flash_load app/tests/fixtures/proj_v9.img
+reboot
+wait 600
+expect dirty 0
+expect projfmt 9
+expect hit0_3 1
+expect prob0_1 75
+expect nsteps3 1
+expect demode 1
+# the snare's DECAY (its parameter 7) at 0, as its preset has it; turned up: EDIT, page 2, K3
+expect dparam2_7 0
+turn ALGO -3
+wait 50
+key 3 down
+wait 20
+key 3 up
+tap EDIT
+wait 100
+turn SELECT 1
+wait 100
+turn K3 5
+wait 100
+expect dparam2_7 >0
+expect dirty 1
+tap SAVE
+wait 400
+expect dirty 0
+expect projfmt 10
+reboot
+wait 600
+expect projfmt 10
+expect dparam2_7 >0
+expect hit0_3 1
+expect prob0_1 75
+expect nsteps3 1
+# another kit: the edit isn't that kit's; saved there and back, the kit's own presets
+turn PRESET 1
+wait 100
+tap SEQ
+wait 50
+turn PRESET 1
+wait 100
+expect dparam2_7 0
+tap SAVE
+wait 400
+reboot
+wait 600
+expect dparam2_7 0

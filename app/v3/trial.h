@@ -39,6 +39,7 @@ void trial_voice_set(unsigned pad, unsigned control, int value);
 int trial_recipe(unsigned pad);
 void trial_recipe_turn(unsigned pad, int delta);
 void trial_snapshot(unsigned pad, KitPatch *copy);
+void trial_restore(const KitPatch *p);   /* the whole patch put back (a saved project's drum edits) */
 void trial_parameter_turn(unsigned pad, int param, int delta, int fine);
 /* Explicit transition to stock: the kit's voices and the bus's dynamics cleared */
 void trial_quiet(void);
