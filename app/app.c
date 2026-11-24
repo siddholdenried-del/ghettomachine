@@ -312,23 +312,6 @@ typedef struct {
     dgen_t dgen[NPAT];                    /* format 12: each drum part's generator */
 } project_t;
 static uint8_t *fxv(int i);               /* an FX knob's place in the project: fx, or fx2 past FXP_NUM */
-/* Freeze the persisted 64-step layouts; legacy files end before the 606 pots. */
-typedef struct {
-    uint32_t hit[NPADS][2], acc[2];
-    uint16_t mute;
-    uint8_t len, rate, nlk, rsv[3];
-    lock_t lk[OLD_LOCKS];
-} dpart_old_t;
-typedef struct {
-    uint8_t note[NCHORD], vel, gate, prob;
-} nstep_old_t;
-_Static_assert(sizeof(nstep_old_t) == 7u && sizeof(nstep_t) == 8u, "stable legacy and format-4 step layouts");
-typedef struct {
-    nstep_old_t st[OLD_STEPS];
-    uint8_t len, rate, nlk, rsv;
-    ilock_t lk[OLD_LOCKS];
-} ipart_old_t;
-typedef struct { dpart_old_t d; ipart_old_t t[NINST]; } pattern_old_t;
 /* format 4..10's 128-step pattern, 16 locks a part: a record of such a file is decoded as this, then spread */
 typedef struct {
     uint32_t hit[NPADS][STEP_WORDS], acc[STEP_WORDS];
@@ -347,10 +330,7 @@ _Static_assert(offsetof(dpart_v10_t, lk) == offsetof(dpart_t, lk) && offsetof(ip
 #define PROJ_PREFIX ((uint32_t)offsetof(project_t, p))
 #define PROJ_TAIL ((uint32_t)offsetof(project_t, pots))
 #define PROJ_TAIL_BYTES (sizeof(project_t) - PROJ_TAIL)
-#define OLD_TAIL (PROJ_PREFIX + NPAT * sizeof(pattern_old_t))
 #define PROJ_LEGACY_TAIL_BYTES ((uint32_t)offsetof(project_t, pots606) - PROJ_TAIL)
-#define PROJ_V3_SIZE (OLD_TAIL + PROJ_LEGACY_TAIL_BYTES)
-#define PROJ_V2_SIZE (PROJ_V3_SIZE - sizeof(((project_t *)0)->gen))
 #define PROJ_CAPACITY (8u * 4096u - PLAT_FILE_HEAD)
 #define PROJ_META (PROJ_PREFIX + PROJ_TAIL_BYTES)
 #define PROJ_V5_META_BYTES (offsetof(project_t, insert) + sizeof(((project_t *)0)->insert) - PROJ_TAIL)
@@ -363,69 +343,9 @@ _Static_assert(offsetof(dpart_v10_t, lk) == offsetof(dpart_t, lk) && offsetof(ip
 _Static_assert((offsetof(project_t, pmix) & 3u) == 0, "formats 10/11 ended on a word");
 _Static_assert((offsetof(project_t, dpatch) & 3u) == 0, "formats 8/9 ended on a word");
 
-/* project format 1 (0.1, 0.2 and 0.2's performance update), frozen: a file saved by them is read a part at a time
- * into format 2 (project_load_v1). Its sounds had 26 parameters, its steps a spare byte; 0.2 saved it up to psnd */
-typedef struct {
-    uint8_t note[NCHORD];
-    uint8_t vel, gate, prob, rsv;
-} nstep_v1_t;
-typedef struct {
-    nstep_v1_t st[OLD_STEPS];
-    uint8_t len, rate, nlk, rsv;
-    ilock_t lk[OLD_LOCKS];
-} ipart_v1_t;
-typedef struct {
-    dpart_old_t d;
-    ipart_v1_t t[NINST];
-} pattern_v1_t;
-typedef struct {
-    uint8_t type, level;
-    int8_t oct;
-    uint8_t preset, edited, rsv[3];
-    int8_t snd[SP_NUM_V1];
-    uint16_t s_start, s_end, s_lstart;
-    uint8_t s_loop, s_root;
-    int8_t s_tune;
-    uint8_t s_q;
-    uint8_t arp_mode, arp_rate, arp_oct, arp_gate, arp_latch;
-    uint8_t chord, chord_inv, rsv2;
-} track_v1_t;
-typedef struct {
-    int8_t snd[SP_NUM_V1];
-    uint8_t type, level, preset, edited, used;
-} psound_v1_t;
-typedef struct {
-    uint32_t magic;
-    uint8_t kit, pat, swing, tmute;
-    uint16_t bpm10;
-    uint8_t dpreset, version;
-    track_v1_t tr[NINST];
-    lfo_t lfo[NTRK];
-    struct {
-        uint8_t level, pan, rev, dly;
-    } mix[NTRK];
-    uint8_t fx[FXP_NUM];
-    uint8_t song_n, song_on, click, recq;
-    struct {
-        uint8_t pat, bars;
-    } song[NSONG];
-    pattern_v1_t p[NPAT];
-    uint8_t pots[2][NPADS + 1][NPOTS];
-    psound_v1_t psnd[NPAT][NINST];
-    uint8_t pkit[NPAT];
-    uint8_t follow[NPAT];
-} project_v1_t;
-#define V1_OFF(f) ((uint32_t)offsetof(project_v1_t, f))
-#define PRESETS_V1 15                     /* format 1's factory sounds: its user slots (preset) began there */
-_Static_assert(sizeof(project_v1_t) == 32680u && V1_OFF(psnd) == 31160u, "format 1 as 0.2's performance update saved it");
-_Static_assert(offsetof(project_t, tr) == V1_OFF(tr), "the header as format 1's");
-_Static_assert(offsetof(project_t, song) - offsetof(project_t, lfo) == V1_OFF(song) - V1_OFF(lfo), "lfo .. song as format 1's");
-_Static_assert(offsetof(project_t, follow) - offsetof(project_t, pkit) == V1_OFF(follow) - V1_OFF(pkit), "pkit, follow");
-_Static_assert(PROJ_V2_SIZE == 31544u, "format 2 as 0.3 saved it");
 
 /* the project's file: two copies of 32 KiB at the start of the data area (plat_file_*) */
 static const plat_file_t PROJ_FILE = {0x97000u, 0x9F000u, 8u * 4096u};
-_Static_assert(PROJ_V3_SIZE == 32120u, "format 3 as 0.4 saved it");
 
 static project_t proj PLAT_POOL;
 static uint8_t *fxv(int i) { return i < FXP_NUM ? &proj.fx[i] : &proj.fx2[(i - FXP_NUM) & 7]; }
@@ -1272,171 +1192,11 @@ static int proj_file_format(void)
         return 5;
     if (sz >= (int)(PROJ_PREFIX + PROJ_V4_TAIL_BYTES) && sz <= (int)PROJ_CAPACITY && ver == 4)
         return 4;
-    if (sz == (int)PROJ_V3_SIZE && ver == 3)
-        return 3;
-    if (sz == (int)PROJ_V2_SIZE && ver == 2)
-        return 2;
-    if (ver < 2 && (sz == (int)sizeof(project_v1_t) || sz == (int)V1_OFF(psnd)))
-        return 1;
-    return 0;
-}
-
-static uint8_t preset_from_v1(uint8_t p)  /* format 1's USER n came right after its 15 factory sounds */
-{
-    return (uint8_t)(p >= PRESETS_V1 ? p - PRESETS_V1 + PRESET_USER_FIRST : p);
-}
-
-static int track_from_v1(int i, track_t *d)   /* format 1's track i (0..2) from the file: 0 read */
-{
-    static track_v1_t v;
-    int k;
-    if (plat_file_read(&PROJ_FILE, V1_OFF(tr) + (uint32_t)i * sizeof v, &v, sizeof v) != 0)
-        return -1;
-    d->type = v.type;
-    d->level = v.level;
-    d->oct = v.oct;
-    d->preset = preset_from_v1(v.preset);
-    d->edited = v.edited;
-    for (k = 0; k < 3; k++)
-        d->rsv[k] = 0;
-    for (k = 0; k < SP_NUM_V1; k++)
-        d->snd[k] = v.snd[k];
-    syn_defaults(d->snd, SP_NUM_V1);      /* the update's parameters: as a new sound has them */
-    d->s_start = v.s_start;
-    d->s_end = v.s_end;
-    d->s_lstart = v.s_lstart;
-    d->s_loop = v.s_loop;
-    d->s_root = v.s_root;
-    d->s_tune = v.s_tune;
-    d->s_q = v.s_q;
-    d->arp_mode = v.arp_mode;
-    d->arp_rate = v.arp_rate;
-    d->arp_oct = v.arp_oct;
-    d->arp_gate = v.arp_gate;
-    d->arp_latch = v.arp_latch;
-    d->chord = v.chord;
-    d->chord_inv = v.chord_inv;
-    d->rsv2 = 0;
-    return 0;
-}
-
-static int psound_from_v1(int p, int t, psound_t *d)   /* format 1's pattern p, track t (0..2) sound: 0 read */
-{
-    static psound_v1_t v;
-    int k;
-    if (plat_file_read(&PROJ_FILE, V1_OFF(psnd) + ((uint32_t)p * NINST + (uint32_t)t) * sizeof v, &v, sizeof v) != 0)
-        return -1;
-    for (k = 0; k < SP_NUM_V1; k++)
-        d->snd[k] = v.snd[k];
-    syn_defaults(d->snd, SP_NUM_V1);
-    d->type = v.type;
-    d->level = v.level;
-    d->preset = preset_from_v1(v.preset);
-    d->edited = v.edited;
-    d->used = v.used;
-    return 0;
-}
-
-static int read_old_drums(uint32_t at, dpart_t *d)
-{
-    dpart_old_t old;
-    int pad, w, i;
-    if (plat_file_read(&PROJ_FILE, at, &old, sizeof old) != 0)
-        return -1;
-    for (w = 0; w < 2; w++) {
-        d->acc[w] = old.acc[w];
-        for (pad = 0; pad < NPADS; pad++)
-            d->hit[pad][w] = old.hit[pad][w];
-    }
-    d->mute = old.mute; d->len = old.len; d->rate = old.rate; d->nlk = old.nlk;
-    for (i = 0; i < OLD_LOCKS; i++)
-        d->lk[i] = old.lk[i];
-    return 0;
-}
-
-static int project_load_v23(int fmt)
-{
-    static ipart_old_t old;
-    int i, t, k;
-    if (plat_file_read(&PROJ_FILE, 0, &proj, PROJ_PREFIX) ||
-        plat_file_read(&PROJ_FILE, OLD_TAIL, proj.pots, fmt == 2 ? PROJ_V2_SIZE - OLD_TAIL : PROJ_LEGACY_TAIL_BYTES))
-        return -1;
-    for (i = 0; i < NPAT; i++) {
-        uint32_t at = PROJ_PREFIX + (uint32_t)i * sizeof(pattern_old_t);
-        if (read_old_drums(at, &proj.p[i].d))
-            return -1;
-        for (t = 0; t < NINST; t++) {
-            ipart_t *d = &proj.p[i].t[t];
-            if (plat_file_read(&PROJ_FILE, at + offsetof(pattern_old_t, t) + (uint32_t)t * sizeof old,
-                               &old, sizeof old))
-                return -1;
-            d->len = old.len; d->rate = old.rate; d->nlk = old.nlk;
-            for (k = 0; k < OLD_LOCKS; k++)
-                d->lk[k] = old.lk[k];
-            for (k = 0; k < OLD_STEPS; k++) {
-                int n;
-                for (n = 0; n < NCHORD; n++) d->st[k].note[n] = old.st[k].note[n];
-                d->st[k].vel = old.st[k].vel;
-                d->st[k].prob = old.st[k].prob;
-                d->st[k].gate = old.st[k].gate;
-            }
-        }
-    }
-    return 0;
+    return 0;                             /* (0.2, 0.3 and 0.4's files, formats 1 to 3: their converters went on 24 Nov
+                                           * 2026; such a file starts a fresh project and stays in the flash until SAVE) */
 }
 
 #include "project_codec.h"
-
-/* a format-1 file into proj (cleared first), a part at a time from the flash: 0 read */
-static int project_load_v1(void)
-{
-    static ipart_v1_t ip;
-    int sz = plat_file_size(&PROJ_FILE), i, t, k;
-    uint8_t *b = (uint8_t *)&proj;
-    if (plat_file_read(&PROJ_FILE, 0, b, V1_OFF(tr)) != 0)
-        return -1;
-    for (i = 0; i < NINST; i++)
-        if (track_from_v1(i, &proj.tr[i]) != 0)
-            return -1;
-    if (plat_file_read(&PROJ_FILE, V1_OFF(lfo), proj.lfo, V1_OFF(song) + (uint32_t)sizeof proj.song - V1_OFF(lfo)) != 0)
-        return -1;                        /* lfo .. song: bytes, laid out alike (the padding after them differs) */
-    for (i = 0; i < NPAT; i++) {
-        uint32_t at = V1_OFF(p) + (uint32_t)i * sizeof(pattern_v1_t);
-        if (read_old_drums(at, &proj.p[i].d) != 0)
-            return -1;
-        for (t = 0; t < NINST; t++) {
-            ipart_t *d = &proj.p[i].t[t];
-            if (plat_file_read(&PROJ_FILE, at + (uint32_t)offsetof(pattern_v1_t, t) + (uint32_t)t * sizeof ip, &ip,
-                               sizeof ip) != 0)
-                return -1;
-            for (k = 0; k < OLD_STEPS; k++) {
-                int n;
-                for (n = 0; n < NCHORD; n++)
-                    d->st[k].note[n] = ip.st[k].note[n];
-                d->st[k].vel = ip.st[k].vel;
-                d->st[k].gate = ip.st[k].gate;
-                d->st[k].prob = ip.st[k].prob;
-            }
-            d->len = ip.len;
-            d->rate = ip.rate;
-            d->nlk = ip.nlk;
-            d->rsv = 0;
-            for (k = 0; k < OLD_LOCKS; k++)
-                d->lk[k] = ip.lk[k];
-        }
-    }
-    if (plat_file_read(&PROJ_FILE, V1_OFF(pots), proj.pots, sizeof proj.pots) != 0)
-        return -1;
-    if (sz == (int)sizeof(project_v1_t)) { /* the performance update's part */
-        for (i = 0; i < NPAT; i++)
-            for (t = 0; t < NINST; t++)
-                if (psound_from_v1(i, t, &proj.psnd[i][t]) != 0)
-                    return -1;
-        if (plat_file_read(&PROJ_FILE, V1_OFF(pkit), proj.pkit, V1_OFF(follow) + NPAT - V1_OFF(pkit)) != 0)
-            return -1;
-    }
-    return 0;
-}
 
 /* a project saved before BongFX (format 8 or older): its sends' knobs, BongVerb's and BongDelay's. DECAY, the delay's
  * TIME (a division as before), FEEDBACK (REGEN), TONE and both LEVELs keep their places and meaning; ROOM's TONE turns
@@ -1460,10 +1220,6 @@ static int project_load(void)
         ((uint8_t *)&proj)[i] = 0;
     if (fmt >= 4) {
         r = project_decode(plat_file_data(&PROJ_FILE), (uint32_t)plat_file_size(&PROJ_FILE), fmt);
-    } else if (fmt >= 2) {
-        r = project_load_v23(fmt);
-    } else if (fmt == 1) {
-        r = project_load_v1();
     }
     if (r != 0 || proj.magic != PROJ_MAGIC || proj.kit >= KIT_NUM || proj.pat >= NPAT || proj.bpm10 < 600 ||
         proj.bpm10 > 2400) {
@@ -1533,17 +1289,11 @@ static int project_save(void)             /* main loop, stopped (each erase stop
 /* sounds for T2..T4 and kits for the drums, saved by hand (SAVE held + PRESETS, let go), kept in a store object of their
  * own (OBJ_USER, A / B: a power cut keeps the old one) apart from any project */
 #define USER_MAGIC 0x32525355u            /* "USR2": the synth update's (64 parameters a sound) */
-#define USER_MAGIC_V1 0x31525355u         /* "USR1": 0.2's (26), converted as they load */
 typedef struct {
     uint8_t used, mono, rsv[2];
     int8_t v[SP_NUM];
     uint8_t rsv2[2];
 } usound_t;
-typedef struct {
-    uint8_t used, mono, rsv[2];
-    int8_t v[SP_NUM_V1];
-    uint8_t rsv2[2];
-} usound_v1_t;
 typedef struct {
     uint8_t used, kit, rsv[2];
     uint8_t pots[NPADS + 1][NPOTS];
@@ -1554,13 +1304,7 @@ typedef struct {
     ukit_t kit[NUKIT];
     uint8_t model[NUKIT][NPADS];  /* suffix, preserving USR2’s complete legacy prefix */
 } user_t;
-typedef struct {
-    uint32_t magic;
-    usound_v1_t snd[NUSER];
-    ukit_t kit[NUKIT];
-} user_v1_t;
 _Static_assert(sizeof(user_t) <= 3840u, "the user presets fit one store object");
-_Static_assert(sizeof(user_t) > sizeof(user_v1_t), "0.2's user presets convert in place, from the end");
 static user_t user PLAT_POOL;
 
 static int dpreset_genre_of(int i)        /* a genre kit itself; a stock or user kit: ELECTRO, the DrumEngine's factory
@@ -1579,24 +1323,6 @@ static void user_load(void)
             if (n == (int)sizeof user) drum_map_clean(user.kit[k].kit, user.model[k]);
             else for (i = 0; i < NPADS; i++) user.model[k][i] = 0;
         }
-        return;
-    }
-    if (n == (int)sizeof(user_v1_t) && user.magic == USER_MAGIC_V1) {   /* 0.2's: moved into place, last first */
-        uint32_t from = (uint32_t)offsetof(user_v1_t, kit), to = (uint32_t)offsetof(user_t, kit);
-        for (i = sizeof user.kit; i-- > 0;)
-            b[to + i] = b[from + i];
-        for (k = NUSER - 1; k >= 0; k--) {
-            usound_v1_t o = ((const usound_v1_t *)(b + offsetof(user_v1_t, snd)))[k];
-            usound_t *u = &user.snd[k];
-            u->used = o.used;
-            u->mono = o.mono;
-            u->rsv[0] = u->rsv[1] = 0;
-            for (i = 0; i < SP_NUM_V1; i++)
-                u->v[i] = o.v[i];
-            syn_defaults(u->v, SP_NUM_V1);
-            u->rsv2[0] = u->rsv2[1] = 0;
-        }
-        user.magic = USER_MAGIC;
         return;
     }
     for (i = 0; i < sizeof user; i++)
@@ -6938,7 +6664,7 @@ static void setup_knob(int k, int32_t e)  /* SETUP: K1 MIDI CLOCK, K2 SOUNDS, K3
 
 static void reload_sound(void)            /* SAVE + OCT-: the track's sound (the drums: their knobs) as last saved */
 {
-    int tr = ui.trk, sz = plat_file_size(&PROJ_FILE), fmt = proj_file_format();
+    int tr = ui.trk, fmt = proj_file_format();
     uint32_t f;
     if (!fmt) {
         app_say("RELOAD", "NOTHING SAVED");
@@ -6954,8 +6680,7 @@ static void reload_sound(void)            /* SAVE + OCT-: the track's sound (the
         saved_kit = (uint8_t)kit_now(saved_kit);   /* (saved on a cut kit: its heir) */
         if (fmt >= 7 && plat_file_read(&PROJ_FILE, offmap, saved_map, sizeof saved_map))
             return;
-        if (plat_file_read(&PROJ_FILE, fmt >= 4 ? PROJ_PREFIX : fmt >= 2 ? OLD_TAIL : V1_OFF(pots), pots,
-                           sizeof pots) != 0)
+        if (plat_file_read(&PROJ_FILE, PROJ_PREFIX, pots, sizeof pots) != 0)
             return;
         f = plat_lock();
         locks_release();
@@ -6984,16 +6709,12 @@ static void reload_sound(void)            /* SAVE + OCT-: the track's sound (the
         static psound_t q;
         track_t *ts = tset(tr);
         int k;
-        if (fmt >= 2 ? plat_file_read(&PROJ_FILE, (uint32_t)((uint8_t *)&proj.tr[tr - 1] - (uint8_t *)&proj), &t,
-                                      sizeof t) != 0
-                     : track_from_v1(tr - 1, &t) != 0)
+        if (plat_file_read(&PROJ_FILE, (uint32_t)((uint8_t *)&proj.tr[tr - 1] - (uint8_t *)&proj), &t, sizeof t) != 0)
             return;
         q.used = 0;
-        if (sounds_pp() && fmt >= 2)
-            plat_file_read(&PROJ_FILE, (fmt >= 4 ? PROJ_PREFIX : OLD_TAIL) + (uint32_t)((uint8_t *)&proj.psnd[clip_of(tr)][tr - 1] - (uint8_t *)proj.pots), &q,
+        if (sounds_pp())
+            plat_file_read(&PROJ_FILE, PROJ_PREFIX + (uint32_t)((uint8_t *)&proj.psnd[clip_of(tr)][tr - 1] - (uint8_t *)proj.pots), &q,
                            sizeof q);
-        else if (sounds_pp() && sz == (int)sizeof(project_v1_t) && psound_from_v1(clip_of(tr), tr - 1, &q) != 0)
-            q.used = 0;
         f = plat_lock();
         for (k = 0; k < SP_NUM; k++)
             ts->snd[k] = q.used ? q.snd[k] : t.snd[k];
