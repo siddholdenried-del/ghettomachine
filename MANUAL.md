@@ -22,6 +22,7 @@ GhettoMachine, part of the BongWare firmware line engineered by BongTech, turns 
 - **Stems over USB:** a computer records the master and each track on its own pair of inputs, all at once.
 
 > Development preview 0.5. The build history that used to open this manual is in [CHANGELOG.md](CHANGELOG.md).
+> On battery, the top line shows its level as up to three bars (red when empty); on USB power it shows nothing.
 > **Hold SEL** on any page for HELP: the held combinations that page understands.
 
 ## Installing it, and getting back
@@ -615,6 +616,16 @@ Press HOME on the SONG page.
   radio quiet, the default) or **ON**: the FM-1 shows up as a Bluetooth MIDI device for a computer, phone or
   tablet, and the page says STARTING, then ON, then CONNECTED. Everything MIDI goes over it as over USB: notes in
   and out, clock. The switch is kept with the project (SAVE), so it comes back on at power-on.
+- **SELECT again: BT AUDIO.** The FM-1's sound to Bluetooth headphones or a speaker. **K1 AUDIO** on: it connects
+  to the last device it knew, or looks for devices (about 10 s; put the headphones in pairing mode). **K2 DEVICE**
+  moves down the list (SAVED: remembered, up to four; FOUND: around now), **K3 CONNECT** up connects the one picked
+  and down hangs up, **K4 SCAN** up looks again and down forgets a saved one. While it plays through a device the
+  FM-1's own speaker and headphone output are silent. Know before you use it:
+  - **It's late.** The sound reaches the ear 150 to 300 ms after a key, the device's own buffer: for listening
+    back, not for playing in time.
+  - **Undo keeps one step while it's on** (its memory is lent to the radio), and the undo history is emptied when
+    you turn it on or off. All six steps come back when it's off.
+  - It isn't kept with the project: turn it on each time.
 - **SELECT again: CPU.** Turn SELECT to see where the processor's time goes, live: **DRUMS**, **SYNTH**, **INSERT+COLOR**,
   **REV+DLY CORE2**, **MASTER CORE2**, **OTHER** and the **TOTAL**, each as a share of the time the FM-1 has for each
   block of sound. The bar is the average; a tick past it marks the worst block of the last second or so (a pattern
@@ -652,6 +663,9 @@ the sound saved with the pattern it's on.
 
 - **In:** channel 10 plays the pads (General MIDI drum notes), channels 2–4 play T2–T4, and channel 1 plays the
   track picked.
+- **Pressure:** lean on a held key (the 20 lower keys sense it; the top seven don't) and the track's hardest-held
+  key is the matrix's **PRESSURE** source: MATRIX, SRC PRESSURE, to CUTOFF or anything else. It goes out as
+  channel pressure on the track's channel, and channel or key pressure coming in on channels 2–4 does the same.
 - **Out:** the keys send on their track's channel (pads on channel 10). With **SEQ OUT** on (SETUP, SELECT: MIDI)
   the sequencer's notes go out too, on the same channels.
 - **Clock:** sent or followed (SETUP K1), over USB and Bluetooth. Followed, **Continue** goes on from where the
@@ -729,8 +743,10 @@ the sound saved with the pattern it's on.
   actions and sounds per pattern off if it was saved before the performance update.
 - MIDI clock is timed to the audio block it arrives in, so following, the FM-1 sits about 3 ms behind the clock on
   average (up to 6). No Song Position Pointer: Continue is from the last Stop, not from a place the clock names.
-- Bluetooth: MIDI with one computer or phone. The FM-1 doesn't connect out to Bluetooth keyboards, and sends no
-  audio to Bluetooth headphones or speakers.
+- Bluetooth: MIDI with one computer or phone; the FM-1 doesn't connect out to Bluetooth keyboards. No WiFi (it
+  can't share a build with Bluetooth).
+- The headphone jack's switch isn't read: nothing changes by itself when headphones go in (the speaker mutes
+  itself in hardware).
 - Mix per pattern keeps the mixer, the FX and the master bus, not the tracks' insert effects or Color.
 - The 303 generator: no 303-style transpose track. The beat generator keeps no steps (the 303's KEEP has no drum
   twin) and writes no ratchets. A part of any length, up to 128 steps, gets a line of that length, not a 16-step line repeated. The arpeggiator

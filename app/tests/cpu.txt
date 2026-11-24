@@ -64,9 +64,9 @@ tap HOME   # (past the QUICK MIXER, 0.5)
 wait 30
 expect page 13
 expect setupview 0
-turn SELECT 2   # (0.5: past the MIDI view)
+turn SELECT 3   # (0.5: past the MIDI and BT AUDIO views)
 wait 600
-expect setupview 2
+expect setupview 3
 expect cpu0 >0
 expect cpu1 >0
 expect cpu2 0
@@ -78,7 +78,7 @@ expect cpu4 >0
 expect cpupk6 >0
 expect cpupk0 >0
 shot cpu_page.png
-turn SELECT -2
+turn SELECT -3
 wait 30
 expect setupview 0
 tap PLAY

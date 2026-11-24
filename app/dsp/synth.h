@@ -40,7 +40,9 @@ enum {                                    /* a sound's parameters (the order of 
 
 /* the matrix's sources: the bipolar ones -1..1 (LFO 1, LFO 2, NOTE: the note from C4, RANDOM: each note's own),
  * the others 0..1 */
-enum { MS_OFF, MS_LFO1, MS_LFO2, MS_MENV, MS_FENV, MS_AENV, MS_VEL, MS_NOTE, MS_RND, MS_M1, MS_M2, MS_M3, MS_M4, MS_NUM };
+enum { MS_OFF, MS_LFO1, MS_LFO2, MS_MENV, MS_FENV, MS_AENV, MS_VEL, MS_NOTE, MS_RND, MS_M1, MS_M2, MS_M3, MS_M4,
+       MS_PRESS,                          /* (0.5) the keys' pressure, the track's hardest-held key, 0..1 */
+       MS_NUM };
 /* its destinations: at amount +-64 a source of 1 moves PITCH and OSC 2 (OSC 2's pitch) +-48 semitones (the amount
  * squared: fine near 0), DETUNE +-127 cents, CUTOFF its whole range, the 0..127 parameters 127 steps, BIAS 64, LEVEL
  * up to twice or to nothing, PAN all the way, LFO 2 RATE 127 steps of its rate */
@@ -75,6 +77,7 @@ void syn_init(void);
 void syn_sound(int trk, const int8_t *v); /* every parameter of the track's sound */
 void syn_set(int trk, int id, int v);
 void syn_level(int trk, float level);     /* 0..1 */
+void syn_pressure(int trk, float p);      /* the keys' pressure on the track, 0..1 (the matrix's PRESSURE; slewed a block at a time) */
 /* a note: vel 0..1; gate in samples before it lets go by itself, < 0 held until syn_note_off. mono: MONO (one note,
  * SP_VOICES the unison stack, the held keys a stack it goes back down, SP_LEGATO: 1 ON, glide whenever the voice still
  * sounds; 2 SLIDE, glide only into a tied note, as a 303; SP_GLIDE); else POLY (SP_VOICES

@@ -6,8 +6,8 @@
  * A preflight counts every byte before erasing the inactive atomic save slot. */
 #define CODEC_BUCKETS 512
 #define CODEC_MAX ((uint32_t)(sizeof(pattern_t) + (sizeof(pattern_t) + 127u) / 128u + 2u))
-static uint8_t codec_out[CODEC_MAX];      /* (in .bss since 0.5's format 12: the pool's room went to the project) */
-static uint16_t codec_prev[CODEC_BUCKETS];
+static uint8_t codec_out[CODEC_MAX] PLAT_POOL;
+static uint16_t codec_prev[CODEC_BUCKETS] PLAT_POOL;
 _Static_assert(sizeof(pattern_t) < 65535u, "pattern offsets fit the codec");
 
 static uint32_t codec_hash(const uint8_t *p)

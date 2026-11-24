@@ -43,7 +43,7 @@ static const char *const N_SHPOS[] = {"PRE FLT", "POST FLT"};
 static const char *const N_LSHAPE[] = {"SINE", "TRIANGLE", "SAW UP", "SAW DOWN", "SQUARE", "S&H", "SMOOTH"};
 static const char *const N_L2KEY[] = {"EACH NOTE", "FREE"};
 static const char *const N_MSRC[MS_NUM] = {"OFF", "LFO 1", "LFO 2", "MOD ENV", "FILT ENV", "AMP ENV", "VELOCITY", "NOTE",
-                                          "RANDOM", "MACRO 1", "MACRO 2", "MACRO 3", "MACRO 4"};
+                                          "RANDOM", "MACRO 1", "MACRO 2", "MACRO 3", "MACRO 4", "PRESSURE"};
 static const char *const N_MDST[MD_NUM] = {"PITCH", "OSC 2", "DETUNE", "CUTOFF", "RESO", "PWM", "MIX", "SUB", "NOISE",
                                           "DRIVE", "FM", "RING", "SHAPER", "BIAS", "LEVEL", "PAN", "LFO 2 RATE"};
 #define SLOT(n) {"MOD" #n " SRC", 0, MS_NUM - 1, 0, SF_ENUM, N_MSRC}, {"MOD" #n " DEST", 0, MD_NUM - 1, 0, SF_ENUM, N_MDST}, \
@@ -362,6 +362,7 @@ static vx_t vx[NVOICE];
 static struct {
     int8_t v[SP_NUM];
     float level;
+    float press, press_to;                /* the keys' pressure, and where it is going */
     uint8_t stack[8], nstack;             /* MONO: the keys held, the newest last */
     /* the LFO */
     uint8_t mdest;
@@ -608,6 +609,7 @@ float syn_slot_now(int t, int k)
     case MS_VEL: sv = x->velr; break;
     case MS_NOTE: sv = ((float)vv[best].note - 60.0f) * (1.0f / 60.0f); break;
     case MS_RND: sv = x->rnd; break;
+    case MS_PRESS: sv = tk[t].press; break;
     default: sv = (float)s[SP_M1 + src - MS_M1] * (1.0f / 127.0f); break;
     }
     return sv * (float)amt * (1.0f / 64.0f);
@@ -633,6 +635,12 @@ void syn_mixer(int t, int pan, float rev, float dly)
     mix[t].pr = p < 0.0f ? 1.0f + p : 1.0f;
     mix[t].rs = rev < 0.0f ? 0.0f : rev;
     mix[t].ds = dly < 0.0f ? 0.0f : dly;
+}
+
+void syn_pressure(int t, float p)
+{
+    if (t >= 1 && t < SYN_TRACKS)
+        tk[t].press_to = p < 0.0f ? 0.0f : p > 1.0f ? 1.0f : p;
 }
 
 void syn_level(int t, float level)
@@ -1026,6 +1034,7 @@ static void matrix(int t, int i, float *acc)
         case MS_VEL: sv = x->velr; break;
         case MS_NOTE: sv = ((float)vv[i].note - 60.0f) * (1.0f / 60.0f); break;
         case MS_RND: sv = x->rnd; break;
+        case MS_PRESS: sv = tk[t].press; break;
         default: sv = (float)s[SP_M1 + src - MS_M1] * (1.0f / 127.0f); break;
         }
         a = (float)amt * (1.0f / 64.0f);
@@ -1045,6 +1054,7 @@ void syn_prepare(void)
 {
     int i, h = 0, deal = 128;
     for (i = 1; i < SYN_TRACKS; i++) {
+        tk[i].press += (tk[i].press_to - tk[i].press) * 0.35f;   /* (a block at a time: no steps in the filter) */
         push_mod(i);
         if (pcut[i] != pcut_to[i]) {      /* a held move's cutoff, slewed (syn_perform) */
             const float d = pcut_to[i] - pcut[i];

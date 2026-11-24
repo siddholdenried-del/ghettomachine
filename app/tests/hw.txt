@@ -1,0 +1,81 @@
+# The FM-1's hardware taken up in 0.5: the keys' pressure, the battery in the band, Bluetooth audio (SETUP's third view).
+#   app/build/host/ghettomachine_host app/tests/hw.txt OUTDIR
+# btaon: Bluetooth audio on; btast: its state (plat.h PLAT_BTA_*: 2 found, 7 streaming); nundo: undo's steps now
+wait 600
+expect nundo 6
+# ---- pressure: T2's keys (SEQ twice from its steps: ACID, then the keys); a key held and leaned on sends channel pressure
+turn ALGO 1
+wait 30
+tap SEQ
+wait 30
+tap SEQ
+wait 30
+expect page 5
+out
+key 7 down 100 90
+wait 700
+# (the note-on, then pressure as it rises: more than a few messages)
+expect midi_out >4
+key 7 up
+wait 60
+expect_out USB D1 00 00
+expect_out USB 81 30 00
+# ---- Bluetooth audio: SETUP (HOME four times), SELECT twice
+tap HOME
+wait 30
+tap HOME
+wait 30
+tap HOME
+wait 30
+tap HOME
+wait 30
+expect page 13
+turn SELECT 2
+wait 60
+expect setupview 2
+expect btaon 0
+bta add CANS
+spin K1 1
+wait 100
+expect btaon 1
+expect nundo 1
+wait 1500
+expect btast 2
+shot bta_found.png
+spin K3 1
+wait 800
+expect btast 7
+shot bta_playing.png
+# undo still works, one step deep: a drum step put on (the steps, white key 2), taken back
+turn ALGO -1
+wait 30
+tap SEQ
+wait 30
+expect page 0
+expect hit0_2 0
+key 2 down
+wait 30
+key 2 up
+wait 30
+expect hit0_2 1
+press EDIT
+wait 20
+tap OCT-
+wait 20
+release EDIT
+wait 60
+expect hit0_2 0
+# off: the memory back, undo's six steps again
+tap HOME
+wait 30
+tap HOME
+wait 30
+tap HOME
+wait 30
+tap HOME
+wait 30
+expect page 13
+spin K1 -1
+wait 300
+expect btaon 0
+expect nundo 6

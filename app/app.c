@@ -3074,6 +3074,11 @@ static void midi_in(void)                 /* audio interrupt */
         }
         int on = (st & 0xF0u) == 0x90u && d2, off = (st & 0xF0u) == 0x80u || ((st & 0xF0u) == 0x90u && !d2);
         int tr = ch == 9u ? TR_DRUM : ch == 0u ? (int)sel_trk : ch <= 3u ? (int)ch : -1;
+        if ((st & 0xF0u) == 0xD0u || (st & 0xF0u) == 0xA0u) {   /* pressure (channel, or a key's): the matrix's PRESSURE */
+            if (tr > 0)
+                syn_pressure(tr, (float)((st & 0xF0u) == 0xD0u ? d1 : d2) / 127.0f);
+            continue;
+        }
 #if FM1B_USB_HOST
         int trs = port != PORT_USB;
         if (ch == 0u && d1 && (on || off)) {
@@ -3414,10 +3419,11 @@ static void synth_add(float *l, float *r, float *rv, float *dl, uint32_t n, uint
     }
 }
 
-/* the delay's line, lent to STUTTER and TAPE STOP while they play: int16, 0.71 s of stereo (66160 until format 11's
+/* the delay's line, lent to STUTTER and TAPE STOP while they play: int16, 0.67 s of stereo (63000, 0.71 s, until
+ * Bluetooth audio's stack needed 7 KB of the pool; 66160 until format 11's
  * locks needed 6 KB of the pool: the sampler's recording buffer's size, which went in 0.5. STUTTER's longest slice,
  * 1/8 of a bar at 60 BPM, is 0.5 s; TAPE STOP winds down what's in it) */
-#define DLY_LEN 63000
+#define DLY_LEN 59400
 static int16_t shared_buf[DLY_LEN] PLAT_POOL;
 
 /* the render's buses: the dry mix and the reverb and delay sends of a block. Two sets (0.5, the second CPU pass): the
@@ -4278,6 +4284,7 @@ typedef struct { pattern_t p; gen_t g[NINST]; dgen_t dg; uint8_t k[NINST][NSTEPS
 /* The total can never exceed NUNDO: a new edit drops redo, and undo/redo
  * each move one item. Grow the stacks from opposite ends of one pool. */
 static snap_t history[NUNDO] PLAT_POOL;
+static uint8_t nundo = NUNDO;             /* the steps kept now: 1 while Bluetooth audio has the others' memory (gbta_set) */
 static int undo_n, redo_n;
 static uint32_t undo_t, undo_kind;
 
@@ -4294,8 +4301,8 @@ static void undo_capture(snap_t *s, uint8_t idx)
 static void undo_push(uint8_t idx)
 {
     redo_n = 0;                          /* edits invalidate the future */
-    if (undo_n == NUNDO) {
-        for (int i = 1; i < NUNDO; i++)
+    if (undo_n >= nundo) {
+        for (int i = 1; i < nundo; i++)
             history[i - 1] = history[i]; /* discard the oldest past state */
         undo_n--;
     }
@@ -4337,8 +4344,8 @@ static void undo_step(int redo)
         app_say(redo ? "REDO" : "UNDO", "NOTHING");
         return;
     }
-    from = &history[redo ? NUNDO - redo_n : undo_n - 1];
-    to = &history[redo ? undo_n : NUNDO - redo_n - 1];
+    from = &history[redo ? nundo - redo_n : undo_n - 1];
+    to = &history[redo ? undo_n : nundo - redo_n - 1];
     idx = from->idx;
     if (from != to)
         undo_capture(to, idx);
@@ -4427,6 +4434,7 @@ static struct {
     uint8_t genpage;                      /* the 303 generator's page: 0 ACID (the chances), 1 NOTES, 2 LINE, 3 KEEP
                                            * (the drums' BEAT pages: 0..2 of it) */
     uint8_t gcur;                         /* KEEP: the step its knobs are on */
+    int8_t batt;                          /* the battery as the band last drew it (plat_battery) */
     uint8_t mixpage, fxpage;              /* the mixer's page (LEVEL, PAN, REVERB, DELAY); the FX's */
     uint8_t mstpage;                      /* the master bus's: CHAIN, EQ, EQ 2, COMP, COMP 2, TAPE, STEREO, LIMIT */
     int8_t knob_k;                        /* the knob turned last (its card stands out a moment), -1 none */
@@ -6715,6 +6723,123 @@ static void follow_knob(int p, int k, int32_t e)   /* HOME, a scene key held: K1
     }
 }
 
+/* ---- Bluetooth audio (0.5; SETUP's third view): the FM-1's sound to Bluetooth headphones or a speaker (A2DP, on
+ * fm1-base's own stack). Its buffers (17.7 KB) are lent from the undo history while it is on: undo keeps one step then,
+ * all six again once it is off and the radio has let the memory go. 150-300 ms late at the ear: for listening */
+static struct {
+    uint8_t on, giving, cur, seen;        /* on; off, the memory not back yet; the list's cursor; what the page drew */
+} gbta;
+#define BTA_NAME 18
+static int gbta_entry(int i, char *name, int *known)   /* the list: the remembered devices, then the ones found */
+{
+    int n = 0, j;
+    for (j = 0; j < 4 && plat_bta_known(j, name); j++, n++)
+        if (n == i) {
+            *known = j;
+            return 1;
+        }
+    for (j = 0; j < 8 && plat_bta_found(j, name); j++, n++)
+        if (n == i) {
+            *known = -1 - j;
+            return 1;
+        }
+    return 0;
+}
+static int gbta_count(void)
+{
+    char nm[BTA_NAME];
+    int n = 0, k;
+    while (n < 12 && gbta_entry(n, nm, &k))
+        n++;
+    return n;
+}
+
+static void gbta_set(int on)
+{
+    char nm[BTA_NAME];
+    if (!FM1B_BT_AUDIO || on == gbta.on)
+        return;
+    if (on) {
+        const uint32_t need = plat_bta_mem_bytes();
+        if (gbta.giving || need > (NUNDO - 1) * sizeof(snap_t)) {
+            app_say("BT AUDIO", gbta.giving ? "WAIT A MOMENT" : "NO MEMORY");
+            return;
+        }
+        if (need) {                       /* the undo history's other steps: lent */
+            undo_n = redo_n = 0;
+            undo_kind = 0;
+            nundo = 1;
+            plat_bta_mem(&history[1]);
+        }
+        plat_bta_on(1);
+        gbta.on = 1;
+        if (plat_bta_known(0, nm))        /* the last device, if there is one; else a look around */
+            plat_bta_reconnect(0);
+        else
+            plat_bta_scan(1);
+    } else {
+        plat_bta_hangup();
+        plat_bta_on(0);
+        gbta.on = 0;
+        gbta.giving = 1;                   /* (the main loop takes the memory back once the radio has let go) */
+    }
+    app_say("BT AUDIO", on ? "ON" : "OFF");
+}
+
+static void gbta_poll(void)                /* the main loop */
+{
+    if (!FM1B_BT_AUDIO)
+        return;
+    if (gbta.giving && plat_bta_mem(0) == 0) {
+        gbta.giving = 0;
+        undo_n = redo_n = 0;
+        nundo = NUNDO;
+    }
+    if (ui.page == PG_SETUP && ui.setup_view == 2) {
+        const uint8_t now = (uint8_t)(plat_bta_state() * 16 + gbta_count());
+        if (now != gbta.seen)
+            ui.redraw = 1;
+    }
+}
+
+static void gbta_knob(int k, int32_t e)    /* K1 AUDIO, K2 DEVICE, K3 CONNECT (down: hang up), K4 SCAN (down: forget) */
+{
+    char nm[BTA_NAME];
+    int kn = 0, n = gbta_count();
+    if (!FM1B_BT_AUDIO || !e)
+        return;
+    if (k == 0) {
+        gbta_set(e > 0);
+        return;
+    }
+    if (!gbta.on) {
+        app_say("BT AUDIO", "TURN IT ON: K1");
+        return;
+    }
+    if (k == 1) {
+        gbta.cur = (uint8_t)clamp(gbta.cur + e, 0, n ? n - 1 : 0);
+    } else if (k == 2) {
+        if (e < 0) {
+            plat_bta_hangup();
+            app_say("BT AUDIO", "HUNG UP");
+        } else if (gbta_entry(gbta.cur, nm, &kn)) {
+            if (kn >= 0)
+                plat_bta_reconnect(kn);
+            else
+                plat_bta_pick(-1 - kn);
+            app_say("CONNECT", nm);
+        }
+    } else if (e > 0) {
+        plat_bta_scan(1);
+        gbta.cur = 0;
+        app_say("BT AUDIO", "LOOKING");
+    } else if (gbta_entry(gbta.cur, nm, &kn) && kn >= 0) {
+        plat_bta_forget(kn);
+        gbta.cur = 0;
+        app_say("FORGOT", nm);
+    }
+}
+
 static int ble_wanted(void) { return (int)(proj.mflags >> 1 & 1u); }
 int app_ble_wanted(void) { return ble_wanted(); }   /* (app.h APP_BLE_AT_BOOT: Bluetooth at power-on, as the project says) */
 
@@ -6743,6 +6868,10 @@ static void setup_knob(int k, int32_t e)  /* SETUP: K1 MIDI CLOCK, K2 SOUNDS, K3
             return;
         }
         dirty = 1;
+        return;
+    }
+    if (ui.setup_view == 2) {
+        gbta_knob(k, e);
         return;
     }
     if (ui.setup_view)
@@ -7582,7 +7711,7 @@ static void dgen_make(const dgen_t *g, int len, uint16_t *out)
 
 static void dgen_write(void)              /* the part's hits from its settings (its steps past its length untouched) */
 {
-    static uint16_t buf[NSTEPS];
+    uint16_t *buf = (uint16_t *)(void *)gen_buf[0];   /* (the 303 generator's scratch: never both at once) */
     dpart_t *p = dcur();
     int s, pad, len = p->len;
     uint32_t f;
@@ -7615,7 +7744,7 @@ static dgen_t *dgen_begin(void)
 
 static void dgen_roll(int fresh)          /* OCT+: a random seed's beat; OCT-: a few steps re-rolled */
 {
-    static uint16_t was[NSTEPS], now[NSTEPS];
+    uint16_t *was = (uint16_t *)(void *)gen_buf[1], *now = was + NSTEPS;
     dgen_t *g;
     int len = dcur()->len, n, same = 1;
     char t[16], u[8];
@@ -8334,6 +8463,24 @@ static void input(void)
     int inst;
     touch_poll();
     keys = touch_keys();
+    {   /* the keys' pressure (0.5): each instrument track's hardest-held key, to its matrix (PRESSURE) and out as
+         * channel pressure */
+        static uint8_t was[NTRK];
+        uint8_t pr[NTRK] = {0};
+        int t;
+        for (k = 0; k < NKEYS; k++)
+            if (ui.key_note[k] && (keys >> k & 1u) && ui.key_trk[k] < NTRK) {
+                const uint8_t v = touch_pressure(k);
+                if (v > pr[ui.key_trk[k]])
+                    pr[ui.key_trk[k]] = v;
+            }
+        for (t = 1; t < NTRK; t++)
+            if (pr[t] != was[t] && (!pr[t] || pr[t] > was[t] + 1 || pr[t] + 1 < was[t])) {
+                was[t] = pr[t];
+                syn_pressure(t, (float)pr[t] / 127.0f);
+                plat_midi_send(0x0Du | (0xD0u | (uint32_t)t) << 8 | (uint32_t)pr[t] << 16, MIDI_TO);
+            }
+    }
     pressed = btn & ~ui.btn;
     released = ~btn & ui.btn;
     ui.btn = btn;                         /* (step_down reads SEQ from it) */
@@ -8729,14 +8876,15 @@ static void input(void)
             ui.color_page = (uint8_t)clamp(ui.color_page+e,0,1);
         } else if (ui.page == PG_SETUP) {   /* SETUP: SELECT turns to the CPU by stage and back */
             char t[16];
-            ui.setup_view = (uint8_t)clamp(ui.setup_view + e, 0, 2);
+            ui.setup_view = (uint8_t)clamp(ui.setup_view + e, 0, 3);
             t[0] = 0;
-            if (ui.setup_view == 2) {
+            if (ui.setup_view == 3) {
                 text_cat(t, "CPU ");
                 int_text((int32_t)plat_cpu_pct(), t + 4);
                 text_cat(t, "%");
             }
-            app_say("SETUP", ui.setup_view == 2 ? t : ui.setup_view ? "MIDI, BLUETOOTH" : "CLOCK, SOUNDS");
+            app_say("SETUP", ui.setup_view == 3 ? t : ui.setup_view == 2 ? "BLUETOOTH AUDIO" : ui.setup_view ? "MIDI, BLUETOOTH"
+                             : "CLOCK, SOUNDS");
         } else if (ui.held_step >= 0 && !(inst && (ui.page == PG_EDIT || ui.page == PG_ENV || ui.page == PG_LFO))) {
             /* (there: pages to lock on) */
             if (inst && ui.page == PG_SEQ)   /* its steps: which note (its chance: STEP NOTES' K4) */
@@ -9439,8 +9587,18 @@ static void band(void)
             cv_rect(xr - 12, 6, 8, 8, C_RED);
             xr -= 12;
         }
-        if (dirty)                        /* (0.5) changed since the last save: a hollow acid box (SAVE keeps it) */
+        if (dirty) {                      /* (0.5) changed since the last save: a hollow acid box (SAVE keeps it) */
             frame(xr - 12, 6, 8, 8, C_ACID);
+            xr -= 12;
+        }
+        ui.batt = (int8_t)plat_battery();
+        if (ui.batt >= 0 && ui.batt <= 3 && xr - 20 > xl + 4) {   /* on the battery: its bars (red when empty) */
+            int j;
+            frame(xr - 18, 6, 13, 8, ui.batt ? C_BONE : C_RED);
+            cv_rect(xr - 5, 8, 2, 4, ui.batt ? C_BONE : C_RED);
+            for (j = 0; j < ui.batt; j++)
+                cv_rect(xr - 16 + j * 3, 8, 2, 4, C_BONE);
+        }
     }
     f = text_w(&FONT_MT, bd.title) <= 224 ? &FONT_MT : text_w(&FONT_MB, bd.title) <= 224 ? &FONT_MB : &FONT_B;
     fit(f, bd.title, 224, t);
@@ -9791,6 +9949,19 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
                 card_put(c, "BLUETOOTH", ble_wanted() ? "ON" : "OFF", ble_wanted(), 0, 1, -1);
             else
                 return 0;
+            return 1;
+        }
+        if (page == 2) {                  /* Bluetooth audio */
+            static const char *const NM[4] = {"AUDIO", "DEVICE", "CONNECT", "SCAN"};
+            if (!FM1B_BT_AUDIO)
+                return 0;
+            if (k == 0)
+                card_put(c, NM[0], gbta.on ? "ON" : "OFF", gbta.on, 0, 1, -1);
+            else if (k == 1) {
+                int_text(gbta.cur + 1, t);
+                card_put(c, NM[1], t, gbta.cur, 0, 11, -1);
+            } else
+                card_put(c, NM[k], k == 2 ? "UP / DOWN" : "UP: LOOK", 0, 0, 1, -1);
             return 1;
         }
         if (page)
@@ -11425,6 +11596,33 @@ static void page_cpu(void)
     cards_of(KD_SETUP, 0);
 }
 
+static void page_gbta(void)                /* SETUP's third view: Bluetooth audio's switch, state and devices */
+{
+    static const char *const ST[12] = {"OFF", "LOOKING FOR DEVICES", "FOUND: K2 PICK, K3 CONNECT", "NONE FOUND: K4 LOOK AGAIN",
+                                       "CONNECTING", "LINKED", "SETTING UP", "PLAYING THROUGH IT", "IT REFUSED",
+                                       "NO DEVICE YET: K4 LOOK", "FAILED", "READY: K3 CONNECT, K4 LOOK"};
+    char nm[BTA_NAME];
+    int i, kn, n = FM1B_BT_AUDIO ? gbta_count() : 0, st = FM1B_BT_AUDIO ? plat_bta_state() : 0, top;
+    band_set(C_CREAM, "ALL", "BT AUDIO", "SELECT: CPU", 0, 0);
+    gbta.seen = (uint8_t)(st * 16 + n);
+    if (gbta.cur >= n)
+        gbta.cur = (uint8_t)(n ? n - 1 : 0);
+    rrect(3, 2, 234, 36, 6, C_PANEL);
+    cv_text(10, 4, &FONT_XS, "SOUND TO BLUETOOTH HEADPHONES / SPEAKER", C_TXT2);
+    cv_text(10, 19, &FONT_S, !FM1B_BT_AUDIO ? "NOT IN THIS BUILD" : !gbta.on ? (gbta.giving ? "TURNING OFF" : "OFF")
+                             : ST[st < 12 ? st : 0], TH_TXT);
+    top = gbta.cur > 3 ? gbta.cur - 3 : 0;
+    for (i = 0; i < 4 && gbta.on && gbta_entry(top + i, nm, &kn); i++) {
+        const int y = 42 + i * 17, sel = top + i == gbta.cur;
+        if (sel)
+            rrect(3, y, 234, 16, 4, TH_FG);
+        cv_text(10, y, &FONT_S, nm[0] ? nm : "(NO NAME)", sel ? C_BODY : TH_TXT);
+        text_r(230, y + 1, &FONT_XS, kn >= 0 ? "SAVED" : "FOUND", sel ? C_BODY : C_TXT2);
+    }
+    cv_text(6, 116, &FONT_XS, gbta.on ? "LATE AT THE EAR: FOR LISTENING. UNDO: 1 STEP" : "K1 ON: UNDO KEEPS 1 STEP WHILE IT IS", TH_TXT);
+    cards_of(KD_SETUP, 2);
+}
+
 static int ble_word_now;                  /* what the MIDI view last showed of Bluetooth (the main loop redraws on a change) */
 static int ble_word(void)                 /* 0 not built, 1 off, 2 starting, 3 waiting, 4 connected, 5 failed */
 {
@@ -11440,7 +11638,7 @@ static void page_midi(void)               /* SETUP's second view: SEQ OUT and Bl
 {
     static const char *const BW[6] = {"NOT IN THIS BUILD", "OFF", "STARTING", "ON: PAIR FROM A COMPUTER OR PHONE",
                                       "CONNECTED", "THE RADIO DID NOT START"};
-    band_set(C_CREAM, "ALL", "MIDI", "SELECT: CPU", 0, 0);
+    band_set(C_CREAM, "ALL", "MIDI", "SELECT: BT AUDIO", 0, 0);
     rrect(3, 2, 234, 40, 6, C_PANEL);
     cv_text(10, 4, &FONT_XS, "SEQUENCER TO MIDI (SEQ OUT)", C_TXT2);
     cv_text(10, 20, &FONT_S, seq_out() ? "SENT: DRUMS CH 10, T2-T4 CH 2-4" : "OFF: ONLY THE KEYS YOU PLAY", TH_TXT);
@@ -11458,8 +11656,12 @@ static void page_setup(void)              /* SETUP: MIDI CLOCK; SOUNDS shared or
 {
     static const char *const CL[3] = {"OFF: THE FM-1'S OWN TEMPO", "SENT: 24 A BEAT, START, STOP", "FOLLOWED: TEMPO, START, STOP"};
     int t, k, pp = sounds_pp();
-    if (ui.setup_view == 2) {
+    if (ui.setup_view == 3) {
         page_cpu();
+        return;
+    }
+    if (ui.setup_view == 2) {
+        page_gbta();
         return;
     }
     if (ui.setup_view == 1) {
@@ -12227,7 +12429,7 @@ static const char *help_text(void)
                       "   (50: THE STYLE AS IT COMES)\nSELECT: MORE (PERC FILL ACCENT), LINE\n"
                       "SEQ: BACK TO THE STEPS";
     case PG_SETUP:
-        return "SELECT: SETUP, MIDI, CPU\nK1 CLOCK   K2 SOUNDS PER PATTERN\nK3 USB PORT   K4 MIX PER PATTERN\n"
+        return "SELECT: SETUP, MIDI, BT AUDIO, CPU\nK1 CLOCK   K2 SOUNDS PER PATTERN\nK3 USB PORT   K4 MIX PER PATTERN\n"
                "MIDI: K1 SEQ OUT (THE SEQUENCER'S\n   NOTES SENT)   K2 BLUETOOTH";
     case PG_SONG:
         return "WHITE: SET THE ENTRY, MOVE ON\nSELECT: CURSOR   K1 PATTERN  K2 BARS\n"
@@ -12719,6 +12921,9 @@ void app_frame(void)
     }
     shed();
     late_watch();
+    gbta_poll();
+    if (plat_battery() != ui.batt)
+        ui.redraw = 1;                    /* the band's battery */
     if (ui.page == PG_SETUP && ui.setup_view == 1 && ble_word() != ble_word_now)
         ui.redraw = 1;                    /* the MIDI view: Bluetooth's state as it changes */
     {   /* the delay's line back once STUTTER and TAPE STOP are done with it: the keys up, and the last block
@@ -12985,6 +13190,12 @@ int app_expect(const char *what, int *got)
         if (q < 0 || q >= NPAT)
             return 0;
         *got = (proj.follow[q] >> 3) + 1;
+    } else if (!strcmp(what, "btaon")) {  /* Bluetooth audio: on; btast: plat_bta_state; nundo: undo's steps now */
+        *got = gbta.on;
+    } else if (!strcmp(what, "btast")) {
+        *got = FM1B_BT_AUDIO ? plat_bta_state() : -1;
+    } else if (!strcmp(what, "nundo")) {
+        *got = nundo;
     } else if (!strcmp(what, "seqout")) { /* SEQ OUT; ble: BLUETOOTH wanted */
         *got = seq_out();
     } else if (!strcmp(what, "blewant")) {
