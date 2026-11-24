@@ -46,6 +46,11 @@ spin K3 1
 wait 800
 expect btast 7
 shot bta_playing.png
+# the screen reader says so (a page turned: where it is, and Bluetooth's state)
+listen
+tap FX
+wait 400
+said BT AUDIO STREAMING
 # undo still works, one step deep: a drum step put on (the steps, white key 2), taken back
 turn ALGO -1
 wait 30

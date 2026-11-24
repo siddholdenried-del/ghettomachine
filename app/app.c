@@ -12918,7 +12918,7 @@ static void speak(void)                   /* a screen reader that has just start
         text_cat(t, APP_NAME ". ");
         text_cat(t, TRK_NAME[ui.trk]);
         text_cat(t, ". ");
-        text_cat(t, PAGE_NAME[ui.page]);
+        text_cat(t, ui.page == PG_GEN && ui.trk == TR_DRUM ? "BEAT" : PAGE_NAME[ui.page]);   /* (the drums' generator) */
         if (ui.trk == TR_DRUM) {
             text_cat(t, ". PAD ");
             text_cat(t, trial_pad_name(drum_model(ui.pad), ui.pad));
@@ -12983,6 +12983,22 @@ static void speak(void)                   /* a screen reader that has just start
                 two_digits(sq.queued + 1, u);
                 text_cat(t, u);
             }
+        }
+        if (FM1B_BLE && ble_wanted()) {   /* Bluetooth, where it is on: MIDI's state, a keyboard, the audio's */
+            static const char *const BW[6] = {"", "OFF", "STARTING", "READY", "CONNECTED", "FAILED"};
+            text_cat(t, ". BT MIDI ");
+            text_cat(t, BW[ble_word()]);
+#if FM1B_BLE_CENTRAL
+            if (btdev_ready())
+                text_cat(t, " KEYBOARD");
+#endif
+        }
+        if (FM1B_BT_AUDIO && gbta.on) {
+            static const char *const AW[12] = {"OFF", "LOOKING", "FOUND", "NONE FOUND", "CONNECTING", "LINKED", "SETTING UP",
+                                               "STREAMING", "REFUSED", "NO DEVICE", "FAILED", "READY"};
+            const int st = plat_bta_state();
+            text_cat(t, ". BT AUDIO ");
+            text_cat(t, AW[st >= 0 && st < 12 ? st : 0]);
         }
         ann_say(t, 0, ANN_NOW);
         trial_metrics_speak(V3ON);

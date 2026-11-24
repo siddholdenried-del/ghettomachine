@@ -85,8 +85,10 @@ expect gkeep2_5 1
 # ---- the drums: SEQ again on their steps is BEAT
 turn ALGO -1
 wait 30
+listen
 expect trk 1
 expect page 14
+said DRUMS. BEAT
 # (the page number is shared with ACID's: back to the first, BEAT)
 turn SELECT -3
 wait 30

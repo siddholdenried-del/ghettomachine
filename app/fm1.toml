@@ -16,6 +16,7 @@ ble_diag = false               # the link layer's diagnostics left out: 2.4 KB o
 bt_audio = true                # Bluetooth audio out (A2DP, SBC) to headphones and speakers: SETUP > BT AUDIO
 bt_audio_mem = "app"           # its 17.7 KB of buffers lent from the undo history while it is on (app.c bta_set)
 bt_audio_sim = true            # the simulator: fm1-base's stand-in ("bta add NAME")
+bt_log = true                  # the audio set-up step by step on the radio's log (fm1_remote.py log)
 ram_code_allow = ["fx_master"]   # Master EQ, tape, stereo and meters are called in flash.
 cpu2 = true                    # the second core renders half the synth voices
 cpu2_fallback = true           # one core (8 voices) after a failure of it, instead of a restart
