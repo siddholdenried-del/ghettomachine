@@ -63,7 +63,7 @@ tap SAVE
 wait 400
 reboot
 wait 600
-expect projfmt 11
+expect projfmt 12
 expect fx42 127
 expect fx43 30
 expect fx44 64

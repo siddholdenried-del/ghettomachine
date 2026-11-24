@@ -51,11 +51,11 @@ expect stem1 >-600
 # saved and loaded again: format 9, the compatibility data as it was
 tap SAVE
 wait 400
-expect projfmt 11
+expect projfmt 12
 expect dirty 0
 reboot
 wait 600
-expect projfmt 11
+expect projfmt 12
 expect insert2 2
 expect insert2_0 38
 expect color1_5 0

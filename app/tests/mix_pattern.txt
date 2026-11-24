@@ -1,0 +1,131 @@
+# MIX PER PATTERN (SETUP K4, format 12) in the host simulator: a track's mixer strip goes with its clip and the FX's
+# knobs with the focused pattern; saved with the project.  app/build/host/ghettomachine_host app/tests/mix_pattern.txt OUTDIR
+# mixpp: the switch; mixN_K: track N, K 0 level 1 pan 2 reverb send 3 delay send; fxI: dsp/fx.h FXP_*
+wait 600
+expect mixpp 0
+expect mix2_0 100
+expect fx0 62
+# ---- off: a scene change leaves the mixer and the FX alone (GLO: LEVEL, K2 T2 to 80; then scene 2)
+press GLO
+wait 38
+release GLO
+turn SELECT -40 0
+wait 60
+spin K2 -20
+wait 30
+expect mix2_0 80
+tap HOME
+wait 30
+expect page 3
+key 2 down
+wait 30
+key 2 up
+wait 60
+expect pat 2
+expect mix2_0 80
+key 0 down
+wait 30
+key 0 up
+wait 60
+expect pat 1
+# ---- SETUP (HOME three more times), K4: on
+tap HOME
+wait 30
+tap HOME
+wait 30
+tap HOME
+wait 30
+expect page 13
+spin K4 1
+wait 30
+expect mixpp 1
+shot mix_pattern_setup.png
+# scene 2 takes what was playing (T2 at 80); there T2 down to 40 and BongVerb's DECAY up to 100
+tap HOME
+wait 30
+tap HOME
+wait 30
+expect page 3
+key 2 down
+wait 30
+key 2 up
+wait 60
+expect pat 2
+expect mix2_0 80
+expect fx0 62
+press GLO
+wait 38
+release GLO
+turn SELECT -40 0
+wait 60
+spin K2 -40
+wait 30
+expect mix2_0 40
+turn SELECT 1 0
+wait 80
+spin K3 30
+wait 30
+expect mix3_1 82
+tap FX
+wait 30
+turn SELECT -40 0
+wait 60
+expect fxpage 0
+spin K1 38
+wait 30
+expect fx0 100
+# back to scene 1: its own (T2 80, T3's pan 52, DECAY 62); scene 2 again: as it was left
+tap HOME
+wait 30
+expect page 3
+key 0 down
+wait 30
+key 0 up
+wait 60
+expect pat 1
+expect mix2_0 80
+expect mix3_1 52
+expect fx0 62
+key 2 down
+wait 30
+key 2 up
+wait 60
+expect pat 2
+expect mix2_0 40
+expect mix3_1 82
+expect fx0 100
+# one track onto pattern 1's clip (its track key + white key 1): only its strip moves, the FX stay pattern 2's
+key 3 down
+wait 30
+key 0 down
+wait 30
+key 0 up
+wait 30
+key 3 up
+wait 60
+expect clip2 1
+expect mix2_0 80
+expect mix3_1 82
+expect fx0 100
+# ---- saved with the project
+tap SAVE
+wait 400
+expect projfmt 12
+reboot
+wait 600
+expect mixpp 1
+expect pat 2
+# (every track starts on the focused pattern: pattern 2's strips)
+expect mix2_0 40
+expect mix3_1 82
+expect fx0 100
+# (the simulator's restart keeps the page: PATTERNS still)
+expect page 3
+key 0 down
+wait 30
+key 0 up
+wait 60
+expect pat 1
+expect mix2_0 80
+expect mix3_1 52
+expect fx0 62

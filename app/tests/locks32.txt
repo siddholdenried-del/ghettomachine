@@ -213,10 +213,10 @@ wait 30
 expect nlk 32
 tap SAVE
 wait 400
-expect projfmt 11
+expect projfmt 12
 reboot
 wait 600
-expect projfmt 11
+expect projfmt 12
 expect nlk 32
 expect prob0_1 75
 expect prob0_16 95

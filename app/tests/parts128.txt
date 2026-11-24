@@ -122,7 +122,7 @@ expect note4_113 >0
 tap SAVE
 wait 400
 expect dirty 0
-expect projfmt 11
+expect projfmt 12
 expect savedsize <32737
 reboot
 wait 600
@@ -140,7 +140,7 @@ expect seed_dense 1
 tap SAVE
 wait 400
 expect dirty 1
-expect projfmt 11
+expect projfmt 12
 reboot
 wait 600
 expect dirty 0

@@ -14,7 +14,7 @@ expect nsteps3 1
 expect gen3_0 0
 tap SAVE
 wait 400
-expect projfmt 11
+expect projfmt 12
 expect dirty 0
 reboot
 wait 600

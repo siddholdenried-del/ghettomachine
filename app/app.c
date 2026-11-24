@@ -89,7 +89,7 @@ static const char *trial_pad_name(int kit, int pad)
 #define NKEYS 27
 #define KEY_NOTE0 53                      /* key 0 (F3) at octave 0 */
 #define PROJ_MAGIC 0x31544745u            /* "EGT1": fm1-eight 0.1's project; another magic loads the default project */
-#define PROJ_VERSION 11                   /* 11: 32 locks a part (10's patterns had 16: pattern_v10_t); 10: the DrumEngine's patch (the drums' edits) appended (9's layout before
+#define PROJ_VERSION 12                   /* 12: MIX PER PATTERN (pmix, pfx) appended (11's layout before them); 11: 32 locks a part (10's patterns had 16: pattern_v10_t); 10: the DrumEngine's patch (the drums' edits) appended (9's layout before
                                            * it); 9: BongVerb's and BongDelay's knobs in the sends' slots (fx_migrate; the
                                            * layout is 8's); 8: each clip its own LFO (plfo); 7: combined Color and mixed
                                            * kits; 1-5 and 7-9 readable, private divergent v6 rejected */
@@ -290,6 +290,11 @@ typedef struct {
     uint16_t dpatch_size;
     uint8_t dpatch_kit, dpatch_rsv;
     uint8_t fx2[8];                       /* format 10: the FX's second pages (fx.h FXP_DL_WIDTH ..: FXP_NUM on) */
+    /* format 12: MIX PER PATTERN (SETUP K4; recq bit 7): a track's mixer strip is its clip's, as its sound is (pmix:
+     * set_clip), and the FX's and the master bus's knobs are the focused pattern's (pfx: pfx_follow). used 0: none
+     * yet, it takes what is playing when it starts */
+    struct { uint8_t used, level, pan, rev, dly; } pmix[NPAT][NTRK];
+    struct { uint8_t used, v[FXP_ALL]; } pfx[NPAT];
 } project_t;
 static uint8_t *fxv(int i);               /* an FX knob's place in the project: fx, or fx2 past FXP_NUM */
 /* Freeze the persisted 64-step layouts; legacy files end before the 606 pots. */
@@ -339,6 +344,8 @@ _Static_assert(offsetof(dpart_v10_t, lk) == offsetof(dpart_t, lk) && offsetof(ip
 #define PROJ_V7_META_BYTES (offsetof(project_t, plfo) - PROJ_TAIL)   /* format 7 ended before the clips' LFOs */
 #define PROJ_V7_TAIL_BYTES ((PROJ_V7_META_BYTES + 3u) & ~3u)
 #define PROJ_V9_TAIL_BYTES (offsetof(project_t, dpatch) - PROJ_TAIL)   /* formats 8 and 9 ended before the drums' patch */
+#define PROJ_V11_TAIL_BYTES (offsetof(project_t, pmix) - PROJ_TAIL)   /* formats 10 and 11 ended before MIX PER PATTERN */
+_Static_assert((offsetof(project_t, pmix) & 3u) == 0, "formats 10/11 ended on a word");
 _Static_assert((offsetof(project_t, dpatch) & 3u) == 0, "formats 8/9 ended on a word");
 
 /* project format 1 (0.1, 0.2 and 0.2's performance update), frozen: a file saved by them is read a part at a time
@@ -1122,7 +1129,6 @@ static void project_check(void)           /* a loaded project's values kept in r
         proj.recq &= (uint8_t)~0x30u;
     if ((proj.recq >> 2 & 3u) > 2u)
         proj.recq &= (uint8_t)~0x0Cu;
-    proj.recq &= 0x7Fu;
     for (i = 0; i < NPAT; i++) {          /* the patterns' own sounds, kits and follow actions */
         for (t = 0; t < NINST; t++) {
             psound_t *q = &proj.psnd[i][t];
@@ -1164,6 +1170,10 @@ static void project_check(void)           /* a loaded project's values kept in r
 
 static void psnd_fetch_all(void);
 static void psnd_store_all(void);
+static uint8_t fx_pat;
+static void pmix_clear(void);
+static void pmix_fetch_all(void);
+static void pmix_store_all(void);
 
 /* Identify the persisted layout without treating a legacy project as a current RAM struct. */
 static int proj_file_format(void)
@@ -1174,7 +1184,9 @@ static int proj_file_format(void)
         return 0;
     if (sz >= (int)PROJ_META && sz <= (int)PROJ_CAPACITY && ver == PROJ_VERSION)
         return PROJ_VERSION;
-    if (sz >= (int)PROJ_META && sz <= (int)PROJ_CAPACITY && ver == 10)
+    if (sz >= (int)(PROJ_PREFIX + PROJ_V11_TAIL_BYTES) && sz <= (int)PROJ_CAPACITY && ver == 11)
+        return 11;                        /* (12's layout without MIX PER PATTERN) */
+    if (sz >= (int)(PROJ_PREFIX + PROJ_V11_TAIL_BYTES) && sz <= (int)PROJ_CAPACITY && ver == 10)
         return 10;                        /* (11's layout, its patterns with 16 locks a part) */
     if (sz >= (int)(PROJ_PREFIX + PROJ_V9_TAIL_BYTES) && sz <= (int)PROJ_CAPACITY && ver == 9)
         return 9;                         /* (10's layout without the drums' patch) */
@@ -1382,6 +1394,7 @@ static int project_load(void)
     if (r != 0 || proj.magic != PROJ_MAGIC || proj.kit >= KIT_NUM || proj.pat >= NPAT || proj.bpm10 < 600 ||
         proj.bpm10 > 2400) {
         project_default();
+        fx_pat = proj.pat;
         pots_from_engines();
         tracks_to_voices();
         clips_raw(proj.pat);
@@ -1394,6 +1407,8 @@ static int project_load(void)
     }
     if (fmt < 8)                          /* before each clip had its own LFO: every clip its track's */
         plfo_fill();
+    if (fmt < 12)                         /* before MIX PER PATTERN: no pattern has a mix of its own, the switch off */
+        pmix_clear();
     if (fmt < 10) {                       /* before the FX's second pages: theirs as the effects were (fx.c's defaults) */
         for (i = FXP_NUM; i < FXP_ALL; i++)
             *fxv((int)i) = (uint8_t)fx_param((int)i)->def;
@@ -1405,6 +1420,7 @@ static int project_load(void)
     for (i = 0; i < NTRK; i++)            /* every track on the focused pattern: its clip's LFO */
         proj.lfo[i] = proj.plfo[proj.pat][i];
     psnd_fetch_all();                     /* SOUNDS PER PATTERN: the focused pattern's, before they reach the engines */
+    pmix_fetch_all();                     /* MIX PER PATTERN: the same */
     trial_kit(dpreset_genre_of(proj.dpreset));   /* the DrumEngine's kit: the project's (an older one's: ELECTRO) */
     if (fmt >= 10 && proj.dpatch_size == sizeof(KitPatch) && proj.dpatch_kit == proj.dpreset)
         trial_restore(&proj.dpatch);      /* (format 10) and the edits saved on top of it */
@@ -1423,6 +1439,7 @@ static int project_save(void)             /* main loop, stopped (each erase stop
     plat_unlock(f);
     pots_from_engines();
     psnd_store_all();                     /* SOUNDS PER PATTERN: each track's sound with the pattern it's on */
+    pmix_store_all();                     /* MIX PER PATTERN: each track's strip with its clip, the FX with the pattern */
     {   /* each track's LFO with the clip it's on */
         int t;
         for (t = 0; t < NTRK; t++)
@@ -1653,6 +1670,99 @@ static void psnd_load(int t, int p)       /* pattern p's sound into track t and 
     }
 }
 
+/* MIX PER PATTERN (SETUP K4, format 12): a track's mixer strip (level, pan, sends) goes with its clip, as its sound
+ * does; the FX's and the master bus's knobs go with the focused pattern (proj.pat: pfx_follow, a look a block) */
+static int mix_pp(void) { return (int)(proj.recq >> 7 & 1u); }
+static uint8_t fx_pat;                    /* the pattern whose FX are in proj.fx now */
+
+static uint8_t *mix_level(int t) { return t == TR_DRUM ? &proj.mix[0].level : &tset(t)->level; }
+
+static void pmix_store(int t, int p)      /* track t's strip now, kept with pattern p */
+{
+    if (p < 0 || p >= NPAT)
+        return;
+    proj.pmix[p][t].used = 1;
+    proj.pmix[p][t].level = *mix_level(t);
+    proj.pmix[p][t].pan = proj.mix[t].pan;
+    proj.pmix[p][t].rev = proj.mix[t].rev;
+    proj.pmix[p][t].dly = proj.mix[t].dly;
+}
+
+static void pmix_load(int t, int p, int engine)   /* pattern p's strip into track t (engine: and its voices; the lock
+                                                   * held / interrupt); none yet: it takes the one playing */
+{
+    if (!proj.pmix[p][t].used) {
+        pmix_store(t, p);
+        return;
+    }
+    *mix_level(t) = proj.pmix[p][t].level;
+    proj.mix[t].pan = proj.pmix[p][t].pan;
+    proj.mix[t].rev = proj.pmix[p][t].rev;
+    proj.mix[t].dly = proj.pmix[p][t].dly;
+    if (engine && t != TR_DRUM) {
+        syn_level(t, (float)tset(t)->level / 127.0f);
+        syn_mixer(t, proj.mix[t].pan, (float)proj.mix[t].rev / 127.0f, (float)proj.mix[t].dly / 127.0f);
+    }
+}
+
+static void pfx_store(int p)              /* the FX and the master bus now, kept with pattern p */
+{
+    int i;
+    proj.pfx[p].used = 1;
+    for (i = 0; i < FXP_ALL; i++)
+        proj.pfx[p].v[i] = *fxv(i);
+}
+
+static void pfx_follow(void)              /* the focused pattern changed: its FX (the lock held / interrupt). Only the
+                                           * knobs that differ are told to the effects */
+{
+    int i, p = proj.pat;
+    if (!mix_pp() || p == fx_pat)
+        return;
+    pfx_store(fx_pat);
+    fx_pat = (uint8_t)p;
+    if (!proj.pfx[p].used) {
+        pfx_store(p);
+        return;
+    }
+    for (i = 0; i < FXP_ALL; i++)
+        if (*fxv(i) != proj.pfx[p].v[i] && fx_param(i) && proj.pfx[p].v[i] <= fx_param(i)->max) {
+            *fxv(i) = proj.pfx[p].v[i];
+            fx_set(i, *fxv(i));
+        }
+}
+
+static void pmix_clear(void)
+{
+    memset(proj.pmix, 0, sizeof proj.pmix);
+    memset(proj.pfx, 0, sizeof proj.pfx);
+    proj.recq &= 0x7Fu;
+}
+
+static void pmix_store_all(void)          /* saving, or the switch turned on: every strip with its clip */
+{
+    int t;
+    if (!mix_pp())
+        return;
+    for (t = 0; t < NTRK; t++)
+        pmix_store(t, clip_of(t));
+    pfx_store(fx_pat);
+}
+
+static void pmix_fetch_all(void)          /* loading: the focused pattern's (before they reach the engines) */
+{
+    int t, i;
+    fx_pat = proj.pat;
+    if (!mix_pp())
+        return;
+    for (t = 0; t < NTRK; t++)
+        pmix_load(t, proj.pat, 0);
+    if (proj.pfx[fx_pat].used)
+        for (i = 0; i < FXP_ALL; i++)
+            if (fx_param(i) && proj.pfx[fx_pat].v[i] <= fx_param(i)->max)
+                *fxv(i) = proj.pfx[fx_pat].v[i];
+}
+
 static void set_clip(int t, int n)        /* track t onto pattern n's part (-1: stopped); its sound with it, and its
                                            * LFO (the clip's own: the one it leaves keeps the LFO it had) */
 {
@@ -1662,6 +1772,10 @@ static void set_clip(int t, int n)        /* track t onto pattern n's part (-1: 
         if (sounds_pp()) {
             psnd_store(t, clip_of(t));
             psnd_load(t, n);
+        }
+        if (mix_pp()) {
+            pmix_store(t, clip_of(t));
+            pmix_load(t, n, 1);
         }
     }
     clip[t] = (int8_t)n;
@@ -3624,6 +3738,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             stems_send(n);
     }
     midi_in();
+    pfx_follow();                         /* MIX PER PATTERN: the focused pattern's FX */
     render_t += n;
     tempo_stretch();
     {   /* the perform keys: what changed since the last block (ROLL here; the output's effects: post_job); and the
@@ -6449,7 +6564,7 @@ static void follow_knob(int p, int k, int32_t e)   /* HOME, a scene key held: K1
     }
 }
 
-static void setup_knob(int k, int32_t e)  /* SETUP: K1 MIDI CLOCK, K2 SOUNDS */
+static void setup_knob(int k, int32_t e)  /* SETUP: K1 MIDI CLOCK, K2 SOUNDS, K3 USB PORT, K4 MIX */
 {
     static const char *const CL[3] = {"OFF", "SEND", "FOLLOW"};
     uint32_t f;
@@ -6478,6 +6593,18 @@ static void setup_knob(int k, int32_t e)  /* SETUP: K1 MIDI CLOCK, K2 SOUNDS */
         app_say("USB PORT", usb_host_selected ? "MIDI HOST" : "COMPUTER");
         return;                         /* role is session-only, not a project setting */
 #endif
+    } else if (k == 3) {
+        v = clamp(mix_pp() + e, 0, 1);
+        f = plat_lock();
+        if (v && !mix_pp()) {             /* on: each track's strip now is its clip's, the FX the pattern's */
+            proj.recq |= 0x80u;
+            fx_pat = proj.pat;
+            pmix_store_all();
+        } else if (!v) {
+            proj.recq &= 0x7Fu;
+        }
+        plat_unlock(f);
+        app_say("MIX", v ? "PER PATTERN" : "SHARED");
     } else {
         return;
     }
@@ -9181,6 +9308,10 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
         }
         if (k == 1) {
             card_put(c, "SOUNDS", sounds_pp() ? "OWN" : "SHARED", sounds_pp(), 0, 1, -1);
+            return 1;
+        }
+        if (k == 3) {
+            card_put(c, "MIX", mix_pp() ? "OWN" : "SHARED", mix_pp(), 0, 1, -1);
             return 1;
         }
 #if FM1B_USB_HOST
@@ -12235,6 +12366,8 @@ int app_expect(const char *what, int *got)
         if (q < 0 || q >= NPAT)
             return 0;
         *got = (proj.follow[q] >> 3) + 1;
+    } else if (!strcmp(what, "mixpp")) {  /* MIX PER PATTERN */
+        *got = mix_pp();
     } else if (!strcmp(what, "sounds")) { /* SOUNDS PER PATTERN; mclock: MIDI CLOCK 0 off 1 sent 2 followed */
         *got = sounds_pp();
     } else if (!strcmp(what, "mclock")) {
