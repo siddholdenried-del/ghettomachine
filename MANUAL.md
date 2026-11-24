@@ -89,7 +89,9 @@ you're turning. Purple draws the grids, the empty steps and the boxes. Top to bo
   - **Turn a knob or press a button and the change shows in yellow** on line 1 for a moment ("T3 LEVEL 99", "CY
     MUTED"), in place of the pattern and tempo. The title never moves.
 - **The work area:** only what you're working on. Curves (the filter, the envelopes, the LFO, the oscillators, the EQ,
-  the compressor, the tape) on a purple grid; the steps; the drums' lanes; a drum's voice drawn on its own page (an
+  the compressor, the tape) on a purple grid. The LFO's page is a scope: its wave scrolls past a yellow dot that
+  stays in the middle (now), riding up and down with the LFO's value, what's to come at the right. The steps; the
+  drums' lanes; a drum's voice drawn on its own page (an
   illustration of its sound, its decay and pitch following the lane's DECAY and TUNE). Where there's room, a last
   line gives a hint at the left ("WHITE: SCENE") and a state at the right, yellow when it's happening now ("P01
   PLAYING", "W4 HELD").

@@ -9479,26 +9479,38 @@ static void page_lfo(void)                /* the track's LFO: its shape, where i
              tr == TR_DRUM ? (pg ? "DRUM LFO MORE" : "DRUM LFO") : LFO_PAGE_NAME[pg], t, lfo_pages(tr), pg);
     grid_bg();                     /* (the atlas: curves on a grid, on black) */
     cv_rect(10, 64, 220, 1, C_GRID);
+    cv_rect(120, 6, 1, 101, PLAYHEAD);    /* now: the middle, where the dot stays */
     if (amp < 0.25f)
         amp = 0.25f;
-    for (c = 0; c < 220; c++) {
-        float ph = (float)(c % 110) / 110.0f, a = RND[c / 44], b = RND[c / 44 + 1], v;
-        int y;
-        v = (l->shape == LS_SH || l->shape == LS_SMOOTH) ? lfo_wave(l->shape, (float)(c % 44) / 44.0f, a, b)
-                                                        : lfo_wave(l->shape, ph, 0.0f, 0.0f);
-        if (l->depth < 0)
-            v = -v;
-        y = 64 - (int)(v * amp * 52.0f);
-        if (c)
-            thick(10 + c - 1, py, 10 + c, y, wc);
-        py = y;
+    {   /* a scope (0.5): the wave scrolls past the dot, a cycle 110 pixels wide, now in the middle, what's to come at
+         * the right. S&H and SMOOTH draw this cycle's value and the next's as the LFO has them (the one before as it
+         * was; further off, made up) */
+        static float last_a[NTRK], prev_a[NTRK];
+        const float ph = lfo_rt[tr].ph, A = lfo_rt[tr].a, B = lfo_rt[tr].b;
+        if (A != last_a[tr]) {
+            prev_a[tr] = last_a[tr];
+            last_a[tr] = A;
+        }
+        for (c = 0; c < 220; c++) {
+            float pos = ph + (float)(c - 110) / 110.0f, f, v, va, vb;
+            int k = (int)(pos + 8.0f) - 8, y;   /* the cycle, from this one (0) */
+            f = pos - (float)k;
+            va = k == 0 ? A : k == 1 ? B : k == -1 ? prev_a[tr] : RND[(k + 12) % 6];
+            vb = k == -1 ? A : k == 0 ? B : RND[(k + 13) % 6];
+            v = (l->shape == LS_SH || l->shape == LS_SMOOTH) ? lfo_wave(l->shape, f, va, vb) : lfo_wave(l->shape, f, 0.0f, 0.0f);
+            if (l->depth < 0)
+                v = -v;
+            y = 64 - (int)(v * amp * 52.0f);
+            if (c)
+                thick(10 + c - 1, py, 10 + c, y, wc);
+            py = y;
+        }
     }
-    {   /* where it is now */
+    {   /* where it is now: the dot, fixed in the middle, yellow; up and down with the LFO's value */
         float v = lfo_rt[tr].out * (l->depth < 0 ? -1.0f : 1.0f);
-        int x = 10 + (int)(lfo_rt[tr].ph * 109.0f), y = 64 - (int)(v * amp * 52.0f);
-        rrect(x - 5, y - 5, 11, 11, 5, TH_FG);
-        rrect(x - 3, y - 3, 7, 7, 3, C_WHITE2);
-        rrect(x - 4 + 110, y - 4, 9, 9, 4, mix565(C_PANEL, TH_FG, 90));
+        int y = 64 - (int)(v * amp * 52.0f);
+        rrect(115, y - 5, 11, 11, 5, C_NOW);
+        rrect(117, y - 3, 7, 7, 3, C_INK);
     }
     cards_of(KD_LFO, ui.lfopage);
 }
