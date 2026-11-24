@@ -288,7 +288,9 @@ typedef struct {
      * they belong to; dpatch_size: sizeof(KitPatch) then, 0 none: another size or kit and the kit plays as it comes) */
     KitPatch dpatch;
     uint16_t dpatch_size;
-    uint8_t dpatch_kit, dpatch_rsv;
+    uint8_t dpatch_kit;
+    uint8_t mflags;                       /* SETUP > MIDI: bit 0 SEQ OUT (the sequencer's notes sent), 1 BLUETOOTH on
+                                           * (a spare byte until 0.5's MIDI page: 0 in every older save) */
     uint8_t fx2[8];                       /* format 10: the FX's second pages (fx.h FXP_DL_WIDTH ..: FXP_NUM on) */
     /* format 12: MIX PER PATTERN (SETUP K4; recq bit 7): a track's mixer strip is its clip's, as its sound is (pmix:
      * set_clip), and the FX's and the master bus's knobs are the focused pattern's (pfx: pfx_follow). used 0: none
@@ -559,6 +561,65 @@ static struct {
 static float lfo_out_drums(void);
 static int drum_lfo_moved;                /* the last hit's move by the drums' LFO, thousandths of the range, its size
                                            * (0: not moved; tests) */
+/* MIDI out (0.5): the keys' notes always; with SEQ OUT (SETUP > MIDI) the sequencer's too, the drums on channel 10
+ * (General MIDI notes) and T2..T4 on 2..4, each with its note-off when its gate is up (mo_tick, a block at a time).
+ * To USB and, where the build has it, Bluetooth */
+#define MIDI_TO (TO_USB | TO_BLE)
+#define MO_N 24
+static struct { uint8_t on, ch, note; int32_t left; } mo[MO_N];
+static const uint8_t PAD_GM[NPADS];
+static int seq_out(void) { return (int)(proj.mflags & 1u); }
+
+static void mo_off(int i)
+{
+    plat_midi_send(0x08u | (0x80u | mo[i].ch) << 8 | (uint32_t)mo[i].note << 16, MIDI_TO);
+    mo[i].on = 0;
+}
+
+static void mo_note(int ch, int note, int vel, int32_t gate)   /* audio interrupt, or the lock held */
+{
+    int i, at = -1, old = 0;
+    if (!seq_out() || note < 1 || note > 127)
+        return;
+    for (i = 0; i < MO_N; i++) {
+        if (mo[i].on && mo[i].ch == ch && mo[i].note == note) {   /* the same note again: its off first */
+            mo_off(i);
+            at = i;
+        } else if (!mo[i].on) {
+            if (at < 0)
+                at = i;
+        } else if (mo[i].left < mo[old].left || !mo[old].on) {
+            old = i;
+        }
+    }
+    if (at < 0) {                         /* full: the one nearest its end goes early */
+        mo_off(old);
+        at = old;
+    }
+    plat_midi_send(0x09u | (0x90u | (uint32_t)ch) << 8 | (uint32_t)note << 16 | (uint32_t)clamp(vel, 1, 127) << 24, MIDI_TO);
+    mo[at].on = 1;
+    mo[at].ch = (uint8_t)ch;
+    mo[at].note = (uint8_t)note;
+    mo[at].left = gate > 0 ? gate : 2205;
+}
+
+static void mo_tick(int32_t n)
+{
+    int i;
+    for (i = 0; i < MO_N; i++)
+        if (mo[i].on && (mo[i].left -= n) <= 0)
+            mo_off(i);
+}
+
+static void mo_flush(void)                /* the sequencer stopped (or SEQ OUT turned off): every note let go */
+{
+    int i;
+    for (i = 0; i < MO_N; i++)
+        if (mo[i].on)
+            mo_off(i);
+}
+static void mo_pad(int pad, float v) { mo_note(9, PAD_GM[pad], (int)(v * 100.0f), 2205); }
+
 static void pad_fire(int pad, float vel)
 {
     if (pad < 0 || pad >= NPADS || drum_hits_off(pad))
@@ -2370,6 +2431,7 @@ static void sub_fire(int i)
         if ((perf.rmask | proj.tmute) & 1u)
             return;
         pad_fire(i, v);
+        mo_pad(i, v);
         if (i == 0)
             pump_key(drum_model(0), v);
     } else {
@@ -2377,9 +2439,11 @@ static void sub_fire(int i)
         const nstep_t *s = &ipart(tr)->st[sub[i].a & (NSTEPS - 1)];
         if (((perf.rmask | proj.tmute) >> tr & 1u) || clip[tr] < 0)
             return;
-        for (k = 0; k < NCHORD && s->note[k]; k++)
+        for (k = 0; k < NCHORD && s->note[k]; k++) {
             syn_note_on_f(tr, s->note[k], (float)ns_vel(s) / 127.0f, (int32_t)(sub[i].len * 0.5f),
                           tset(tr)->type == TY_MONO, (s->vel & NS_ACC) ? SN_ACCENT : 0);
+            mo_note(tr, s->note[k], ns_vel(s), (int32_t)(sub[i].len * 0.5f));
+        }
     }
 }
 
@@ -2406,6 +2470,7 @@ static void seq_drum(void)                /* audio interrupt: the drum part's ne
             int j = lock_find(p, next, pad, LK_VEL), a = j >= 0 ? p->lk[j].val & 127 : bit_get(p->acc, next) ? 255 : 0;
             float v = sub_vel(a);         /* (its own velocity, else its accent's) */
             pad_fire(pad, v);
+            mo_pad(pad, v);
             if (pad == 0)                 /* the bass drum: the master's PUMP ducks to it */
                 pump_key(drum_model(0), v);
             j = lock_find(p, next, pad, LK_SUB);
@@ -2460,6 +2525,7 @@ static void seq_inst(int tr)              /* audio interrupt: an instrument part
         else
             syn_note_on_f(tr, s->note[i], (float)ns_vel(s) / 127.0f, gate, ts->type == TY_MONO,
                           marks | (slide_in && i == 0 ? SN_SLIDE : 0));
+        mo_note(tr, s->note[i], ns_vel(s), gate);   /* (arpeggiated: the step's own notes, not the arpeggio) */
     }
     sq.slid[tr] = (uint8_t)(!ts->arp_mode && (s->prob & NS_SLIDE));
     if (!ts->arp_mode)
@@ -2486,8 +2552,10 @@ static void roll_fire(void)               /* ROLL: each track's step as it was p
         int i;
         if (!(perf.rmask >> t & 1u) || clip[t] < 0 || ((proj.tmute | roll_inhibit_tracks) >> t & 1u) || !s->note[0])
             continue;
-        for (i = 0; i < NCHORD && s->note[i]; i++)
+        for (i = 0; i < NCHORD && s->note[i]; i++) {
             syn_note_on(t, s->note[i], (float)ns_vel(s) / 127.0f, (int32_t)(perf.roll_len * 0.6f), tset(t)->type == TY_MONO);
+            mo_note(t, s->note[i], ns_vel(s), (int32_t)(perf.roll_len * 0.6f));
+        }
     }
 }
 
@@ -2648,9 +2716,44 @@ static void seq_begin(void)               /* (the lock held, or in the audio int
     sq.fskip = 1;
     sq.mclk_to = 0.0f;
     if ((proj.recq >> 2 & 3u) == 1u)      /* MIDI CLOCK sent: Start */
-        plat_midi_send(0x0Fu | 0xFAu << 8, TO_USB);
+        plat_midi_send(0x0Fu | 0xFAu << 8, MIDI_TO);
     lfo_play();
     sq.playing = 1;
+}
+
+/* MIDI Continue (followed clock): from where the last Stop left every track, the bar and the song */
+static struct {
+    uint8_t ok, pat;
+    __typeof__(sq.t[0]) t[NTRK];
+    float bar_left;
+    uint32_t clock;
+    int8_t spos;
+    uint8_t sleft, sstarted;
+} cont;
+
+static void seq_continue(void)            /* (as seq_begin) */
+{
+    int t, song = proj.song_on && proj.song_n;
+    seq_begin();
+    if (!cont.ok || (!song && cont.pat != proj.pat) || (song && (cont.spos < 0 || cont.spos >= proj.song_n)))
+        return;                           /* nothing kept, or another pattern since: from the top */
+    if (song) {
+        srt.pos = cont.spos;
+        srt.left = cont.sleft;
+        srt.started = cont.sstarted;
+        if (proj.pat != proj.song[srt.pos].pat) {
+            proj.pat = proj.song[srt.pos].pat;
+            clips_all(proj.pat);
+        }
+    }
+    for (t = 0; t < NTRK; t++) {
+        sq.t[t].step = cont.t[t].step;
+        sq.t[t].frac = cont.t[t].frac;
+        sq.t[t].to_next = cont.t[t].to_next;
+        sq.t[t].dur = cont.t[t].dur;
+    }
+    sq.bar_left = cont.bar_left;
+    sq.clock = cont.clock;
 }
 
 static void seq_start(void)
@@ -2669,7 +2772,23 @@ static void seq_stop(void)
     qm_clear();                           /* (a stop lets the QUICK MIXER's held moves go) */
     f = plat_lock();
     if (sq.playing && (proj.recq >> 2 & 3u) == 1u)   /* MIDI CLOCK sent: Stop */
-        plat_midi_send(0x0Fu | 0xFCu << 8, TO_USB);
+        plat_midi_send(0x0Fu | 0xFCu << 8, MIDI_TO);
+    if (sq.playing) {                     /* where it stopped: a MIDI Continue goes on from there */
+        cont.ok = 1;
+        cont.pat = proj.pat;
+        for (t = 0; t < NTRK; t++) {
+            cont.t[t].step = sq.t[t].step;
+            cont.t[t].frac = sq.t[t].frac;
+            cont.t[t].to_next = sq.t[t].to_next;
+            cont.t[t].dur = sq.t[t].dur;
+        }
+        cont.bar_left = sq.bar_left;
+        cont.clock = sq.clock;
+        cont.spos = srt.pos;
+        cont.sleft = srt.left;
+        cont.sstarted = srt.started;
+    }
+    mo_flush();
     sq.playing = 0;
     sub_on = 0;
     srt.pos = -1;
@@ -2905,19 +3024,24 @@ static void midi_in(void)                 /* audio interrupt */
                 continue;
             if (st == 0xF8u) {            /* a clock: the first after a Start starts; every 6th times the tempo */
                 if (sq.mclk_go) {
+                    const int go = sq.mclk_go;
                     sq.mclk_go = 0;
 #if FM1B_USB_HOST
                     mh_usb_start = 0;
 #endif
-                    if (!sq.playing)
-                        seq_begin();
+                    if (!sq.playing) {
+                        if (go == 2)
+                            seq_continue();
+                        else
+                            seq_begin();
+                    }
                 }
                 if (++sq.mclk_n >= 24u)
                     sq.mclk_n = 0;
                 if (sq.mclk_n % 6u == 0u)
                     mclk_tick();
-            } else if ((st == 0xFAu || st == 0xFBu) && !sq.playing) {   /* Start (Continue: from the top too) */
-                sq.mclk_go = 1;
+            } else if ((st == 0xFAu || st == 0xFBu) && !sq.playing) {   /* Start; Continue: from where it stopped */
+                sq.mclk_go = st == 0xFBu ? 2 : 1;
 #if FM1B_USB_HOST
                 mh_usb_start = (uint8_t)(port == PORT_USB);
 #endif
@@ -3739,6 +3863,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     }
     midi_in();
     pfx_follow();                         /* MIX PER PATTERN: the focused pattern's FX */
+    mo_tick((int32_t)n);                  /* SEQ OUT: the note-offs due */
     render_t += n;
     tempo_stretch();
     {   /* the perform keys: what changed since the last block (ROLL here; the output's effects: post_job); and the
@@ -3778,7 +3903,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     if (sq.playing && (proj.recq >> 2 & 3u) == 1u) {   /* MIDI CLOCK sent: 24 a beat (to the block) */
         float tick = bar_samples() / 96.0f;
         while (sq.mclk_to < (float)n) {
-            plat_midi_send(0x0Fu | 0xF8u << 8, TO_USB);
+            plat_midi_send(0x0Fu | 0xF8u << 8, MIDI_TO);
             sq.mclk_to += tick;
         }
         sq.mclk_to -= (float)n;
@@ -4518,7 +4643,7 @@ static void pad_play(int pad, uint32_t vel)   /* a pad played by hand: heard, se
             fx_key(drum_model(0), v);
     }
     plat_unlock(f);
-    plat_midi_send(0x09u | 0x99u << 8 | (uint32_t)PAD_GM[pad] << 16 | (vel ? vel : 1u) << 24, TO_USB);
+    plat_midi_send(0x09u | 0x99u << 8 | (uint32_t)PAD_GM[pad] << 16 | (vel ? vel : 1u) << 24, MIDI_TO);
     if (ui.rec && (sq.playing || (ck.count > 0 && ck.count <= (int32_t)(bar_samples() * 0.125f)))) {
         /* to the nearest point of the grid (hold REC, QUANTIZE); one ahead is left once by the sequencer; in the
          * count-in's last half beat, on step 1 */
@@ -5066,7 +5191,7 @@ static void note_down(int key)            /* a key on the KEYS (or EDIT) page of
     }
     plat_unlock(f);
     for (i = 0; i < nc; i++)
-        plat_midi_send(0x09u | (0x90u | (uint32_t)tr) << 8 | (uint32_t)cn[i] << 16 | (uint32_t)vel << 24, TO_USB);
+        plat_midi_send(0x09u | (0x90u | (uint32_t)tr) << 8 | (uint32_t)cn[i] << 16 | (uint32_t)vel << 24, MIDI_TO);
     ui.key_note[key] = (uint8_t)note;
     ui.key_trk[key] = (uint8_t)tr;
     ui.key_mode[key] = 0;
@@ -5118,7 +5243,7 @@ static void note_up(int key)
 #endif
     plat_unlock(f);
     for (i = 0; i < nc; i++)
-        plat_midi_send(0x08u | (0x80u | (uint32_t)tr) << 8 | (uint32_t)cn[i] << 16, TO_USB);
+        plat_midi_send(0x08u | (0x80u | (uint32_t)tr) << 8 | (uint32_t)cn[i] << 16, MIDI_TO);
     if (ui.key_mode[key] == 1)
         live_rec_off(key, tr);
     else if (ui.key_mode[key] == 2)
@@ -6564,11 +6689,38 @@ static void follow_knob(int p, int k, int32_t e)   /* HOME, a scene key held: K1
     }
 }
 
+static int ble_wanted(void) { return (int)(proj.mflags >> 1 & 1u); }
+int app_ble_wanted(void) { return ble_wanted(); }   /* (app.h APP_BLE_AT_BOOT: Bluetooth at power-on, as the project says) */
+
 static void setup_knob(int k, int32_t e)  /* SETUP: K1 MIDI CLOCK, K2 SOUNDS, K3 USB PORT, K4 MIX */
 {
     static const char *const CL[3] = {"OFF", "SEND", "FOLLOW"};
     uint32_t f;
     int v;
+    if (ui.setup_view == 1) {             /* the MIDI view: K1 SEQ OUT, K2 BLUETOOTH */
+        if (k == 0) {
+            v = clamp(seq_out() + e, 0, 1);
+            f = plat_lock();
+            if (!v)
+                mo_flush();
+            proj.mflags = (uint8_t)((proj.mflags & ~1u) | (uint32_t)v);
+            plat_unlock(f);
+            app_say("SEQ OUT", v ? "ON" : "OFF");
+        } else if (k == 1 && FM1B_BLE) {
+            v = clamp(ble_wanted() + e, 0, 1);
+            if (v == ble_wanted())
+                return;
+            proj.mflags = (uint8_t)((proj.mflags & ~2u) | (uint32_t)v << 1);
+            plat_ble_enable(v);
+            app_say("BLUETOOTH", v ? "ON" : "OFF");
+        } else {
+            return;
+        }
+        dirty = 1;
+        return;
+    }
+    if (ui.setup_view)
+        return;
     if (k == 0) {
         v = clamp((int)(proj.recq >> 2 & 3u) + e, 0, 2);
         proj.recq = (uint8_t)((proj.recq & ~0x0Cu) | (uint32_t)v << 2);
@@ -8247,14 +8399,14 @@ static void input(void)
             ui.color_page = (uint8_t)clamp(ui.color_page+e,0,1);
         } else if (ui.page == PG_SETUP) {   /* SETUP: SELECT turns to the CPU by stage and back */
             char t[16];
-            ui.setup_view = (uint8_t)clamp(ui.setup_view + e, 0, 1);
+            ui.setup_view = (uint8_t)clamp(ui.setup_view + e, 0, 2);
             t[0] = 0;
-            if (ui.setup_view) {
+            if (ui.setup_view == 2) {
                 text_cat(t, "CPU ");
                 int_text((int32_t)plat_cpu_pct(), t + 4);
                 text_cat(t, "%");
             }
-            app_say("SETUP", ui.setup_view ? t : "CLOCK, SOUNDS");
+            app_say("SETUP", ui.setup_view == 2 ? t : ui.setup_view ? "MIDI, BLUETOOTH" : "CLOCK, SOUNDS");
         } else if (ui.held_step >= 0 && !(inst && (ui.page == PG_EDIT || ui.page == PG_ENV || ui.page == PG_LFO))) {
             /* (there: pages to lock on) */
             if (inst && ui.page == PG_SEQ)   /* its steps: which note (its chance: STEP NOTES' K4) */
@@ -9302,6 +9454,17 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
     }
     case KD_SETUP: {
         static const char *const CL[3] = {"OFF", "SEND", "FOLLOW"};
+        if (page == 1) {                  /* the MIDI view */
+            if (k == 0)
+                card_put(c, "SEQ OUT", seq_out() ? "ON" : "OFF", seq_out(), 0, 1, -1);
+            else if (k == 1 && FM1B_BLE)
+                card_put(c, "BLUETOOTH", ble_wanted() ? "ON" : "OFF", ble_wanted(), 0, 1, -1);
+            else
+                return 0;
+            return 1;
+        }
+        if (page)
+            return 0;
         if (k == 0) {
             card_put(c, "MIDI CLOCK", CL[proj.recq >> 2 & 3u], (int)(proj.recq >> 2 & 3u), 0, 2, -1);
             return 1;
@@ -10858,12 +11021,45 @@ static void page_cpu(void)
     cards_of(KD_SETUP, 0);
 }
 
+static int ble_word_now;                  /* what the MIDI view last showed of Bluetooth (the main loop redraws on a change) */
+static int ble_word(void)                 /* 0 not built, 1 off, 2 starting, 3 waiting, 4 connected, 5 failed */
+{
+#if FM1B_BLE
+    const int st = plat_ble_state();
+    return !ble_wanted() ? 1 : plat_ble_connected() ? 4 : st == BLE_READY ? 3 : st == BLE_FAILED ? 5 : 2;
+#else
+    return 0;
+#endif
+}
+
+static void page_midi(void)               /* SETUP's second view: SEQ OUT and Bluetooth MIDI */
+{
+    static const char *const BW[6] = {"NOT IN THIS BUILD", "OFF", "STARTING", "ON: PAIR FROM A COMPUTER OR PHONE",
+                                      "CONNECTED", "THE RADIO DID NOT START"};
+    band_set(C_CREAM, "ALL", "MIDI", "SELECT: CPU", 0, 0);
+    rrect(3, 2, 234, 40, 6, C_PANEL);
+    cv_text(10, 4, &FONT_XS, "SEQUENCER TO MIDI (SEQ OUT)", C_TXT2);
+    cv_text(10, 20, &FONT_S, seq_out() ? "SENT: DRUMS CH 10, T2-T4 CH 2-4" : "OFF: ONLY THE KEYS YOU PLAY", TH_TXT);
+    rrect(3, 46, 234, 40, 6, C_PANEL);
+    cv_text(10, 48, &FONT_XS, "BLUETOOTH MIDI", C_TXT2);
+    ble_word_now = ble_word();
+    cv_text(10, 64, &FONT_S, BW[ble_word_now], TH_TXT);
+    rrect(3, 90, 234, 40, 6, C_PANEL);
+    cv_text(10, 92, &FONT_XS, "IN: CH 10 PADS, CH 2-4 TRACKS", C_TXT2);
+    cv_text(10, 108, &FONT_XS, "CH 1 PLAYS THE TRACK PICKED", C_TXT2);
+    cards_of(KD_SETUP, 1);
+}
+
 static void page_setup(void)              /* SETUP: MIDI CLOCK; SOUNDS shared or per pattern, and which have their own */
 {
     static const char *const CL[3] = {"OFF: THE FM-1'S OWN TEMPO", "SENT: 24 A BEAT, START, STOP", "FOLLOWED: TEMPO, START, STOP"};
     int t, k, pp = sounds_pp();
-    if (ui.setup_view) {
+    if (ui.setup_view == 2) {
         page_cpu();
+        return;
+    }
+    if (ui.setup_view == 1) {
+        page_midi();
         return;
     }
 #if FM1B_USB_HOST
@@ -10872,7 +11068,7 @@ static void page_setup(void)              /* SETUP: MIDI CLOCK; SOUNDS shared or
     band_set(C_CREAM, "ALL", "SETUP", "SELECT: CPU", 0, 0);
 #endif
     rrect(3, 2, 234, 40, 6, C_PANEL);
-    cv_text(10, 4, &FONT_XS, "MIDI CLOCK (USB)", C_TXT2);
+    cv_text(10, 4, &FONT_XS, FM1B_BLE ? "MIDI CLOCK (USB, BLUETOOTH)" : "MIDI CLOCK (USB)", C_TXT2);
     cv_text(10, 20, &FONT_S, CL[proj.recq >> 2 & 3u], TH_TXT);
     rrect(3, 46, 234, 84, 6, C_PANEL);
     cv_text(10, 48, &FONT_XS, pp ? "SOUNDS PER PATTERN: WHICH HAVE THEIR OWN" : "SOUNDS: ONE FOR ALL PATTERNS", C_TXT2);
@@ -12104,6 +12300,8 @@ void app_frame(void)
     }
     shed();
     late_watch();
+    if (ui.page == PG_SETUP && ui.setup_view == 1 && ble_word() != ble_word_now)
+        ui.redraw = 1;                    /* the MIDI view: Bluetooth's state as it changes */
     {   /* the delay's line back once STUTTER and TAPE STOP are done with it: the keys up, and the last block
          * that had them through its tail (perf.on: the block rendering; pf_was: the tail's, a block later). Zeroed
          * here, outside the lock (it took 1.5 ms with the audio held off, a quarter of a block: a glitch as the live
@@ -12366,6 +12564,10 @@ int app_expect(const char *what, int *got)
         if (q < 0 || q >= NPAT)
             return 0;
         *got = (proj.follow[q] >> 3) + 1;
+    } else if (!strcmp(what, "seqout")) { /* SEQ OUT; ble: BLUETOOTH wanted */
+        *got = seq_out();
+    } else if (!strcmp(what, "blewant")) {
+        *got = ble_wanted();
     } else if (!strcmp(what, "mixpp")) {  /* MIX PER PATTERN */
         *got = mix_pp();
     } else if (!strcmp(what, "sounds")) { /* SOUNDS PER PATTERN; mclock: MIDI CLOCK 0 off 1 sent 2 followed */

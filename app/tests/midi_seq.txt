@@ -1,0 +1,180 @@
+# MIDI out of the sequencer (SETUP > MIDI: SEQ OUT), MIDI Continue, and the Bluetooth switch, in the host simulator.
+#   app/build/host/ghettomachine_host app/tests/midi_seq.txt OUTDIR
+# seqout: SEQ OUT; blewant: BLUETOOTH; midi_out: messages sent (clocks apart); step: the drums' step playing
+wait 600
+expect seqout 0
+expect blewant 0
+# ---- off: the sequencer sends nothing
+tap PLAY
+wait 600
+tap PLAY
+wait 100
+expect midi_out 0
+# ---- SETUP (HOME four times), SELECT: the MIDI view; K1 SEQ OUT on
+tap HOME
+wait 30
+tap HOME
+wait 30
+tap HOME
+wait 30
+tap HOME
+wait 30
+expect page 13
+turn SELECT 1
+wait 60
+expect setupview 1
+spin K1 1
+wait 30
+expect seqout 1
+shot midi_page.png
+# Bluetooth on (K2) and a computer connected: the same notes go there
+spin K2 1
+wait 1200
+expect blewant 1
+ble connect
+wait 100
+shot midi_page_ble.png
+out
+tap PLAY
+wait 1000
+expect midi_out >4
+# the bass drum (note 36, channel 10): its note-off went out too, to USB and to Bluetooth
+expect_out USB 89 24 00
+expect_out BLE 89 24 00
+tap PLAY
+wait 200
+# ---- SEQ OUT off again; Bluetooth's switch is kept with the project
+spin K1 -1
+wait 30
+expect seqout 0
+# ---- MIDI CLOCK followed (the first view's K1, twice): Start, clocks, Stop; then Continue goes on from where it stopped
+turn SELECT -1
+wait 60
+expect setupview 0
+spin K1 2
+wait 30
+expect mclock 2
+midi FA
+wait 10
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+midi F8
+wait 20
+expect playing 1
+expect step >4
+midi FC
+wait 100
+expect playing 0
+midi FB
+wait 10
+midi F8
+wait 20
+midi F8
+wait 20
+expect playing 1
+expect step >4
+midi FC
+wait 100
+expect playing 0
+# and Start: from the top
+midi FA
+wait 10
+midi F8
+wait 20
+midi F8
+wait 20
+expect playing 1
+expect step <2
+midi FC
+wait 100
+tap SAVE
+wait 400
+reboot
+wait 600
+expect blewant 1
+expect seqout 0
+expect mclock 2

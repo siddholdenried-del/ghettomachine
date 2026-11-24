@@ -10,7 +10,9 @@ gen = ["tools/gen_drum_samples.py {gen}/x0x_drum_samples.h",   # the 909 cymbals
        "tools/gen_logo.py {gen}/logo.h",                        # the boot screen's logo (Sedgwick Ave Display, OFL)
        "tools/gen_mono.py {gen}/mono_font.h"]                   # the monospace faces (IBM Plex Mono, OFL)
 words = "words.tsv"
-ble = false                    # no radio: the firmware is GPL-3.0, so JieLi's binary Bluetooth libraries stay out
+ble = true                     # Bluetooth MIDI on the own stack (MPL-2.0 / GPL-3.0: no JieLi library)
+ble_stack = "own"
+ble_diag = false               # the link layer's diagnostics left out: 2.4 KB of RAM
 ram_code_allow = ["fx_master"]   # Master EQ, tape, stereo and meters are called in flash.
 cpu2 = true                    # the second core renders half the synth voices
 cpu2_fallback = true           # one core (8 voices) after a failure of it, instead of a restart

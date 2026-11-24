@@ -20,7 +20,10 @@ void app_splash(void);
 #define FM1B_UAC_DEEP 1
 
 /* the store: the user presets (sounds and kits; the project itself is a file, app.c PROJ_FILE),
- * the panel calibration (the platform's) and Bluetooth's slot (unused: no radio in this build), and their offsets */
+ * the panel calibration (the platform's) and Bluetooth's slot (the radio's address and bond), and their offsets */
+int app_ble_wanted(void);               /* Bluetooth MIDI (the own stack: fm1.toml): on only where the project's
+                                         * SETUP > MIDI says so (off by default: the radio quiet) */
+#define APP_BLE_AT_BOOT app_ble_wanted()
 enum { OBJ_USER, OBJ_PANEL, OBJ_BLE, OBJ_NOBJ };   /* OBJ_USER: the user presets (app.c user_t) */
 #define APP_STORE_MAP {0xFC000u, 0xDC000u, 0xDE000u}
 
