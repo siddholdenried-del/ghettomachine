@@ -366,9 +366,9 @@ Turning a knob without recording on, or stopped, only changes the sound.
   through; GLO opens on whichever you left it on, and GLO again goes back. On LEVEL to DELAY, K1–K4 are DRUMS, T2, T3,
   T4. The QUICK MIXER (HOME, twice) has one track's LEVEL, REVERB, DELAY and PAN on K1–K4 instead. The drums' sends
   open the FX to their pads' own reverb and delay knobs.
-- **RETURNS** (GLO, then SELECT past DELAY), for dub: **K1 VERB RTN** and **K2 DELAY RTN**, how loud BongVerb and
-  BongDelay come back into the mix, **K3 FEEDBACK** (the delay's regen) and **K4 VERB DECAY**: the same knobs as on the
-  FX pages, so a change shows in both. The returns read in dB against their presets' level (0.0dB, the default).
+- **RETURNS** (GLO, then SELECT past DELAY), for dub, in pairs: **K1 VERB RTN** (how loud BongVerb comes back into
+  the mix) beside **K2 VERB DECAY**; **K3 DELAY RTN** beside **K4 FEEDBACK** (the delay's regen). Each is drawn over
+  its knob. The same knobs as on the FX pages, so a change shows in both. The returns read in dB against their presets' level (0.0dB, the default).
   Past +3.5dB (the old top) they go on in quarter-dB steps to **+15.5dB**, drawn yellow, so the echoes and the
   reverb can come back much louder than the dry; the master's limiter holds the peaks. A big turn glides in over
   about 50 ms instead of clicking. Projects saved before sound as they did.

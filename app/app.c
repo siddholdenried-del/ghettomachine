@@ -5635,11 +5635,12 @@ static void arp_knob(int k, int32_t e)
 /* ----------------------------------------------------------------- MIXER and FX --- */
 #define NMIXPAGE 5                        /* the mixer's pages: the tracks' LEVEL, PAN, REVERB, DELAY; the RETURNS */
 static const char *const MIX_NAME[NMIXPAGE] = {"LEVEL", "PAN", "REVERB", "DELAY", "RETURNS"};
-/* RETURNS (0.5, for dub): the shared FX's own knobs, the same values as the FX pages': K1 BongVerb's return, K2
- * BongDelay's (both to +15.5 dB over the preset's: dsp/fx.c LVL_MAX), K3 the delay's feedback, K4 the verb's decay */
+/* RETURNS (0.5, for dub): the shared FX's own knobs, the same values as the FX pages', in pairs: K1 BongVerb's return
+ * and K2 its decay; K3 BongDelay's return and K4 its feedback (the returns to +15.5 dB over the preset's: dsp/fx.c
+ * LVL_MAX) */
 #define MIX_RET 4
-static const int8_t RET_P[4] = {FXP_RV_LEVEL, FXP_DL_LEVEL, FXP_DL_FDBK, FXP_RV_DECAY};
-static const char *const RET_LABEL[4] = {"VERB RTN", "DELAY RTN", "FEEDBACK", "VERB DECAY"};
+static const int8_t RET_P[4] = {FXP_RV_LEVEL, FXP_RV_DECAY, FXP_DL_LEVEL, FXP_DL_FDBK};
+static const char *const RET_LABEL[4] = {"VERB RTN", "VERB DECAY", "DELAY RTN", "FEEDBACK"};
 #define NFXPAGE 4
 static const char *const FX_PAGE_NAME[NFXPAGE] = {"BongVerb", "BongDelay", "FX MODE", "DJ FILTER"};
 static const int8_t FX_PAGE_P[NFXPAGE][4] = {
@@ -9882,31 +9883,26 @@ static void page_mix(void)                /* the mixer: a strip a track, its met
         band_set(C_CREAM, "ALL", ttl, ui.mixpage == MIX_RET ? "SHARED FX" : "K1-K4: TRACKS", NMIXPAGE + NMSTPAGE,
                  ui.mixpage);
     }
-    if (ui.mixpage == MIX_RET) {          /* RETURNS: the two returns, large; past 0 dB (the preset's) the boost, yellow */
-        static const char *const NM[2] = {"VERB", "DELAY"};
-        int r;
-        for (r = 0; r < 2; r++) {
-            int x = 14 + r * 86, v = proj.fx[RET_P[r]], mx = fx_param(RET_P[r])->max, h = v * 92 / mx;
-            int y0 = 122 - 85 * 92 / mx, yb = 122 - 127 * 92 / mx;
+    if (ui.mixpage == MIX_RET) {          /* RETURNS: each knob's control drawn over its cell: the returns as faders (past
+                                           * 0 dB, the preset's, a mark; the boost past the old top yellow), the decay
+                                           * and the feedback as bars beside them */
+        static const char *const NM[4] = {"VERB", "DECAY", "DELAY", "FDBK"};
+        int k;
+        for (k = 0; k < 4; k++) {
+            int i = RET_P[k], v = proj.fx[i], mx = fx_param(i)->max, ret = !(k & 1), w = ret ? 40 : 16;
+            int x = 30 + k * 60 - w / 2, h = v * 92 / mx;
             char u[16];
-            rrect(x, 30, 44, 92, 4, C_GRID);
+            text_c(30 + k * 60, 4, &FONT_B, NM[k], TH_TXT);
+            fx_text(i, u);
+            text_c(30 + k * 60, 17, &FONT_XS, u, ret && v > 127 ? C_NOW : C_TXT2);
+            rrect(x, 30, w, 92, 4, C_GRID);
             if (h > 0)
-                rrect(x, 122 - h, 44, h, 4, TH_FG);
-            if (v > 127)                  /* the boost past the old top: yellow */
-                rrect(x, 122 - h, 44, h - (122 - yb), 4, C_NOW);
-            cv_rect(x - 4, y0, 52, 1, TH_TXT);   /* 0 dB: the preset's return */
-            text_c(x + 22, 4, &FONT_B, NM[r], TH_TXT);
-            fx_text(RET_P[r], u);
-            text_c(x + 22, 17, &FONT_XS, u, v > 127 ? C_NOW : C_TXT2);
-        }
-        {                                 /* FEEDBACK and DECAY: two bars */
-            int k, v;
-            for (k = 2; k < 4; k++) {
-                v = proj.fx[RET_P[k]];
-                cv_text(186, 26 + (k - 2) * 46, &FONT_XS, k == 2 ? "FDBK" : "DECAY", C_TXT2);
-                rrect(186, 42 + (k - 2) * 46, 46, 8, 2, C_GRID);
-                if (v > 0)
-                    rrect(186, 42 + (k - 2) * 46, v * 46 / 127, 8, 2, TH_FG);
+                rrect(x, 122 - h, w, h, 4, TH_FG);
+            if (ret) {
+                int yb = 122 - 127 * 92 / mx;
+                if (v > 127)              /* the boost past the old top: yellow */
+                    rrect(x, 122 - h, w, h - (122 - yb), 4, C_NOW);
+                cv_rect(x - 4, 122 - 85 * 92 / mx, w + 8, 1, TH_TXT);   /* 0 dB: the preset's return */
             }
         }
         cards_of(KD_MIX, ui.mixpage);

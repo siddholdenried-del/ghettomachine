@@ -1,5 +1,5 @@
-# The FX returns (0.5, for dub): the mixer's RETURNS page (GLO, then SELECT past DELAY): K1 BongVerb's return, K2
-# BongDelay's, K3 the delay's feedback, K4 the verb's decay: the FX pages' own knobs, one value in two places. The
+# The FX returns (0.5, for dub): the mixer's RETURNS page (GLO, then SELECT past DELAY): K1 BongVerb's return, K2 its
+# decay, K3 BongDelay's return, K4 its feedback: the FX pages' own knobs, one value in two places. The
 # returns go on past their old top (127) in quarter-dB steps to +12 dB more (175: +15.5 dB over the preset's 85), shown
 # in dB; a saved 0..127 sounds as it did. (fx0 decay, fx3 verb return, fx5 feedback, fx7 delay return)
 listen
@@ -48,14 +48,14 @@ turn K1 -42
 wait 60
 expect fx3 85
 said LEVEL +0.0dB
-# K2 the delay's return, K3 its feedback, K4 the verb's decay: the FX pages' values
-turn K2 20
+# K2 the verb's decay, K3 the delay's return, K4 its feedback: the FX pages' values
+turn K3 20
 wait 60
 expect fx7 105
-turn K3 10
+turn K4 10
 wait 60
 expect fx5 68
-turn K4 -10
+turn K2 -10
 wait 60
 expect fx0 52
 tap GLO
