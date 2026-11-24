@@ -10,7 +10,8 @@ GhettoMachine, part of the BongWare firmware line engineered by BongTech, turns 
 - **A mixer**, a reverb, a tempo delay, and **a master bus with a mastering chain**: EQ, compressor, tape saturation,
   stereo width and a limiter, with presets and a loudness meter.
 - **Made to be played live:** a scene grid (each track on its own pattern), seven perform keys (roll, fill, stutter,
-  filter, throw, wash, crush, plus tape stop), a quick mixer with drum lane mutes and held filter and send moves,
+  filter, throw, wash, crush, plus tape stop), a quick mixer with lit drum lane mutes and sixteen held moves a track
+  (filter, sends, roll, stutter, octave),
   follow actions, sounds per pattern, tap tempo and MIDI clock.
 - **A deeper synth:** OSC 2 with its own wave, FM and ring modulation, a wave shaper (fold, clip, rectify, crush),
   analog drift, a third envelope, a second LFO for each note, a six-slot mod matrix and four macro knobs.
@@ -504,11 +505,11 @@ using a key here never stops, restarts or re-times playback.
 
 | On the QUICK MIXER | What it does |
 | --- | --- |
-| **A track key** (pad keys 1–4) | Picks DRUMS, T2, T3 or T4 to edit. One press: no mute. The screen and the readout show its values at once. |
+| **A track key** (pad keys 1–4) | Picks DRUMS, T2, T3 or T4 to edit. One press: no mute. The picked track's key is lit, the others glow dimly (on PATTERNS the same keys mute, lit meaning playing). The screen and the readout show its values at once. |
 | **K1 LEVEL · K2 REVERB · K3 DELAY · K4 PAN** | Always these four, the mixer's own values (the same as on GLO). A knob moves on from the value the track has, so picking another track never jumps or overwrites a level. |
-| **Black keys 5–11, held** | The perform keys, as on PATTERNS (ROLL, FILL...). |
-| **On the drums: white keys 1–11** | Mute or unmute that drum lane (BD, SD, LT... in pad order). Muted lanes are drawn dark and named in the readout ("MUTED CY"). With the DrumEngine the mute is the lane's sound only: its hits go on, so a tail still ringing comes back when you unmute. These are the pattern's lane mutes, the ENV page's. |
-| **On T2–T4: white keys 1–4, held** | The moves, below. White keys 5–16 do nothing here. |
+| **Black keys 5–11, held** | The perform keys, as on PATTERNS (ROLL, FILL...), for every track: dim, lit while held. |
+| **On the drums: white keys 1–11** | Mute or unmute that drum lane (BD, SD, LT... in pad order). Each lane's key is lit while the lane plays and dark when it's muted; the screen draws muted lanes dark and the readout names them ("MUTED CY", or "NO LANES MUTED"). With the DrumEngine the mute is the lane's sound only: its hits go on, so a tail still ringing comes back when you unmute. These are the pattern's lane mutes, the ENV page's. |
+| **On T2–T4: the white keys, held** | The moves, below: all sixteen, on that track only. Dim, lit while held. |
 
 The moves, held, on the selected instrument track:
 
@@ -518,11 +519,20 @@ The moves, held, on the selected instrument track:
 | **2 FILTER OPEN** | Its cutoff up as much: brighter. Hold both and the last one pressed wins; let it go while the other is down and the other takes over. |
 | **3 VERB SPLASH** | The track's reverb send raised (to 90 %, or left where it is if it's higher). |
 | **4 DELAY THROW** | Its delay send raised the same way. The repeats ring on after you let go. |
+| **5–9 ROLL 1/8, 1/16, 1/32, 1/16T, 1/32T** | This track's step as it was when you pressed, again and again at that rate, while its part goes on silently underneath; let go and it's where it would have been. The other tracks play on. |
+| **10–12 STUTTER 1/8, 1/4, 1/2** | This track plays the 2, 4 or 8 of its own steps it's in (1/8, 1/4 or 1/2 of a bar at 1/16 a step), round and round, while its part goes on underneath; let go and it's where it would have been. |
+| **13–16 OCT −2, −1, +1, +2** | This track's notes an octave or two down or up while held, the ones already sounding too. |
 
-They use the track's filter and the shared BongVerb and BongDelay, no new effects, and ramp in and out (about 15 ms)
-so they don't click. They play no notes and record nothing, even with REC on, and nothing about them is saved: let go
-and the track is at its settings as they are now, a knob turned while you held one included. Leaving the page, picking
-another track or stopping lets them all go, so a move never sticks or moves to another track. They work under a ROLL.
+Within a group (the two filter keys, the five ROLLs, the three STUTTERs, the four OCTs) the last one pressed wins;
+let it go while another of the group is down and that one takes over. Different groups combine: a ROLL under FILTER
+CLOSE and OCT +1, say. A ROLL held on this track replays what you hear, a STUTTER's step included. The black ROLL key
+rolls every track at its own rate (K1) on top.
+
+The filter and send moves use the track's filter and the shared BongVerb and BongDelay, no new effects, and ramp in
+and out (about 15 ms) so they don't click; OCT moves at once. None of them records anything, even with REC on, and
+nothing about them is saved: let go and the track is at its settings as they are now, a knob turned while you held
+one included. Leaving the page, picking another track or stopping lets them all go, so a move never sticks or moves
+to another track.
 
 ## The song
 

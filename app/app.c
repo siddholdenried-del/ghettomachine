@@ -2124,7 +2124,14 @@ static struct {
     float cr_l, cr_r;
     float fade;                           /* back to the live sound after STUTTER or TAPE STOP: 0..1 */
     volatile uint32_t rolls;              /* ROLL's replays so far (the tests) */
-} perf = {0, 0, 1, 1, 30, 90, 127, 70, 0.0f, 0.0f, {0}, 0, 0, 0, 0, 0.0f, 0.0f, 0, 0.0f, 0.0f, 1.0f, 0};
+    /* the QUICK MIXER's track moves (0.5): asked by its keys (qtrk the track, qroll ROLL's rate + 1, qstut STUTTER's
+     * slice in steps), taken up by the interrupt (rmask the tracks rolling; st_* the track stuttering: its slice's
+     * length, first step, place in it and the step it played last) */
+    volatile int8_t qtrk;
+    volatile uint8_t qroll, qstut;
+    uint8_t rmask, qs_n, qs_trk;
+    int16_t qs_start, qs_k, qs_ps;
+} perf = {0, 0, 1, 1, 30, 90, 127, 70, 0.0f, 0.0f, {0}, 0, 0, 0, 0, 0.0f, 0.0f, 0, 0.0f, 0.0f, 1.0f, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 static int click_mode(void) { return (int)(proj.click & 3u); }
 static int countin_bars(void) { return (int)(proj.click >> 2 & 3u); }
@@ -2160,7 +2167,7 @@ static void seq_drum(void)                /* audio interrupt: the drum part's ne
     if (next >= p->len)
         next = 0;
     sq.t[TR_DRUM].step = next;
-    for (pad = 0; pad < NPADS && !(perf.on >> PF_ROLL & 1u); pad++) {   /* (ROLL: silent underneath) */
+    for (pad = 0; pad < NPADS && !(perf.rmask & 1u); pad++) {   /* (ROLL: silent underneath) */
         if (!bit_get(p->hit[pad], next) || (!v3_mode && (p->mute >> pad & 1u)))   /* (DrumEngine: audio, drum_hits_off) */
             continue;
         if (sq.skip_once[pad] == next) {
@@ -2183,7 +2190,7 @@ static void seq_inst(int tr)              /* audio interrupt: an instrument part
     ipart_t *p = ipart(tr);
     const track_t *ts = tset(tr);
     const nstep_t *s;
-    int next = sq.t[tr].step + 1, i, slide_in = sq.slid[tr], marks;
+    int next = sq.t[tr].step + 1, i, slide_in = sq.slid[tr], marks, ps;
     int32_t gate;
     if (next >= p->len)
         next = 0;
@@ -2191,8 +2198,16 @@ static void seq_inst(int tr)              /* audio interrupt: an instrument part
     sq.t[tr].dur = step_samples(tr, next);
     sq.t[tr].to_next += sq.t[tr].dur;
     sq.slid[tr] = 0;
-    s = &p->st[next];
-    if (!s->note[0] || (perf.on >> PF_ROLL & 1u))   /* (ROLL: silent underneath) */
+    ps = next;
+    if (perf.qs_n && perf.qs_trk == tr) { /* the QUICK MIXER's STUTTER: its slice's next step plays, the part goes on
+                                           * underneath (let go: it's where it would have been) */
+        int n = perf.qs_n < p->len ? perf.qs_n : p->len;
+        perf.qs_k = (int16_t)((perf.qs_k + 1) % (n > 0 ? n : 1));
+        ps = (perf.qs_start + perf.qs_k) % (p->len ? p->len : 1);
+        perf.qs_ps = (int16_t)ps;
+    }
+    s = &p->st[ps];
+    if (!s->note[0] || (perf.rmask >> tr & 1u))   /* (ROLL: silent underneath) */
         return;
     if (sq.iskip[tr] == next) {
         sq.iskip[tr] = -1;
@@ -2200,8 +2215,8 @@ static void seq_inst(int tr)              /* audio interrupt: an instrument part
     }
     if ((proj.tmute >> tr & 1u) || (ns_prob(s) < 100 && (int)rnd100() >= ns_prob(s)))
         return;
-    ilocks_apply(tr, p, next);
-    gate = note_gate_samples(tr, next, p->len, s->gate);
+    ilocks_apply(tr, p, ps);
+    gate = note_gate_samples(tr, ps, p->len, s->gate);
     marks = (s->vel & NS_ACC) ? SN_ACCENT : 0;   /* a 303's marks: on any sound (a slide: the chord's first note) */
     for (i = 0; i < NCHORD && s->note[i]; i++) {
         if (ts->arp_mode)                 /* arpeggiated: the notes are the arpeggiator's, for the gate */
@@ -2221,7 +2236,7 @@ static void roll_fire(void)               /* ROLL: each track's step as it was p
     perf.rolls++;
     const dpart_t *d = dcur();
     int st = perf.roll_step[TR_DRUM] % (d->len ? d->len : 1);
-    if (clip[TR_DRUM] >= 0 && !((proj.tmute | roll_inhibit_tracks) & 1u))
+    if ((perf.rmask & 1u) && clip[TR_DRUM] >= 0 && !((proj.tmute | roll_inhibit_tracks) & 1u))
         for (pad = 0; pad < NPADS; pad++)
             if (bit_get(d->hit[pad], st) && !((d->mute | roll_inhibit_pads) >> pad & 1u)) {
                 float v = bit_get(d->acc, st) ? 1.0f : DRUMS_VEL_NORMAL;
@@ -2233,7 +2248,7 @@ static void roll_fire(void)               /* ROLL: each track's step as it was p
         const ipart_t *p = ipart(t);
         const nstep_t *s = &p->st[perf.roll_step[t] % (p->len ? p->len : 1)];
         int i;
-        if (clip[t] < 0 || ((proj.tmute | roll_inhibit_tracks) >> t & 1u) || !s->note[0])
+        if (!(perf.rmask >> t & 1u) || clip[t] < 0 || ((proj.tmute | roll_inhibit_tracks) >> t & 1u) || !s->note[0])
             continue;
         for (i = 0; i < NCHORD && s->note[i]; i++)
             syn_note_on(t, s->note[i], (float)ns_vel(s) / 127.0f, (int32_t)(perf.roll_len * 0.6f), tset(t)->type == TY_MONO);
@@ -3438,17 +3453,37 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     midi_in();
     render_t += n;
     tempo_stretch();
-    {   /* the perform keys: what changed since the last block (ROLL here; the output's effects: post_job) */
-        uint8_t w = perf.want, up = (uint8_t)(w & ~perf.on);
-        if (up >> PF_ROLL & 1u) {
-            int t;
-            roll_inhibit_tracks = proj.tmute;
-            roll_inhibit_pads = dcur()->mute;
-            for (t = 0; t < NTRK; t++)
-                perf.roll_step[t] = (int8_t)(sq.t[t].step < 0 ? 0 : sq.t[t].step);
-            perf.roll_to = 0.0f;
-            perf.roll_len = bar_samples() * (1.0f / 16.0f) * ROLL_F[perf.roll_rate % 5];
+    {   /* the perform keys: what changed since the last block (ROLL here; the output's effects: post_job); and the
+         * QUICK MIXER's track moves, ROLL and STUTTER on the one track */
+        uint8_t w = perf.want, qr = perf.qroll, qs = perf.qstut, rmask, fresh;
+        int qt = perf.qtrk, t;
+        if (qt < 1 || qt >= NTRK)
+            qr = qs = 0;
+        if (qs && (perf.qs_n != qs || perf.qs_trk != qt)) {   /* STUTTER: the slice of qs steps (on their grid) the
+                                                               * track is in; another length: from where it is */
+            int at = perf.qs_n && perf.qs_trk == qt ? perf.qs_start + perf.qs_k : sq.t[qt].step < 0 ? 0 : sq.t[qt].step;
+            perf.qs_start = (int16_t)(at / qs * qs);
+            perf.qs_k = (int16_t)(at - perf.qs_start);
+            perf.qs_ps = (int16_t)at;
         }
+        perf.qs_n = qs;
+        perf.qs_trk = (uint8_t)qt;
+        rmask = (w >> PF_ROLL & 1u) ? (uint8_t)((1u << NTRK) - 1u) : qr ? (uint8_t)(1u << qt) : 0u;
+        fresh = (uint8_t)(rmask & ~perf.rmask);
+        if (fresh) {                      /* tracks starting to roll: their steps as heard now */
+            if (!perf.rmask) {
+                roll_inhibit_tracks = proj.tmute;
+                roll_inhibit_pads = dcur()->mute;
+                perf.roll_to = 0.0f;
+            }
+            for (t = 0; t < NTRK; t++)
+                if (fresh >> t & 1u)
+                    perf.roll_step[t] = (int8_t)(perf.qs_n && perf.qs_trk == t ? perf.qs_ps
+                                                 : sq.t[t].step < 0 ? 0 : sq.t[t].step);
+        }
+        if (rmask)                        /* its rate: the perform key's (its K1), else the QUICK MIXER key's */
+            perf.roll_len = bar_samples() * (1.0f / 16.0f) * ROLL_F[((w >> PF_ROLL & 1u) ? perf.roll_rate : qr - 1u) % 5];
+        perf.rmask = rmask;
         perf.on = w;
         fill_pos_follow();                /* FILL: the drum clip's own place kept underneath, taken up again after */
     }
@@ -3543,7 +3578,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
                         seq_inst(t);
                     sq.ticks++;
                 }
-            if (perf.on >> PF_ROLL & 1u) {  /* ROLL: its own beat */
+            if (perf.rmask) {             /* ROLL: its own beat */
                 if (perf.roll_to < 0.5f) {
                     roll_fire();
                     perf.roll_to += perf.roll_len;
@@ -3553,7 +3588,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             for (t = 0; t < NTRK; t++)
                 if (sq.t[t].to_next < m)
                     m = sq.t[t].to_next;
-            if ((perf.on >> PF_ROLL & 1u) && perf.roll_to < m)
+            if (perf.rmask && perf.roll_to < m)
                 m = perf.roll_to;
             if (m < (float)chunk)
                 chunk = m < 1.0f ? 1u : (uint32_t)m;
@@ -5680,35 +5715,55 @@ static void mix_knob(int k, int32_t e)    /* the mixer: K1..K4 are the drums, T2
 
 /* ---- the QUICK MIXER (HOME, then HOME again): the track picked (a track key: one press), its K1 LEVEL, K2 REVERB,
  * K3 DELAY, K4 PAN (the mixer's own values: mix_turn); the perform keys (black 5-11) as on PATTERNS. Its white keys:
- * on the drums the lanes' mutes (their audio: drum_hits_off), on T2-T4 the first four held moves on the track's own
- * filter and sends (syn_perform: never saved, no notes, no automation), let go on leaving the page, another track or
- * a stop (qm_clear) so nothing sticks or moves to another track */
-enum { QM_CLOSE, QM_OPEN, QM_SPLASH, QM_THROW, QM_MOVES };
-static const char *const QM_NAME[QM_MOVES] = {"FILTER CLOSE", "FILTER OPEN", "VERB SPLASH", "DELAY THROW"};
+ * on the drums the lanes' mutes (their audio: drum_hits_off), lit while the lane plays; on T2-T4 all sixteen are moves
+ * held on that track: 1-4 its filter and sends (syn_perform), 5-9 ROLL at a rate, 10-12 STUTTER (a slice of its own
+ * steps round and round: seq_inst), 13-16 its octave (syn_perform). Never saved, no notes of their own, no automation;
+ * in a group (the filter, ROLL, STUTTER, OCT) the last held wins and letting it go falls back to the one held before;
+ * let go on leaving the page, another track or a stop (qm_clear), so nothing sticks or moves to another track */
+enum { QM_CLOSE, QM_OPEN, QM_SPLASH, QM_THROW, QM_ROLL, QM_STUT = QM_ROLL + 5, QM_OCT = QM_STUT + 3,
+       QM_MOVES = QM_OCT + 4 };
+static const char *const QM_NAME[QM_MOVES] = {"FILTER CLOSE", "FILTER OPEN", "VERB SPLASH", "DELAY THROW",
+    "ROLL 1/8", "ROLL 1/16", "ROLL 1/32", "ROLL 1/16T", "ROLL 1/32T", "STUTTER 1/8", "STUTTER 1/4", "STUTTER 1/2",
+    "OCT -2", "OCT -1", "OCT +1", "OCT +2"};
+static const char *const QM_SHORT[QM_MOVES] = {"CLOSE", "OPEN", "SPLASH", "THROW", "R 1/8", "R 1/16", "R 1/32",
+    "R 1/16T", "R 1/32T", "ST 1/8", "ST 1/4", "ST 1/2", "OCT -2", "OCT -1", "OCT +1", "OCT +2"};
+static const uint8_t QM_STUT_N[3] = {2, 4, 8};    /* STUTTER's slices, in steps (1/8, 1/4, 1/2 at 1/16 a step) */
+static const int8_t QM_OCT_N[4] = {-2, -1, 1, 2};
 static const uint8_t QM_PAGE[4] = {0, 2, 3, 1};   /* K1..K4: the mixer's LEVEL, REVERB, DELAY, PAN */
 static const char *const QM_KNOB[4] = {"LEVEL", "REVERB", "DELAY", "PAN"};
 #define QM_CUT 48                         /* FILTER CLOSE / OPEN: cutoff steps down / up */
 static struct {
-    uint8_t held;                         /* the moves' keys down (a bit each) */
-    uint8_t last_filt;                    /* the filter key pressed last (QM_CLOSE, QM_OPEN): it wins */
+    uint16_t held;                        /* the moves' keys down (a bit each) */
+    uint16_t clock, order[QM_MOVES];      /* when each was pressed: in a group the latest held wins */
     int8_t trk;                           /* the track they're on (-1: none) */
-} qm = {0, 0, -1};
+} qm = {0, 0, {0}, -1};
 
-static void qm_apply(void)                /* the held moves -> the synth (ramped there) */
+static int qm_pick(int lo, int n)         /* a group's move in force: the latest pressed of those held; -1 none */
 {
-    int cut = 0;
-    uint32_t f;
+    int k, best = -1;
+    for (k = lo; k < lo + n; k++)
+        if ((qm.held >> k & 1u) && (best < 0 || (uint16_t)(qm.order[k] - qm.order[best]) < 0x8000u))
+            best = k;
+    return best;
+}
+
+static void qm_apply(void)                /* the held moves -> the synth (ramped there) and the sequencer */
+{
+    int f, r, st, o;
+    uint32_t fl;
     if (qm.trk < 1)
         return;
-    if ((qm.held >> QM_CLOSE & 1u) && (qm.held >> QM_OPEN & 1u))
-        cut = qm.last_filt == QM_OPEN ? QM_CUT : -QM_CUT;
-    else if (qm.held >> QM_CLOSE & 1u)
-        cut = -QM_CUT;
-    else if (qm.held >> QM_OPEN & 1u)
-        cut = QM_CUT;
-    f = plat_lock();
-    syn_perform(qm.trk, cut, (qm.held >> QM_SPLASH & 1u) ? 1.0f : 0.0f, (qm.held >> QM_THROW & 1u) ? 1.0f : 0.0f);
-    plat_unlock(f);
+    f = qm_pick(QM_CLOSE, 2);
+    r = qm_pick(QM_ROLL, 5);
+    st = qm_pick(QM_STUT, 3);
+    o = qm_pick(QM_OCT, 4);
+    fl = plat_lock();
+    syn_perform(qm.trk, f < 0 ? 0 : f == QM_CLOSE ? -QM_CUT : QM_CUT, (qm.held >> QM_SPLASH & 1u) ? 1.0f : 0.0f,
+                (qm.held >> QM_THROW & 1u) ? 1.0f : 0.0f, o < 0 ? 0 : QM_OCT_N[o - QM_OCT]);
+    perf.qtrk = qm.trk;
+    perf.qroll = (uint8_t)(r < 0 ? 0 : r - QM_ROLL + 1);
+    perf.qstut = (uint8_t)(st < 0 ? 0 : QM_STUT_N[st - QM_STUT]);
+    plat_unlock(fl);
     ui.redraw = 1;
 }
 
@@ -5722,7 +5777,7 @@ static void qm_clear(void)                /* every held move let go (they ramp b
     qm.trk = -1;
 }
 
-static void qm_move(int m, int down)      /* a white key 1-4 on the QUICK MIXER, T2-T4: its move held or let go */
+static void qm_move(int m, int down)      /* a white key on the QUICK MIXER, T2-T4: its move held or let go */
 {
     if (down) {
         if (ui.trk == TR_DRUM)
@@ -5730,14 +5785,13 @@ static void qm_move(int m, int down)      /* a white key 1-4 on the QUICK MIXER,
         if (qm.trk != ui.trk)
             qm_clear();
         qm.trk = (int8_t)ui.trk;
-        qm.held |= (uint8_t)(1u << m);
-        if (m == QM_CLOSE || m == QM_OPEN)
-            qm.last_filt = (uint8_t)m;
+        qm.held |= (uint16_t)(1u << m);
+        qm.order[m] = ++qm.clock;
         app_say(QM_NAME[m], "");
     } else {
         if (!(qm.held >> m & 1u))         /* (let go already: the page left, another track, a stop) */
             return;
-        qm.held &= (uint8_t)~(1u << m);   /* (the other filter key still down: it again) */
+        qm.held &= (uint16_t)~(1u << m);  /* (another of its group still down: that one again) */
     }
     qm_apply();
 }
@@ -7600,6 +7654,31 @@ static void lights(void)
                 bk |= 1u << BK[NTRK + k];
             else
                 dimk |= 1u << BK[NTRK + k];
+    } else if (ui.page == PG_QMIX) {      /* the QUICK MIXER: the track picked lit, the others dim; the perform keys dim,
+                                           * lit while held; the drums' lanes lit while they play, a muted one dark;
+                                           * T2-T4's moves dim, lit while held */
+        for (k = 0; k < NTRK; k++)
+            if ((int)k == tr)
+                bk |= 1u << BK[k];
+            else
+                dimk |= 1u << BK[k];
+        for (k = 0; k < NPF; k++)
+            if (perf.want >> k & 1u)
+                bk |= 1u << BK[NTRK + k];
+            else
+                dimk |= 1u << BK[NTRK + k];
+        if (tr == TR_DRUM) {
+            const uint16_t mute = dcur()->mute;
+            for (k = 0; k < NPADS; k++)
+                if (!(mute >> k & 1u))
+                    wk |= 1u << WK[k];
+        } else {
+            for (k = 0; k < QM_MOVES; k++)
+                if (qm.trk == tr && (qm.held >> k & 1u))
+                    wk |= 1u << WK[k];
+                else
+                    dimk |= 1u << WK[k];
+        }
     } else if (tr == TR_DRUM) {
         dpart_t *p = dcur();
         int st = sq.t[TR_DRUM].step, accent = (int)(ui.btn >> B_SEQ & 1u);   /* SEQ held: the accents */
@@ -9703,7 +9782,7 @@ static void page_qmix(void)               /* the QUICK MIXER: the tracks (the pi
 {
     int t, k, tr = ui.trk;
     band_set(C_CREAM, "QUICK MIXER", tr == TR_DRUM ? drum_kit_title() : TRK_NAME[tr],
-             tr == TR_DRUM ? "WHITE KEYS: MUTES" : "WHITE 1-4: HOLD", 0, 0);
+             tr == TR_DRUM ? "WHITE KEYS: MUTES" : "WHITE KEYS: HOLD", 0, 0);
     levels_take();
     for (t = 0; t < NTRK; t++) {          /* the four tracks (the track keys): the picked one lit, its level beside */
         int x = 3 + t * 59, h, muted = (int)(proj.tmute >> t & 1u);
@@ -9727,16 +9806,11 @@ static void page_qmix(void)               /* the QUICK MIXER: the tracks (the pi
             int_text(k + 1, n);
             text_c(x + 18, y + 26, &FONT_XS, muted ? "MUTED" : n, muted ? TH_RED : C_INK);
         }
-    } else {                              /* the moves: a white key each, held lit */
+    } else {                              /* the moves: a white key each, four a row, held lit */
         for (k = 0; k < QM_MOVES; k++) {
-            int x = 3 + (k % 2) * 118, y = 32 + (k / 2) * 48, on = qm.trk == tr && (qm.held >> k & 1u);
-            char n[8];
-            rrect(x, y, 116, 44, 6, on ? trk_rgb(tr) : C_PANEL);
-            text_c(x + 58, y + 6, &FONT_B, QM_NAME[k], on ? C_INK : TH_TXT);
-            n[0] = 0;
-            text_cat(n, "WHITE ");
-            int_text(k + 1, n + 6);
-            text_c(x + 58, y + 26, &FONT_XS, on ? "HELD" : n, on ? C_INK : C_TXT2);
+            int x = 3 + (k % 4) * 59, y = 32 + (k / 4) * 24, on = qm.trk == tr && (qm.held >> k & 1u);
+            rrect(x, y, 56, 22, 4, on ? trk_rgb(tr) : C_PANEL);
+            text_c(x + 28, y + 4, &FONT_S, QM_SHORT[k], on ? C_INK : TH_TXT);
         }
     }
     cards_of(KD_QMIX, 0);
@@ -10772,6 +10846,18 @@ int app_expect(const char *what, int *got)
         *got = qm.held;
     else if (!strcmp(what, "qmtrk"))
         *got = qm.trk;
+    else if (!strcmp(what, "rmask"))      /* the tracks ROLL replays now, a bit each */
+        *got = perf.rmask;
+    else if (!strcmp(what, "stut"))       /* STUTTER: its slice in steps (0: none) */
+        *got = perf.qs_n;
+    else if (!strcmp(what, "stutps"))     /* the step it played last (1-based) */
+        *got = perf.qs_ps + 1;
+    else if (!strncmp(what, "tstep", 5)) { /* tstepN: track N's own step now (1-based; 0: not started) */
+        int n = atoi(what + 5) - 1;
+        *got = n >= 0 && n < NTRK ? sq.t[n].step + 1 : -1;
+    }
+    else if (!strncmp(what, "poct", 4))   /* poctN: a held OCT move on track N, octaves */
+        *got = syn_perform_now(atoi(what + 4) - 1, 3);
     else if (!strncmp(what, "pcut", 4) || !strncmp(what, "prb", 3) || !strncmp(what, "pdb", 3))   /* pcutN prbN pdbN */
         *got = syn_perform_now(atoi(what + (what[1] == 'c' ? 4 : 3)) - 1, what[1] == 'c' ? 0 : what[1] == 'r' ? 1 : 2);
     else if (!strcmp(what, "drumlfo"))    /* the last hit's move by the drums' LFO, thousandths of the control's range */

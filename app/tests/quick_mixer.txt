@@ -90,6 +90,8 @@ key 14 up
 wait 60
 expect mute 256
 expect lanegate9 0
+# the white keys lit while their lanes play, the muted one dark (white 9: the cymbal)
+expect wlit 1791
 where
 wait 100
 said MUTED CY
@@ -107,6 +109,7 @@ key 14 up
 wait 30
 expect mute 0
 expect lanegate9 1000
+expect wlit 2047
 expect lanepk9 >-30
 wait 200
 expect lanepk9 >-40
@@ -160,12 +163,112 @@ key 6 up
 wait 40
 expect pdb3 0
 expect mix3_3 30
-# white 5 on, on a synth track: nothing (no note, no move)
-key 7 down
+# ---- T3's other twelve white keys: 5-9 ROLL, 10-12 STUTTER, 13-16 OCT, on this track only; all dim, lit while held
+expect wlit 0
+expect wdim 65535
+# ROLL 1/8 (white 5): T3 alone rolls (rmask: a bit a track), the drums' own pattern plays on. ROLL 1/32 (white 7) too:
+# the last held wins; let it go: 1/8 again. (On pattern 1, whose drums have kicks: PATTERNS, pattern 1, back)
+tap HOME
 wait 30
-expect qmheld 0
-expect voices3 0
+tap HOME
+wait 30
+tap HOME
+wait 30
+tap HOME
+wait 30
+expect page 3
+key 0 down
+wait 20
+key 0 up
+wait 2300
+expect pat 1
+expect hits1 >0
+tap HOME
+wait 30
+expect page 19
+expect trk 3
+key 7 down
+wait 60
+expect qmheld 16
+expect rmask 4
+expect wlit 16
+expect rolls >-1
+expect lanepk1 >-999
+wait 1000
+expect rolls >2
+key 11 down
+wait 30
+expect rolls >-1
+wait 1000
+expect rolls >12
+key 11 up
+wait 30
+expect rolls >-1
+wait 1000
+expect rolls <7
+# (the drums went on underneath: pattern 1's kicks, a bar and a half while T3 rolled)
+expect lanepk1 >-60
+# the perform keys' ROLL (black 5) on top: every track, at its own rate; let go: T3 alone again
+key 10 down
+wait 60
+expect rmask 15
+key 10 up
+wait 60
+expect rmask 4
 key 7 up
+wait 60
+expect rmask 0
+expect qmheld 0
+# STUTTER (white 10-12): T3 plays a slice of its own steps round and round while its part goes on underneath.
+# Stopped and started again (the first step at once), held at the third: STUTTER 1/2 (white 12), steps 1-8
+tap PLAY
+wait 60
+expect playing 0
+tap PLAY
+wait 200
+expect playing 1
+expect tstep3 <5
+key 19 down
+wait 60
+expect stut 8
+wait 600
+expect stutps <9
+wait 600
+expect stutps <9
+expect tstep3 >9
+# STUTTER 1/8 (white 10) too: the last wins, the 2 steps it's in; let go: the 8 again
+key 16 down
+wait 60
+expect stut 2
+key 16 up
+wait 60
+expect stut 8
+key 19 up
+wait 60
+expect stut 0
+expect qmheld 0
+# OCT (white 13-16): T3's voices an octave or two up or down while held, a note sounding with them; the last wins
+midi 92 3C 64
+wait 100
+expect pitch3 960
+key 24 down
+wait 40
+expect poct3 1
+expect pitch3 1152
+key 21 down
+wait 40
+expect poct3 -2
+expect pitch3 576
+key 21 up
+wait 40
+expect poct3 1
+expect pitch3 1152
+key 24 up
+wait 40
+expect poct3 0
+expect pitch3 960
+midi 82 3C 00
+wait 300
 # with a roll (black 5, a perform key) held under a move
 key 10 down
 wait 30
@@ -181,16 +284,24 @@ expect pcut3 0
 # ---- held moves let go: on leaving the page...
 key 0 down
 key 4 down
+key 7 down
+key 24 down
 wait 40
-expect qmheld 5
+expect qmheld 16405
+expect rmask 4
+expect poct3 1
 tap HOME
 wait 60
 expect page 11
 expect qmheld 0
 expect pcut3 0
 expect prb3 0
+expect rmask 0
+expect poct3 0
 key 0 up
 key 4 up
+key 7 up
+key 24 up
 wait 30
 expect qmheld 0
 expect voices3 0
@@ -221,14 +332,25 @@ key 5 down
 wait 20
 key 5 up
 key 0 down
+key 7 down
+key 16 down
+key 24 down
 wait 40
-expect qmheld 1
+expect qmheld 16913
+expect rmask 4
+expect stut 2
 tap PLAY
 wait 60
 expect playing 0
 expect qmheld 0
 expect pcut3 0
+expect rmask 0
+expect stut 0
+expect poct3 0
 key 0 up
+key 7 up
+key 16 up
+key 24 up
 wait 30
 expect mix3_0 100
 expect mix3_2 25

@@ -397,6 +397,7 @@ static struct {
 } mix[SYN_TRACKS];
 /* a held move's cutoff offset now and where it goes (syn_perform), 1/256 cutoff steps; slewed a control block at a time */
 static float pcut[SYN_TRACKS], pcut_to[SYN_TRACKS];
+static int32_t poct[SYN_TRACKS];         /* a held OCT move: the track's voices that many 1/16 semitones up / down */
 #define PF_CUT_STEP (96.0f * 256.0f / 40.0f)   /* the offset's slew a control block: 96 steps in about 29 ms */
 #define PF_SEND_STEP (1.0f / 24.0f)       /* a boost's a control block: all the way in about 17 ms, a sample at a time */
 #define PF_SEND_TOP 0.9f                  /* a boost's send: the track's own raised toward this */
@@ -505,6 +506,7 @@ void syn_init(void)
         mix[t].rs = mix[t].ds = 0.0f;
         mix[t].rb = mix[t].db = mix[t].rb_to = mix[t].db_to = 0.0f;
         pcut[t] = pcut_to[t] = 0.0f;
+        poct[t] = 0;
         xm_scan(t);
         push(t);
     }
@@ -551,11 +553,12 @@ GM_INLINE void render_voice(int i, int32_t *out)
                                                                      * calls no pointer) */
 }
 
-void syn_perform(int t, int cut, float rev, float dly)
+void syn_perform(int t, int cut, float rev, float dly, int oct)
 {
     if (t < 1 || t >= SYN_TRACKS)
         return;
     pcut_to[t] = (float)clamp(cut, -127, 127) * 256.0f;
+    poct[t] = clamp(oct, -4, 4) * 192;    /* (at once: the notes sounding jump with it, the oscillators' phase kept) */
     mix[t].rb_to = rev < 0.0f ? 0.0f : rev > 1.0f ? 1.0f : rev;
     mix[t].db_to = dly < 0.0f ? 0.0f : dly > 1.0f ? 1.0f : dly;
 }
@@ -564,6 +567,8 @@ int syn_perform_now(int t, int what)       /* a held move now (the tests): 0 the
 {
     if (t < 1 || t >= SYN_TRACKS)
         return 0;
+    if (what == 3)
+        return (int)(poct[t] / 192);
     return what == 0 ? (int)(pcut[t] / 256.0f + (pcut[t] < 0.0f ? -0.5f : 0.5f))
                      : (int)((what == 1 ? mix[t].rb : mix[t].db) * 1000.0f + 0.5f);
 }
@@ -906,7 +911,7 @@ int syn_pitch16(int t)
     for (i = 0; i < NVOICE; i++)
         if (vx[i].trk == t && vx[i].astage && (best < 0 || (int32_t)(vv[i].age - vv[best].age) > 0))
             best = i;
-    return best < 0 ? -1 : (int)(vx[best].pc + 0.5f);
+    return best < 0 ? -1 : (int)(vx[best].pc + 0.5f) + (int)poct[t];   /* (a held OCT move with it) */
 }
 
 /* ---------------------------------------------------------------- a block --- */
@@ -1055,7 +1060,7 @@ void syn_prepare(void)
         }
         mfine = x->fine;
         {
-            int32_t mp = tk[t].mdest == SM_PITCH ? (int32_t)(tk[t].mlfo * tk[t].mdepth * 192.0f) : 0;
+            int32_t mp = (tk[t].mdest == SM_PITCH ? (int32_t)(tk[t].mlfo * tk[t].mdepth * 192.0f) : 0) + poct[t];
             if (acc[MD_PITCH] == 0.0f && !s[SP_DRIFT]) {
                 p16 = clamp((int32_t)(x->pc + 0.5f) + mp, 0, 2047);
             } else {                      /* the matrix's and DRIFT's moves: between 1/16 semitones by the fine tune */
