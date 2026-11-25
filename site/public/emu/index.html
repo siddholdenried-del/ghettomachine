@@ -126,7 +126,7 @@ body > header h1 { font: 400 2.4rem/1.05 "Sedgwick Ave Display", "Marker Felt", 
   <svg id="panel" viewBox="0 0 1000 640" aria-hidden="true" focusable="false"></svg>
   <canvas id="screen" width="240" height="240" role="img" aria-label="The FM-1's screen. Its text is read out: see Screen Reader, below the panel"></canvas>
   <div id="controls" role="group" aria-label="The FM-1's panel" aria-describedby="panel-keys" inert></div>
-  <div class="start" id="start"><div class="startbox"><button type="button" id="go">Switch on</button><p class="hint">Then press PLAY / STOP to hear the demo groove.</p></div></div>
+  <div class="start" id="start"><div class="startbox"><button type="button" id="go">Switch on</button><p class="hint">Then press PLAY / STOP to hear the demo groove.</p><p class="hint">Projects stay in this session only.</p></div></div>
 </div>
 </div>
 <p id="panel-keys" class="sr">Tab moves through the knobs, the buttons, the black keys and the white keys. Arrow keys turn a knob,
@@ -769,7 +769,7 @@ async function switchOn() {
   try {
     const ac = new AudioContext({ sampleRate: 44100, latencyHint: "interactive" });
     if (speakMode() === "voice") voiceOn();
-    const [wasm] = await Promise.all([fetch("app.wasm").then((r) => { if (!r.ok) throw new Error(`app.wasm: ${r.status}`); return r.arrayBuffer(); }),
+    const [wasm] = await Promise.all([fetch("app.wasm?v=f9738d564b664bb8").then((r) => { if (!r.ok) throw new Error(`app.wasm: ${r.status}`); return r.arrayBuffer(); }),
                                       ac.audioWorklet.addModule("app_worklet.js").catch(() => {})
                                         .then(() => ac.audioWorklet.addModule("worklet.js"))]);
     node = new AudioWorkletNode(ac, "fm1", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });

@@ -265,16 +265,16 @@
       "sha256": "c4fc02bbe685f3161e16c6233e7f7f1fb3a36f4de9c8a874103030b6751bcfa9"
     },
     "emu/app.wasm": {
-      "bytes": 668773,
-      "sha256": "2cb94e6c02040dba15577e200756c59c0ae1120651eeeea7cc939942929dd60d"
+      "bytes": 794727,
+      "sha256": "f9738d564b664bb802b3e49da70dc0f18f4457cddfe7b975b5835376a0e12f62"
     },
     "emu/app_worklet.js": {
       "bytes": 210,
       "sha256": "9bfc501df0336e45a25ee43e2f1f54b9126c95197a1c253346cf3a8fce55082e"
     },
     "emu/index.html": {
-      "bytes": 46290,
-      "sha256": "30c7df16aed56f5f11877464a81b93d2e58b3d0b90f22cb5d3a98113f52b3e1f"
+      "bytes": 46364,
+      "sha256": "77ca9c80e924f6e141d9b43cb77f53f006120e16c4aa2a30c0e115cf39498df7"
     },
     "emu/parts/midi.js": {
       "bytes": 4429,
@@ -345,8 +345,8 @@
       "sha256": "de522c0c912fa7c2ac42f046a220495de78c9a2bc331d3fe2712e1d9193e0532"
     },
     "guide/setup/index.html": {
-      "bytes": 32953,
-      "sha256": "dd72a70bd6b4d88bae10bf34609ba43c0c840c55f252342a782a336affe4a64b"
+      "bytes": 32962,
+      "sha256": "b95ecf61891369cee8d1baf358b28060a9fec61dad921444eecf0f89fc8af698"
     },
     "guide/sounds/index.html": {
       "bytes": 28142,
@@ -365,50 +365,34 @@
   "schema": 1,
   "site": "https://ghettomachine.bongcult.com",
   "source": {
-    "emscripten": "7.0.0+777e6e5db7b4990bcaeb1b9998ed642cc84e6629",
-    "emulator_build_commit": "86ad2b3cd0ecdd1bd5b9f115f5d7a853b4b9b8a9",
-    "feature_source": "86ad2b3cd0ecdd1bd5b9f115f5d7a853b4b9b8a9",
+    "emscripten": "4.0.11+d3432e7a2a6585331c94b041973fb16c9f332ce4",
+    "emulator_build_commit": "31fccda0321f403bab914f7f094e4f38e7a906d1",
+    "feature_source": "31fccda0321f403bab914f7f094e4f38e7a906d1",
     "felucca_bsp": "2a5af3dfc8bccb92e37d48a3e7e0bf9a5827e51f",
     "fm1_base": "7337375c15e9db26f23b0c68a1db61429add2f48",
-    "provenance": "Browser development build from the exact clean source with the ACID generator's OCT+ rolling a random seed out of all 65535 (never the one playing), LINE's SEED knob scrolling the whole range, and saved seeds above 999 kept.",
-    "remote_main_predecessor": "5bb2f6df8f4ac1a63bed8b0519a756a9cb8c7842",
+    "provenance": "Browser build of the exact GhettoMachine main source and its pinned submodules. The previous public emulator was 86ad2b3cd0ecdd1bd5b9f115f5d7a853b4b9b8a9.",
+    "remote_main_predecessor": "31fccda0321f403bab914f7f094e4f38e7a906d1",
     "repository": "https://github.com/siddholdenried-del/ghettomachine",
-    "runtime_tree": "e9a2a35a181ef42cdfd36a37fd05ec44101279d2"
+    "runtime_tree": "b8c0791ba8ae478bef4ead114936afa263867258"
   },
   "targets": {
     "device": {
-      "application_bytes": 530860,
-      "build_from": "86ad2b3cd0ecdd1bd5b9f115f5d7a853b4b9b8a9",
-      "build_id": "203659DD",
-      "build_status": "linked-and-packaged",
+      "build_status": "not-built-for-this-browser-release",
       "downloads": [],
       "flashed": false,
-      "hardware_smoke": {
-        "live_audio_tested": false,
-        "saved_project_tested": false,
-        "startup": false,
-        "usb_detection": false
-      },
       "hardware_tested": false,
-      "package_bytes": 616099,
-      "package_identity": "FM-1_800",
-      "package_sha256": "dfcabbb1ae3ba9a7f4168c93fd7d6ffa4b7badadc66cfdab8c4f6eecb52efc66",
-      "pool_guard_bytes": 8192,
-      "pool_limit_bytes": 344064,
-      "pool_used_bytes": 331736,
-      "ram_limit_bytes": 98304,
-      "ram_used_bytes": 92036,
       "status": "not-distributed",
       "tested_for_this_release": false
     },
     "web": {
-      "deployment": "existing Worker Builds project; do not publish this branch without review",
+      "deployment": "GitHub main via existing Cloudflare Worker Builds",
       "emulator_identity": "GHETTOMACHINE DEV",
       "landing_label": "DEV PREVIEW",
       "manual_versions": [
         "development-preview"
       ],
-      "status": "candidate",
+      "project_persistence": "session-only; browser reload does not reopen a project",
+      "status": "browser-preview",
       "technical_tour_version": "0.5 (historical)"
     }
   },
@@ -426,7 +410,7 @@
       "identity": "GHETTOMACHINE DEV",
       "path": "emu/app.wasm",
       "platform": "browser",
-      "sha256": "2cb94e6c02040dba15577e200756c59c0ae1120651eeeea7cc939942929dd60d"
+      "sha256": "f9738d564b664bb802b3e49da70dc0f18f4457cddfe7b975b5835376a0e12f62"
     }
   ]
 }

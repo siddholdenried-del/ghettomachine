@@ -44,7 +44,7 @@ AUDIO_FIX = """<script>
 """
 START = '<div class="start" id="start"><button type="button" id="go">Switch on</button></div>'
 START_HINT = ('<div class="start" id="start"><div class="startbox"><button type="button" id="go">Switch on</button>'
-              '<p class="hint">Then press PLAY / STOP to hear the demo groove.</p></div></div>')
+              '<p class="hint">Then press PLAY / STOP to hear the demo groove.</p><p class="hint">Projects stay in this session only.</p></div></div>')
 
 FAVICON = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#5AD282"/>'
            '<text x="32" y="47" font-family="Arial Narrow, Arial, sans-serif" font-weight="700" font-size="44" '
@@ -468,6 +468,12 @@ def main():
     shutil.copytree(emu_src / "parts", out / "emu" / "parts")
     emu_page = (out / "emu" / "index.html").read_text()
     emu_page = emulator_document(emu_page)
+    # Keep the established URL and save store, but do not let an older cached
+    # WASM binary outlive the release that shipped it.
+    wasm_revision = RELEASE["wasm"][0]["sha256"][:16]
+    if emu_page.count('fetch("app.wasm")') != 1:
+        raise SystemExit("site: the expected emulator WASM fetch is missing")
+    emu_page = emu_page.replace('fetch("app.wasm")', f'fetch("app.wasm?v={wasm_revision}")')
     emu_page, n2 = re.subn(r"<h1>[^<]*</h1>", '<h1>GhettoMachine</h1>\n  <p><a href="../">How it works</a></p>', emu_page, count=1)
     if n2 != 1 or emu_page.count(START) != 1:
         raise SystemExit("site: the emulator's page has no <title>, <h1> or switch-on block to change")
