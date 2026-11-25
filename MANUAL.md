@@ -140,10 +140,18 @@ A very dense collection of long parts can exceed the fixed FM-1 project save slo
 How hard a drum is hit changes its sound, not only its level, set once as the hit starts. A hit at the sequencer's
 normal velocity sounds exactly as the drum is set; softer and harder ones differ:
 
-- **Hats:** a soft hat is shorter and darker; a hard one a touch brighter.
-- **Snare:** a hard snare has more wire, a brighter wire band and more edge on the head; a soft one is rounder.
-- **Kick:** an accent adds click and a little body drive; a soft kick loses some click.
-- **Crash and ride:** a soft one is shorter, darker and slower to rise; a hard one quicker and a little brighter.
+A soft hit is a different touch, not only a quieter one; most of the difference is below the normal velocity, where
+the ghost notes are.
+
+- **Snare:** a ghost note keeps its round body (a little forward of where its velocity alone would leave it) and
+  loses the wires' attack: less wire, a duller band, no edge. An accent's wires stay audible longer.
+- **Closed hat:** light hits are tight and dry; harder ones open up, smoothly through the normal hit.
+- **Open hat:** the first of the hit changes (how fast it comes up, its sizzle), not the tail: a soft one still
+  washes. Velocity never chokes it.
+- **Kick:** the fundamental, its drop and its drive are the same at every velocity; velocity shapes the click and
+  the first 40 ms of the punch.
+- **Crash:** a hard one blooms wider, faster and a little longer. **Ride:** a hard one brings out the stick and the
+  bell; its wash rises only half as much, so accents don't turn it into a crash.
 
 Use the hit's own VELOCITY (hold a step, K1), accents, or velocity from the pads and MIDI.
 

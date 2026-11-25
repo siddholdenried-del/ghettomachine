@@ -74,7 +74,7 @@ static const Param perc_params[] = {
  * in the genre kits' order (kit_genre_*); the last two ticks of each are its Tone and Drive (0 when left out).
  * ELECTRO is the factory kit as it was (the 808-style recipes renamed), HOUSE the 909's. */
 static const Recipe kicks[] = {
-    {"Electro",    {520,1500,110,50,160,680}},       {"House",       {530,880,280,140,540,820}},
+    {"Electro",    {520,1500,110,50,300,680}},       {"House",       {530,880,280,140,540,820}},   /* (0.5: Electro's click 16 -> 30 %: its bite) */
     {"Techno",     {520,560,260,110,640,900,0,150}}, {"Trap",        {440,2100,120,90,120,600}},
     {"Boom Bap",   {600,380,90,40,420,560,-150,0}},  {"Drum & Bass", {580,420,200,70,720,800}},
     {"Garage",     {560,520,180,90,460,660}},        {"Disco",       {600,640,150,80,340,450}},

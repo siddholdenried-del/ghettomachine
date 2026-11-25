@@ -7,7 +7,7 @@ KickPatch kit_kick_preset(int which)
        drive. These are presets for one renderer; recalling either copies all
        six values into the patch that the user edits. */
     static const KickPatch recipe[2] = {
-        {52.0f, 1500.f, 11.f, 5.f, .16f, .68f},
+        {52.0f, 1500.f, 11.f, 5.f, .30f, .68f},
         {53.0f, 880.f, 28.f, 14.f, .54f, .82f}
     };
     return recipe[which == 1];

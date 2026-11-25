@@ -42,13 +42,29 @@ static void metal_controls(MetalVoice *v, int lane, MetalPatch param, float velo
     float brightness = 2.f * kit_unit(param.brightness) - 1.f;
     float time = 2.f * kit_unit(param.decay) - 1.f;
     float stretch = 1.f + time * (time < 0.f ? .60f : .50f);
-    if (lane <= OPEN) {
-        brightness += .12f * hard - .55f * soft;
-        stretch *= 1.f - .45f * soft;
-    } else if (lane <= RIDE) {
-        brightness += .15f * hard - .40f * soft;
-        stretch *= 1.f - .30f * soft;
-        v->attack = (lane == CRASH ? .0029f : .022f) * (1.f + .90f * hard) * (1.f - .45f * soft);
+    switch (lane) {
+    case CLOSED:                          /* light: tight and dry; harder: it opens up, smoothly through the normal hit */
+        brightness += .22f * hard - .30f * soft;
+        stretch *= 1.f + .30f * hard - .55f * soft;
+        v->attack = .095f;
+        break;
+    case OPEN:                            /* the first of the hit changes, not the tail: a soft one still washes */
+        brightness += .10f * hard - .12f * soft;
+        stretch *= 1.f - .08f * soft;
+        v->attack = .012f * (1.f + .80f * hard) * (1.f - .60f * soft);
+        break;
+    case CRASH:                           /* a hard crash blooms wider and faster */
+        brightness += .22f * hard - .35f * soft;
+        stretch *= 1.f + .22f * hard - .25f * soft;
+        v->attack = .0029f * (1.f + 1.60f * hard) * (1.f - .50f * soft);
+        break;
+    case RIDE:                            /* a hard ride is its stick, not more wash (metal_hit: the level, the accent) */
+        brightness += .06f * hard - .30f * soft;
+        stretch *= 1.f - .15f * soft;
+        v->attack = .022f * (1.f + .50f * hard) * (1.f - .35f * soft);
+        break;
+    default:
+        break;
     }
     if (brightness < -1.f) brightness = -1.f; else if (brightness > 1.f) brightness = 1.f;
     v->decay_rate = 1.f - (1.f - rate[lane]) / stretch;
@@ -123,11 +139,22 @@ void metal_hit(Metal *m, int pad, float velocity, const KitPatch *patch)
     v->level = v->accent = velocity;
     v->age = v->choke = 0;
     v->movement = 1.0f;
+    {   /* the touch, once (a normal hit: none of it). movement is the first of a hit: a hat's sizzle, a crash's
+           width; accent a cymbal's stick */
+        const float hard = kit_hard(velocity), soft = kit_soft(velocity);
+        if (lane == CLOSED) v->movement = 1.0f + .35f * hard - .60f * soft;
+        else if (lane == OPEN) v->movement = 1.0f + .50f * hard - .70f * soft;
+        else if (lane == CRASH) v->movement = 1.0f + .60f * hard - .40f * soft;
+        else if (lane == RIDE) {
+            v->level = velocity - .55f * hard * (1.0f - KIT_NORMAL_VELOCITY);   /* (the wash: half an accent's rise) */
+            v->accent = velocity * (1.0f + .90f * hard - .50f * soft);
+        }
+    }
     v->dark = 1.0f;                       /* (bright again at the strike; the ring's low-pass keeps its state) */
     /* A soft hat is darker: the open hat's ring starts part-way down its darkening; the closed hat goes through
        the same low-pass, held (a normal or harder closed hat does not: it is as it was, to the sample). */
-    if (lane == OPEN) v->dark = 1.0f - .60f * kit_soft(velocity);
-    else if (lane == CLOSED) v->dark = 1.0f - .78f * kit_soft(velocity);
+    if (lane == OPEN) v->dark = 1.0f - .15f * kit_soft(velocity);
+    else if (lane == CLOSED) v->dark = 1.0f - .50f * kit_soft(velocity);
     if (lane == RIDE) {
         /* Re-striking does not abruptly replace the ringing bell. The two
            copies have the same poles: collapse an unfinished crossfade into
@@ -139,7 +166,7 @@ void metal_hit(Metal *m, int pad, float velocity, const KitPatch *patch)
             v->bell_blend = BELL_BLEND;
         }
         v->ring1 = 0;
-        v->ring2 = -velocity * (p ? .35364f : .29230f);
+        v->ring2 = -velocity * (1.0f + .35f * kit_hard(velocity)) * (p ? .35364f : .29230f);   /* (the bell with the stick) */
     }
 }
 
@@ -238,7 +265,7 @@ static int render_hat(MetalVoice *v, int lane, const Taps *tap, float *out, unsi
 {
     const float settle = lane == CLOSED ? .9983816f : .9996977f; /* contact or open sizzle */
     for (unsigned i = 0; i < n; i++) {
-        v->gain += (lane == CLOSED ? .095f : .012f) * (v->level - v->gain);
+        v->gain += v->attack * (v->level - v->gain);
         v->level *= v->decay_rate;
         float g = v->gain;
         if (v->choke) g *= (float)v->choke * (1.0f / CHOKE_FRAMES);
