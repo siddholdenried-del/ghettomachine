@@ -162,7 +162,9 @@ typedef struct {                          /* the drum track's part of a pattern 
     uint16_t mute;                        /* a bit per pad: muted in this pattern (the MUTE page) */
     uint8_t len;                          /* 1..128 */
     uint8_t rate;                         /* RATE_* */
-    uint8_t nlk, rsv[3];                  /* locks in use */
+    uint8_t nlk;                          /* locks in use */
+    uint8_t swing;                        /* (0.5) the part's own SWING, 50..75 %; 0: the project's (every save before) */
+    uint8_t rsv[2];
     lock_t lk[NLOCKS];
 } dpart_t;
 
@@ -192,7 +194,8 @@ typedef struct {
 
 typedef struct {                          /* an instrument track's part of a pattern */
     nstep_t st[NSTEPS];
-    uint8_t len, rate, nlk, rsv;
+    uint8_t len, rate, nlk;
+    uint8_t swing;                        /* (0.5) the part's own SWING, as the drums' */
     ilock_t lk[NILOCKS];
 } ipart_t;
 
@@ -599,6 +602,10 @@ static ipart_t *ipart(int tr) { return &proj.p[clip_of(tr)].t[tr - 1]; }   /* tr
 static track_t *tset(int tr) { return &proj.tr[tr - 1]; }
 static uint8_t *part_len(int tr) { return tr == TR_DRUM ? &dcur()->len : &ipart(tr)->len; }
 static uint8_t *part_rate(int tr) { return tr == TR_DRUM ? &dcur()->rate : &ipart(tr)->rate; }
+/* SWING (0.5): each track's part of each pattern has its own; one never set (0) plays the project's */
+static uint8_t *part_swing(int tr) { return tr == TR_DRUM ? &dcur()->swing : &ipart(tr)->swing; }
+static int swing_or(int own) { return own >= 50 && own <= 75 ? own : proj.swing; }
+static int swing_of(int tr) { return swing_or(*part_swing(tr)); }
 
 static int drum_row_used(const uint32_t *bits)
 {
@@ -1132,6 +1139,16 @@ static void project_check(void)           /* a loaded project's values kept in r
         }
     if (proj.swing < 50 || proj.swing > 75)
         proj.swing = 50;
+    {   /* a part's own SWING: 0 (the project's) or 50..75 */
+        int q, t;
+        for (q = 0; q < NPAT; q++) {
+            if (proj.p[q].d.swing && (proj.p[q].d.swing < 50 || proj.p[q].d.swing > 75))
+                proj.p[q].d.swing = 0;
+            for (t = 0; t < NINST; t++)
+                if (proj.p[q].t[t].swing && (proj.p[q].t[t].swing < 50 || proj.p[q].t[t].swing > 75))
+                    proj.p[q].t[t].swing = 0;
+        }
+    }
     proj.tmute &= 0x0Fu;
     if ((proj.click & 3u) > 2u)
         proj.click &= (uint8_t)~3u;
@@ -2083,7 +2100,7 @@ static float base_step(int tr)            /* a step of the track's part without 
 
 static float step_samples(int tr, int step)
 {
-    float base = base_step(tr), sw = (float)proj.swing * 0.01f;   /* a pair of steps keeps its length */
+    float base = base_step(tr), sw = (float)swing_of(tr) * 0.01f;   /* a pair of steps keeps its length */
     return (step & 1) ? 2.0f * base * (1.0f - sw) : 2.0f * base * sw;
 }
 
@@ -2094,7 +2111,7 @@ static int32_t note_gate_samples(int tr, int step, int len, int gate)
     int whole = gate / 8, first = whole < len - step ? whole : len - step;
     int after = whole - first, last = (step + whole) % len;
     int swing_units = (first & 1) * ((step & 1) ? -1 : 1) + (len & 1) * (after / len) + (after % len & 1);
-    float base = base_step(tr), delta = (proj.swing - 50) * .02f * base;
+    float base = base_step(tr), delta = (swing_of(tr) - 50) * .02f * base;
     return (int32_t)(base * whole + delta * swing_units +
                      (gate & 7) * .125f * (base + ((last & 1) ? -delta : delta)));
 }
@@ -2404,7 +2421,7 @@ static void fill_pos_run(uint32_t n)      /* audio interrupt, playing: n samples
     while (fill_pos.to_next < 0.5f) {
         int next = fill_pos.step + 1;
         float base = 44100.0f * 60.0f / ((float)proj.bpm10 * 0.1f) * 0.25f * RATE_MUL[m->rate % NRATES];
-        float sw = (float)proj.swing * 0.01f;
+        float sw = (float)swing_or(m->swing) * 0.01f;
         if (next >= m->len)
             next = 0;
         fill_pos.step = (int16_t)next;
@@ -7693,7 +7710,7 @@ static int gen_value(int tr, const gen_t *g, int i, int *lo, int *hi, char *t)  
     default:
         *lo = 50;
         *hi = 75;
-        v = proj.swing;
+        v = swing_of(tr);
         break;
     }
     int_text(v, t);
@@ -7989,7 +8006,7 @@ static int dgen_value(const dgen_t *g, int i, int *lo, int *hi, char *t)
     default:
         *lo = 50;
         *hi = 75;
-        v = proj.swing;
+        v = swing_of(TR_DRUM);
         break;
     }
     int_text(v, t);
@@ -8076,11 +8093,24 @@ static void seq_knob(int k, int32_t e)    /* the step and KEYS pages' knobs: LEN
         undo_mark(2);
         *rate = (uint8_t)clamp(*rate + e, 0, NRATES - 1);
         app_say("RATE", RATE_NAME[*rate]);
-    } else if (k == 2) {
-        proj.swing = (uint8_t)clamp(proj.swing + e, 50, 75);
+    } else if (k == 2) {                  /* SWING: this part's own; SEL held: every track's part of this pattern, and
+                                           * the project's (what a part never set plays) */
+        const int v = clamp(swing_of(tr) + e, 50, 75);
+        undo_mark(4);
+        f = plat_lock();
+        *part_swing(tr) = (uint8_t)v;
+        if (ui.btn >> B_SEL & 1u) {
+            int q;
+            ui.sel_used = 1;
+            proj.swing = (uint8_t)v;
+            proj.p[clip_of(TR_DRUM)].d.swing = (uint8_t)v;
+            for (q = 1; q < NTRK; q++)
+                proj.p[clip_of(q)].t[q - 1].swing = (uint8_t)v;
+        }
+        plat_unlock(f);
         dirty = 1;
-        int_text(proj.swing, t);
-        text_cat(t, "%");
+        int_text(v, t);
+        text_cat(t, (ui.btn >> B_SEL & 1u) ? "% ALL" : "%");
         app_say("SWING", t);
     } else {
         proj.bpm10 = (uint16_t)clamp(proj.bpm10 + e * 10, 600, 2400);
@@ -9930,9 +9960,9 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
         } else if (k == 1) {
             card_put(c, N[1], RATE_NAME[*part_rate(tr)], *part_rate(tr), 0, NRATES - 1, -1);
         } else if (k == 2) {
-            int_text(proj.swing, t);
+            int_text(swing_of(tr), t);
             text_cat(t, "%");
-            card_put(c, N[2], t, proj.swing, 50, 75, -1);
+            card_put(c, N[2], t, swing_of(tr), 50, 75, -1);
         } else {
             int_text(proj.bpm10 / 10, t);
             card_put(c, N[3], t, proj.bpm10 / 10, 60, 240, -1);
@@ -13789,6 +13819,10 @@ int app_expect(const char *what, int *got)
         int pad = atoi(what + 3);
         const char *u = strchr(what, '_');
         *got = u ? drums_get(drum_model(pad), pad, atoi(u + 1)) : -1;
+    } else if (!strncmp(what, "pswing", 6)) {   /* pswingT: track T's part's SWING as it plays; pswing0: the project's */
+        const int t = atoi(what + 6);
+        if (t < 0 || t > NTRK) return 0;
+        *got = t ? swing_of(t - 1) : proj.swing;
     } else if (!strncmp(what, "nudge", 5)) {   /* nudgeT_S: track T's step S late, sixteenths (the drums: the pad picked) */
         const char *u = strchr(what, '_');
         int t = atoi(what + 5), st = u ? atoi(u + 1) - 1 : -1, j;

@@ -1,0 +1,63 @@
+# SWING per track, per pattern (0.5): each part has its own; one never set plays the project's.
+#   app/build/host/ghettomachine_host app/tests/swing.txt OUTDIR
+# pswingT: track T's part's swing as it plays (1 the drums); pswing0: the project's
+wait 600
+expect pswing0 50
+expect pswing1 50
+# ---- the drums' part (STEPS, K3): its own; T2's stays
+spin K3 10
+wait 30
+expect pswing1 60
+expect pswing2 50
+expect pswing0 50
+turn ALGO 1
+wait 30
+expect settool3 3
+spin K3 5
+wait 30
+expect pswing2 55
+expect pswing1 60
+expect pswing3 50
+# ---- pattern 2 (HOME, white key 2): its parts have none of their own yet: the project's
+tap HOME
+wait 30
+key 2 down
+wait 30
+key 2 up
+wait 60
+expect pat 2
+expect pswing1 50
+expect pswing2 50
+key 0 down
+wait 30
+key 0 up
+wait 60
+expect pat 1
+expect pswing1 60
+expect pswing2 55
+# ---- SEL held + SWING: every track's part of this pattern, and the project's
+tap SEQ
+wait 30
+press SEL
+wait 20
+spin K3 1
+wait 30
+release SEL
+wait 60
+expect pswing2 56
+expect pswing1 56
+expect pswing3 56
+expect pswing4 56
+expect pswing0 56
+# it plays (a bar of the beat): no late surprises, and it is kept with the project
+tap PLAY
+wait 1200
+tap PLAY
+wait 200
+tap SAVE
+wait 400
+reboot
+wait 600
+expect pswing1 56
+expect pswing2 56
+expect pswing0 56

@@ -18,6 +18,8 @@ REC with a step, a lane's key or SEQ held); STEP LOCKS (LFO 1 rate and depth, ar
 lane KEEP and hat ROLLS; LFO 2 synced to the tempo; the arpeggio recorded; Song Position, CC 1 / 20-23 to the
 macros, per-key aftertouch out; Bluetooth audio back at power-on.
 
+**24 Nov 2026, after:** SWING is each part's own (a track's part of a pattern); SEL + SWING sets them all.
+
 **Historical hardware test: 0.5** (first installed over USB on 20 Nov). The first recording from it clicked now and then, so
 0.5 now keeps a deeper USB buffer, MASTER no longer changes what a computer records, and the drum steps' beats glow
 (1, 5, 9, 13): that build went on the FM-1 on 21 Nov, and a recording from it had no clicks. REC + GLO (erase the

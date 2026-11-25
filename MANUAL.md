@@ -158,6 +158,18 @@ steps (on T2–T4 the same press is ACID).
   and snare you like and roll the hats again.
 - The screen shows the beat a row a drum, the bass drum at the bottom and the cymbals at the top; accented steps white.
 
+### Swing (shuffle): each track's, each pattern's
+
+**SWING** (the steps' groove knobs, K3; also on the generators' LINE page) belongs to the part you're on: this
+track's part of this pattern. The drums can shuffle while the bass plays straight, and pattern 2 can swing harder
+than pattern 1. 50 % is straight, 75 % the hardest; a pair of steps keeps its length, so every track stays on the
+bar whatever its swing.
+
+- A part you never set plays the **project's** swing (what older projects had: they sound as they did).
+- **Hold SEL and turn SWING** to set every track's part of the patterns they are playing at once, and the
+  project's with them.
+- A part's swing is copied with the part or the pattern, saved with the project, and undone with EDIT + OCT−.
+
 ### Microtiming, and copy and paste (every track)
 
 - **Nudge:** hold a step and turn **PRESETS**: the step plays late, up to 15 sixteenths of its own length (the
