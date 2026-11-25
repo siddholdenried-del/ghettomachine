@@ -3837,6 +3837,88 @@ static int drums2_mode(void)              /* this block: the drums to the second
 #endif
 }
 
+/* ---- (0.5) PLAY and the perform keys, read by the audio interrupt: a block (5.8 ms) at most after they move.
+ * The main loop reads the keys between frames, and a frame's drawing kept it from them for up to 30 ms while playing
+ * on HOME (build 38D3BDD4's KEYS MS MAX): a roll or a start came 0-30 ms late, never the same twice. Here the
+ * interrupt does what is heard (the sequencer started or held, an effect on or off); the main loop follows up when it
+ * gets there (the rest of a stop, a save that waited, the screen, the words).
+ *   PLAY: play_evt counts the presses taken here, play_what says what was done: 1 started, 2 held (stopped as far as
+ *   the ear goes: the main loop's seq_stop does the rest), 3 left to the main loop (a count-in to start or to call
+ *   off). A press is not taken while the one before waits for the main loop.
+ *   The perform keys (HOME and the QUICK MIXER, black keys 5-11): pf_engage / pf_disengage, as often as asked. */
+static volatile uint8_t fast_page;        /* (the main loop's) the perform keys are live: HOME, the QUICK MIXER */
+static volatile uint8_t fast_slow_play;   /* (the main loop's) PLAY would count in: RECORD on and a count-in set */
+static volatile int8_t fast_song_from;    /* (the main loop's) where PLAY would start the song */
+static volatile uint8_t play_evt, play_what, play_hold;
+static uint8_t play_seen;                 /* the main loop: the presses it has followed up */
+static uint8_t fast_play_was, fast_pf_was;
+#define SEQ_RUN (sq.playing && !play_hold)
+
+static void pf_engage(int i)              /* a perform effect on: the lock held, or in the audio interrupt */
+{
+    if (i == PF_STUT || i == PF_TAPE)     /* the delay's memory, lent */
+        fx_delay_line(0);
+    if (i == PF_FILT)
+        fx_set(FXP_FILTER, perf.filt);
+    if (i == PF_WASH)
+        fx_set(FXP_RV_DECAY, perf.wash);
+    if (i == PF_THROW)
+        fx_set(FXP_DL_FDBK, perf.throw_fb);
+    if (i == PF_FILL)
+        fill_on = 1;
+    perf.want |= (uint8_t)(1u << i);
+}
+
+static void pf_disengage(int i)           /* and off: as it was (the same) */
+{
+    perf.want &= (uint8_t)~(1u << i);
+    if (i == PF_FILT)
+        fx_set(FXP_FILTER, proj.fx[FXP_FILTER]);
+    if (i == PF_WASH)
+        fx_set(FXP_RV_DECAY, proj.fx[FXP_RV_DECAY]);
+    if (i == PF_THROW)
+        fx_set(FXP_DL_FDBK, proj.fx[FXP_DL_FDBK]);
+    if (i == PF_FILL)
+        fill_on = 0;
+}
+
+static void fast_input(void)              /* the audio interrupt, a block's start */
+{
+    static const uint8_t FBK[11] = PLAT_BLACK_KEYS;
+    const uint32_t play = plat_buttons() >> B_PLAY & 1u, keys = plat_keys();
+    uint32_t held = 0, i;
+    if (play && !fast_play_was && play_evt == play_seen) {
+        if (sq.playing) {                 /* held where it is: nothing more starts; its notes let go */
+            play_hold = 1;
+            syn_release(-1, 1);
+            play_what = 2;
+        } else if (ck.count > 0 || fast_slow_play) {
+            play_what = 3;
+        } else {
+            song_from = fast_song_from;
+            ck.count = 0;
+            seq_begin();
+            play_what = 1;
+        }
+        play_evt++;
+    }
+    fast_play_was = (uint8_t)play;
+    for (i = 0; i < NPF; i++) {           /* a key down: its contact, or seated (a sensed key) */
+        const uint32_t key = FBK[NTRK + i];
+        if ((keys >> key & 1u) || touch_down(key))
+            held |= 1u << i;
+    }
+    if (!fast_page)                       /* another page: nothing new, what is held until it is let go */
+        held &= fast_pf_was;
+    for (i = 0; i < NPF; i++) {
+        if (held & ~(uint32_t)fast_pf_was & 1u << i)
+            pf_engage((int)i);
+        else if (~held & fast_pf_was & 1u << i)
+            pf_disengage((int)i);
+    }
+    fast_pf_was = (uint8_t)held;
+}
+
 void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
 {
     uint32_t done = 0, i;
@@ -3893,6 +3975,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         mo_tick((int32_t)n);              /* SEQ OUT: the note-offs due (only while a note is out) */
     render_t += n;
     tempo_stretch();
+    fast_input();                         /* PLAY and the perform keys, as they are now */
     {   /* the perform keys: what changed since the last block (ROLL here; the output's effects: post_job); and the
          * QUICK MIXER's track moves, ROLL and STUTTER on the one track */
         uint8_t w = perf.want, qr = perf.qroll, qs = perf.qstut, rmask, fresh;
@@ -3927,7 +4010,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         perf.on = w;
         fill_pos_follow();                /* FILL: the drum clip's own place kept underneath, taken up again after */
     }
-    if (sq.playing && (proj.recq >> 2 & 3u) == 1u) {   /* MIDI CLOCK sent: 24 a beat (to the block) */
+    if (SEQ_RUN && (proj.recq >> 2 & 3u) == 1u) {   /* MIDI CLOCK sent: 24 a beat (to the block) */
         float tick = bar_samples() / 96.0f;
         while (sq.mclk_to < (float)n) {
             plat_midi_send(0x0Fu | 0xF8u << 8, MIDI_TO);
@@ -3956,7 +4039,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         uint32_t chunk = n - done;
         int t;
         uint32_t sq0 = plat_ticks24();
-        if (sq.playing) {
+        if (SEQ_RUN) {
             float m;
             if (sq.bar_left < 0.5f) {      /* the bar first: a queued pattern starts there, every track at its step 1 */
                 if (srt.pos >= 0 && proj.song_on && proj.song_n) {   /* the song: an entry's bars, then the next */
@@ -4094,7 +4177,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             }
         }
         sq0 = plat_ticks24();
-        if (sq.playing) {
+        if (SEQ_RUN) {
             sq.bar_left -= (float)chunk;
             perf.roll_to -= (float)chunk;
             if (sub_on) {
@@ -4128,10 +4211,10 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         j->bpm = (float)proj.bpm10 * 0.1f;
         j->beat_len = bar_samples() * 0.25f;
         j->want = perf.on;
-        j->playing = sq.playing;
+        j->playing = (uint8_t)SEQ_RUN;
         j->counting = ck.count > 0;
         j->bar_at = bar_at;
-        j->click_on = (uint8_t)((sq.playing && (mode == CK_ON || (mode == CK_REC && ck.rec))) || ck.count > 0);
+        j->click_on = (uint8_t)((SEQ_RUN && (mode == CK_ON || (mode == CK_REC && ck.rec))) || ck.count > 0);
         j->ready = 1;
     }
     {   /* the block before's tail: the second core's, waited for (its synth jobs after it were, already); else here */
@@ -6954,22 +7037,15 @@ static void track_pick(int tr)
 
 static int edit_pat(void) { return clip_of(ui.trk); }
 
+static uint8_t pf_main;                   /* the perform keys the main loop has seen down (its own count: the audio
+                                           * interrupt lets an effect go before the main loop sees the key up) */
 static void pf_press(int i)               /* a perform key down (HOME): its effect while held */
 {
     uint32_t f;
     f = plat_lock();
-    if (i == PF_STUT || i == PF_TAPE)     /* the delay's memory, lent */
-        fx_delay_line(0);
-    if (i == PF_FILT)
-        fx_set(FXP_FILTER, perf.filt);
-    if (i == PF_WASH)
-        fx_set(FXP_RV_DECAY, perf.wash);
-    if (i == PF_THROW)
-        fx_set(FXP_DL_FDBK, perf.throw_fb);
-    if (i == PF_FILL)
-        fill_on = 1;
-    perf.want |= (uint8_t)(1u << i);
+    pf_engage(i);                         /* (a key's: the audio interrupt has, a moment ago; again does no harm) */
     plat_unlock(f);
+    pf_main |= (uint8_t)(1u << i);
     ui.pf_key = (int8_t)i;
     app_say(PF_NAME[i], i == PF_FILL ? "NEXT PATTERN'S DRUMS" : "");
     ui.redraw = 1;
@@ -6978,16 +7054,9 @@ static void pf_press(int i)               /* a perform key down (HOME): its effe
 static void pf_release(int i)             /* let go: as it was (the delay's memory back with the next frame) */
 {
     uint32_t f = plat_lock();
-    perf.want &= (uint8_t)~(1u << i);
-    if (i == PF_FILT)
-        fx_set(FXP_FILTER, proj.fx[FXP_FILTER]);
-    if (i == PF_WASH)
-        fx_set(FXP_RV_DECAY, proj.fx[FXP_RV_DECAY]);
-    if (i == PF_THROW)
-        fx_set(FXP_DL_FDBK, proj.fx[FXP_DL_FDBK]);
-    if (i == PF_FILL)
-        fill_on = 0;
+    pf_disengage(i);
     plat_unlock(f);
+    pf_main &= (uint8_t)~(1u << i);
     if (ui.pf_key == i)
         ui.pf_key = -1;
     ui.redraw = 1;
@@ -9074,32 +9143,43 @@ static void input(void)
             ed_open(ED_GLO, glo_last);
         }
     }
-    if (pressed >> B_PLAY & 1u) {
-        if (sq.playing) {
+    /* PLAY: the audio interrupt took the press (fast_input); here what it left */
+    fast_page = (uint8_t)(ui.page == PG_HOME || ui.page == PG_QMIX);
+    fast_slow_play = (uint8_t)(ui.rec && countin_bars());
+    fast_song_from = (int8_t)(ui.page == PG_SONG ? ui.scur : 0);
+    if (play_evt != play_seen) {
+        const uint8_t what = play_what;
+        if (what == 2) {                  /* held there: the stop itself, and a save that waited for it */
             seq_stop();
+            play_hold = 0;
             if (ui.save_pending) {
                 ui.save_pending = 0;
                 do_save();
             }
-        } else if (ck.count > 0) {        /* PLAY in the count-in: no start */
-            ck.count = 0;
-            ck.pre = 0;
-            ck.pre_pads = 0;
-            app_say("COUNT-IN", "OFF");
-        } else if (ui.rec && countin_bars()) {   /* recording: the count-in, then the sequencer (app_render) */
-            uint32_t f = plat_lock();
-            song_from = (int8_t)(ui.page == PG_SONG ? ui.scur : 0);
-            sq.clock = 0;
-            ck.to_next = 0.0f;
-            ck.beat = 0;
-            ck.pre = 0;
-            ck.pre_pads = 0;
-            ck.count = (int32_t)(bar_samples() * (float)countin_bars());
-            plat_unlock(f);
-        } else {
-            song_from = (int8_t)(ui.page == PG_SONG ? ui.scur : 0);
-            seq_start();
+        } else if (what == 3) {
+            if (sq.playing) {             /* (started since, by the clock followed or a count-in's end) */
+                seq_stop();
+            } else if (ck.count > 0) {    /* PLAY in the count-in: no start */
+                ck.count = 0;
+                ck.pre = 0;
+                ck.pre_pads = 0;
+                app_say("COUNT-IN", "OFF");
+            } else if (ui.rec && countin_bars()) {   /* recording: the count-in, then the sequencer (app_render) */
+                uint32_t f = plat_lock();
+                song_from = (int8_t)(ui.page == PG_SONG ? ui.scur : 0);
+                sq.clock = 0;
+                ck.to_next = 0.0f;
+                ck.beat = 0;
+                ck.pre = 0;
+                ck.pre_pads = 0;
+                ck.count = (int32_t)(bar_samples() * (float)countin_bars());
+                plat_unlock(f);
+            } else {
+                song_from = (int8_t)(ui.page == PG_SONG ? ui.scur : 0);
+                seq_start();
+            }
         }
+        play_seen = play_evt;
     }
     if ((released >> B_OCTUP & 1u) && (perf.want >> PF_TAPE & 1u))
         pf_release(PF_TAPE);
@@ -9229,7 +9309,7 @@ static void input(void)
     for (k = 0; k < 11u; k++) {           /* black keys: the pads, tracks, step pages or notes */
         uint32_t key = BK[k], bit = 1u << key;
         if (kr & bit) {
-            if (k >= NTRK && (perf.want >> (k - NTRK) & 1u) && k - NTRK < NPF) {   /* a perform key let go */
+            if (k >= NTRK && k - NTRK < NPF && (pf_main >> (k - NTRK) & 1u)) {   /* a perform key let go */
                 pf_release((int)k - NTRK);
                 continue;
             }
@@ -13696,7 +13776,9 @@ int app_expect(const char *what, int *got)
     else if (!strcmp(what, "tmute"))
         *got = proj.tmute;
     else if (!strcmp(what, "playing"))
-        *got = sq.playing;
+        *got = SEQ_RUN;                   /* (held by the audio interrupt: stopped, as heard) */
+    else if (!strcmp(what, "playevt"))    /* the presses of PLAY the audio interrupt took */
+        *got = play_evt;
     else if (!strcmp(what, "step"))
         *got = sq.t[TR_DRUM].step;
     else if (!strcmp(what, "len"))

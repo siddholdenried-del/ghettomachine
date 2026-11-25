@@ -1,0 +1,72 @@
+# presets: new
+# PLAY and the perform keys taken by the audio interrupt (0.5): heard a block (5.8 ms) at most after they move,
+# whatever the screen is drawing.  app/build/host/ghettomachine_host app/tests/fastkeys.txt OUTDIR
+# playing: the sequencer running; pfon: the perform effects on (1 ROLL, 4 STUTTER); playevt: the presses of PLAY the
+# audio interrupt took
+wait 600
+expect playing 0
+expect playevt 0
+# ---- PLAY: running within two blocks of the press; again: stopped as soon
+press PLAY
+wait 12
+expect playing 1
+expect playevt 1
+release PLAY
+wait 300
+expect playing 1
+press PLAY
+wait 12
+expect playing 0
+release PLAY
+wait 100
+expect playing 0
+expect playevt 2
+# ---- a press shorter than a frame: taken all the same, once
+press PLAY
+wait 12
+release PLAY
+wait 12
+expect playing 1
+expect playevt 3
+wait 200
+expect playing 1
+# ---- HOME: ROLL on within two blocks of its key, off within two of its release; the main loop's count follows
+tap HOME
+wait 60
+expect page 3
+key 10 down
+wait 12
+expect pfon 1
+key 10 up
+wait 12
+expect pfon 0
+wait 100
+expect pfon 0
+# STUTTER, held a while, then let go
+key 15 down
+wait 12
+expect pfon 4
+wait 300
+expect pfon 4
+key 15 up
+wait 12
+expect pfon 0
+# ---- off HOME the same keys do nothing of the kind
+tap SEQ
+wait 60
+key 10 down
+wait 30
+expect pfon 0
+key 10 up
+wait 30
+tap HOME
+wait 60
+expect page 3
+# ---- stopped: a count-in is the main loop's still (RECORD on, the count-in a bar: the existing suites); a plain stop
+press PLAY
+wait 12
+expect playing 0
+release PLAY
+wait 100
+expect playevt 4
+expect clips 0

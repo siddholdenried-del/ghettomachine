@@ -39,6 +39,11 @@ bus when it is on: its .75, level, pan and the track's gain inside each pad's ga
 buffers, so four clears and a scaling pass a block are gone (the same sound to -124 dB: float rounding).
 Then the shells rest at -96 dBFS, not -118 (auditioned old against new; a lone hit 8-20 % less work).
 
+**25 Nov 2026, the transport:** PLAY and the perform keys (HOME and the QUICK MIXER, black keys 5-11) are taken by
+the audio interrupt, a block (5.8 ms) at most after they move; the main loop, which a frame's drawing kept from the
+keys for up to 30 ms while playing on HOME (measured: the CPU view's KEYS MS MAX), follows up with the rest of a stop,
+a save that waited, the screen and the words. A count-in is the main loop's still. tests/fastkeys.txt.
+
 **25 Nov 2026, the drums' velocity:** hats, snare, kick, crash and ride shaped by velocity at the strike (kit_hard /
 kit_soft around the normal 88/127, which sounds as before); hats' and cymbals' tails idle at -90 dB, not -119 (a
 fifth less metal rendering over every recipe; the difference from full tails under -97 dBFS).
