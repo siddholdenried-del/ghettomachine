@@ -28,6 +28,13 @@ LEVEL reads in dB (100 = 0.0 dB) and goes to 200 (+6.0 dB).
 Project format 13: with SOUNDS PER PATTERN each pattern keeps every drum's own settings. LFO 2's page draws and
 scrolls as LFO 1's. The delay's line 59400 -> 58200 samples for the pool.
 
+**25 Nov 2026, the percs' and cymbals' CPU:** the same sounds for less work. The percs: their filter's two divisions a
+sample became one Newton step each on the reciprocals kept from the sample before (exact at the strike; the result
+within -108 dB of the old one), the sine's table read in line, the voice's state in the loop's own variables, and the
+loop runs from RAM (1.8 KB of it; 320 B of RAM code left). The cymbals, hats and sweeps: to the sample as before; the
+bank's and the voices' state in the loops' own variables, and each lane its own copy of its loop, so the lane's
+choices are made once a block and not a sample at a time. Cut: kit_sine as a function.
+
 **25 Nov 2026, the drums' velocity:** hats, snare, kick, crash and ride shaped by velocity at the strike (kit_hard /
 kit_soft around the normal 88/127, which sounds as before); hats' and cymbals' tails idle at -90 dB, not -119 (a
 fifth less metal rendering over every recipe; the difference from full tails under -97 dBFS).

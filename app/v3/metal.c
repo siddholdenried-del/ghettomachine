@@ -1,4 +1,5 @@
 #include "freestanding.h"
+#include "../dsp/gm_ram.h"
 #include "metal.h"
 #include "kit_math.h"
 
@@ -172,7 +173,7 @@ void metal_hit(Metal *m, int pad, float velocity, const KitPatch *patch)
 
 /* Stateless, seekable air excitation. Skipping an idle bank or subdividing a
    block leaves the subsequent air sample at the same point in the sequence. */
-static float air_at(uint32_t frame, unsigned profile)
+static inline float air_at(uint32_t frame, unsigned profile)
 {
     uint32_t x = (frame ^ (profile * 0x632be5abu)) * 0x9e3779b9u;
     x = (x ^ (x >> 15)) * 0x85ebca6bu;
@@ -225,30 +226,43 @@ static void source(MetalBank *b, unsigned p, Taps *tap, unsigned count)
     const float top0 = p ? .28765588f : .27577891f;
     const float top1 = p ? .52804666f : .69905788f;
     const float top2 = p ? -.42468825f : -.44844218f;
+    /* (0.5, the CPU) The bank's state in the loop's own variables: the taps are floats, so with the state in the bank
+       the compiler has to load and store all of it around every tap it writes. To the sample as before. */
+    uint32_t phase[6], frame = b->next_frame;
+    const uint32_t s0 = b->step[0], s1 = b->step[1], s2 = b->step[2], s3 = b->step[3], s4 = b->step[4], s5 = b->step[5];
+    float lp_p1 = b->lp_p1, lp_p2 = b->lp_p2, lp_n1 = b->lp_n1, lp_n2 = b->lp_n2;
+    float low = b->low, air_low = b->air_low, air_high_low = b->air_high_low;
+    float m1 = b->mid1, m2 = b->mid2, h1 = b->high1, h2 = b->high2;
+    for (unsigned i = 0; i < 6; i++) phase[i] = b->phase[i];
     for (unsigned n = 0; n < count; n++) {
-        for (unsigned i = 0; i < 6; i++) b->phase[i] += b->step[i];
-        tap[n].air = pulse_mix(b->phase);
+        phase[0] += s0; phase[1] += s1; phase[2] += s2; phase[3] += s3; phase[4] += s4; phase[5] += s5;
+        tap[n].air = pulse_mix(phase);
     }
     for (unsigned n = 0; n < count; n++) {
-        float pulse = lp13k(tap[n].air, &b->lp_p1, &b->lp_p2);
-        float noise = lp13k(air_at(b->next_frame++, p), &b->lp_n1, &b->lp_n2);
-        b->low += .19f * (pulse - b->low);
-        float exciter = .77f*(pulse-b->low) + .69f*noise;
-        b->air_low += .38f*(noise-b->air_low);
-        float hiss = noise-b->air_low;
-        b->air_high_low += .51f*(hiss-b->air_high_low);
-        float edge = hiss-b->air_high_low;
-        float mid = mid0*exciter + b->mid1;
-        b->mid1 = mid1*mid + b->mid2;
-        b->mid2 = mid2*mid - mid0*exciter;
-        float top = top0*exciter + b->high1;
-        b->high1 = top1*top + b->high2;
-        b->high2 = top2*top - top0*exciter;
+        float pulse = lp13k(tap[n].air, &lp_p1, &lp_p2);
+        float noise = lp13k(air_at(frame++, p), &lp_n1, &lp_n2);
+        low += .19f * (pulse - low);
+        float exciter = .77f*(pulse-low) + .69f*noise;
+        air_low += .38f*(noise-air_low);
+        float hiss = noise-air_low;
+        air_high_low += .51f*(hiss-air_high_low);
+        float edge = hiss-air_high_low;
+        float mid = mid0*exciter + m1;
+        m1 = mid1*mid + m2;
+        m2 = mid2*mid - mid0*exciter;
+        float top = top0*exciter + h1;
+        h1 = top1*top + h2;
+        h2 = top2*top - top0*exciter;
         tap[n].body = .97f*mid + .35f*top;
         tap[n].bright = .81f*top + .25f*hiss;
         tap[n].edge = .95f*edge + .14f*top;
         tap[n].air = .24f*pulse + .76f*noise;
     }
+    for (unsigned i = 0; i < 6; i++) b->phase[i] = phase[i];
+    b->next_frame = frame;
+    b->lp_p1 = lp_p1; b->lp_p2 = lp_p2; b->lp_n1 = lp_n1; b->lp_n2 = lp_n2;
+    b->low = low; b->air_low = air_low; b->air_high_low = air_high_low;
+    b->mid1 = m1; b->mid2 = m2; b->high1 = h1; b->high2 = h2;
 #ifdef METAL_TEST_COUNTERS
     b->rendered_frames += count;
 #endif
@@ -261,8 +275,10 @@ static void source(MetalBank *b, unsigned p, Taps *tap, unsigned count)
 #define DARK_CRASH .62f
 #define DARK_RIDE .70f
 
-static int render_hat(MetalVoice *v, int lane, const Taps *tap, float *out, unsigned n)
+GM_INLINE int render_hat(MetalVoice *voice, int lane, const Taps *tap, float *out, unsigned n)
 {
+    MetalVoice state = *voice, *v = &state;   /* (the CPU: see source) */
+    int alive = 1;
     const float settle = lane == CLOSED ? .9983816f : .9996977f; /* contact or open sizzle */
     for (unsigned i = 0; i < n; i++) {
         v->gain += v->attack * (v->level - v->gain);
@@ -284,13 +300,16 @@ static int render_hat(MetalVoice *v, int lane, const Taps *tap, float *out, unsi
         }
         out[i] += s;
         if (v->movement > 1e-8f) v->movement *= settle;
-        if ((v->choke && --v->choke == 0) || (v->gain < idle && v->level < idle)) return 0;
+        if ((v->choke && --v->choke == 0) || (v->gain < idle && v->level < idle)) { alive = 0; break; }
     }
-    return 1;
+    *voice = state;
+    return alive;
 }
 
-static int render_cymbal(MetalVoice *v, int lane, unsigned p, const Taps *tap, float *out, unsigned n)
+GM_INLINE int render_cymbal(MetalVoice *voice, int lane, unsigned p, const Taps *tap, float *out, unsigned n)
 {
+    MetalVoice state = *voice, *v = &state;   /* (the CPU: see source) */
+    int alive = 1;
     const float bell_a = p ? 1.87043584f : 1.91231757f;
     /* Parallel plate mode: unity-peak bandpass, Q=3.5, 7.10/7.60 kHz.
        The state belongs to Crash only. Its original wash carries through. */
@@ -337,13 +356,16 @@ static int render_cymbal(MetalVoice *v, int lane, unsigned p, const Taps *tap, f
         } else {
             v->accent = v->accent_gain = 0;
         }
-        if (v->gain < idle && v->level < idle) return 0;
+        if (v->gain < idle && v->level < idle) { alive = 0; break; }
     }
-    return 1;
+    *voice = state;
+    return alive;
 }
 
-static int render_fx(MetalVoice *v, int lane, const Taps *tap, float *out, unsigned n)
+GM_INLINE int render_fx(MetalVoice *voice, int lane, const Taps *tap, float *out, unsigned n)
 {
+    MetalVoice state = *voice, *v = &state;   /* (the CPU: see source) */
+    int alive = 1;
     for (unsigned i = 0; i < n; i++) {
         float g, cutoff;
         if (lane == RISER) {
@@ -366,9 +388,10 @@ static int render_fx(MetalVoice *v, int lane, const Taps *tap, float *out, unsig
         out[i] += .96f * v->gain * v->filter2;
         v->gain += .055f * (g - v->gain);
         v->cutoff += .055f * (cutoff - v->cutoff);
-        if (v->level < quiet) return 0;
+        if (v->level < quiet) { alive = 0; break; }
     }
-    return 1;
+    *voice = state;
+    return alive;
 }
 
 void metal_render_routed(Metal *m, float *lanes[3], unsigned n)
@@ -384,9 +407,15 @@ void metal_render_routed(Metal *m, float *lanes[3], unsigned n)
                 MetalVoice *v = &b->voice[lane];
                 float *lane_out = lanes[lane <= OPEN ? lane : 2] + off;
                 int alive;
-                if (lane <= OPEN) alive = render_hat(v, lane, tap, lane_out, len);
-                else if (lane <= RIDE) alive = render_cymbal(v, lane, p, tap, lane_out, len);
-                else alive = render_fx(v, lane, tap, lane_out, len);
+                /* (the CPU) each lane its own copy of its loop, the lane's choices made once, not a sample at a time */
+                switch (lane) {
+                case CLOSED: alive = render_hat(v, CLOSED, tap, lane_out, len); break;
+                case OPEN: alive = render_hat(v, OPEN, tap, lane_out, len); break;
+                case CRASH: alive = render_cymbal(v, CRASH, p, tap, lane_out, len); break;
+                case RIDE: alive = render_cymbal(v, RIDE, p, tap, lane_out, len); break;
+                case RISER: alive = render_fx(v, RISER, tap, lane_out, len); break;
+                default: alive = render_fx(v, DROP, tap, lane_out, len); break;
+                }
                 if (!alive) b->active &= ~(1u << lane);
             }
         }

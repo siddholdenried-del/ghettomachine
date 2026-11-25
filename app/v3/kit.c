@@ -1,4 +1,5 @@
 #include "freestanding.h"
+#include "../dsp/gm_ram.h"
 #include "kit.h"
 
 KickPatch kit_kick_preset(int which)
@@ -79,8 +80,8 @@ void kit_render(Kit *kit, float *out, unsigned frames)
         V3_CLEAR(out, 0, n * sizeof(*out));
         shells_render(&kit->shells, out, n);
         metal_render(&kit->metal, out, n);
-        perc_render(&kit->perc[0], out, n);
-        perc_render(&kit->perc[1], out, n);
+        GM_FAR(perc_render)(&kit->perc[0], out, n);
+        GM_FAR(perc_render)(&kit->perc[1], out, n);
         for (unsigned i = 0; i < n; ++i) out[i] = kit_finish(out[i]);
         frames -= n;
         out += n;
@@ -93,8 +94,8 @@ static void render_lanes(Kit *kit, float *lanes[KIT_PADS], unsigned n)
        metal frame counter so a future hit resumes at its free-running phase. */
     shells_render_routed(&kit->shells, lanes, n);
     metal_render_routed(&kit->metal, lanes + 6, n);
-    perc_render(&kit->perc[0], lanes[9], n);
-    perc_render(&kit->perc[1], lanes[10], n);
+    GM_FAR(perc_render)(&kit->perc[0], lanes[9], n);
+    GM_FAR(perc_render)(&kit->perc[1], lanes[10], n);
 }
 
 void kit_lanes(Kit *kit, float *lanes[KIT_PADS], unsigned n)

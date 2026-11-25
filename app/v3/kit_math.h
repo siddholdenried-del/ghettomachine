@@ -4,7 +4,15 @@
 #define KIT_RATE 44100
 
 /* Unit phase, 2^32 steps per cycle. No transcendentals in this oscillator. */
-float kit_sine(uint32_t phase);
+/* (GhettoMachine 0.5, the CPU: in line, so a voice's loop makes no call for it; the table is kit_math.c's) */
+extern const int16_t kit_sine_table[257];
+static inline __attribute__((always_inline)) float kit_sine(uint32_t phase)
+{
+    const unsigned index = phase >> 24;
+    const float fraction = (float)(phase & 0x00ffffffu) * (1.0f / 16777216.0f);
+    const float a = kit_sine_table[index];
+    return (a + fraction * (kit_sine_table[index + 1] - a)) * (1.0f / 32767.0f);
+}
 static inline uint32_t kit_increment(float hz)
 {
     return (uint32_t)(hz * (4294967296.0f / KIT_RATE));
