@@ -4659,6 +4659,7 @@ static void step_down(int k)
     dpart_t *p = dcur();
     int s = ui.spage * 16 + k;
     uint32_t f;
+    ui.spage_t = plat_ms();               /* (0.5) a step touched: the view stays on this bar while you work in it */
     if (s >= p->len) {
         app_say("STEP", "PAST THE END");
         return;
@@ -10880,14 +10881,52 @@ static void steps_text(char *t)           /* "STEPS 17-32" */
     text_cat(t, u);
 }
 
-static void page_steps(void)              /* the drums' grid: 11 pads and the accents, 16 steps of the page */
+/* (0.5) the bars' strip along the bottom of a steps page: every bar of the part (16 steps each), the one shown
+ * framed, the ones with something in them (a bit a bar in has) filled, the playhead running through all of them.
+ * OCT- / OCT+ step through them; on an instrument the black keys 1-8 jump (the drums' black keys are their pads) */
+#define BARS_H 11
+static void bars_strip(uint32_t has, int st, int len)
+{
+    const int nb = npages(), y = BODY_H - BARS_H + 1, wb = 212 / (nb ? nb : 1);
+    int b;
+    for (b = 0; b < nb; b++) {
+        const int x = 27 + b * wb, in = (int)(has >> b & 1u);
+        char d[4];
+        rrect(x, y, wb - 2, BARS_H - 2, 2, in ? mix565(C_BODY, TH_FG, b == ui.spage ? 150 : 80) : mix565(C_BODY, TH_INK, 28));
+        if (b == ui.spage)
+            frame(x, y, wb - 2, BARS_H - 2, C_BONE);
+        int_text(b + 1, d);
+        cv_text(x + 3, y - 2, &FONT_T, d, b == ui.spage ? C_BONE : C_TXT2);
+    }
+    if (sq.playing && st >= 0 && st < len)
+        cv_rect(27 + st * wb / 16, y, 2, BARS_H - 2, C_NOW);
+    cv_text(0, y - 2, &FONT_T, "BAR", C_TXT2);
+}
+static void bar_text(char *t)             /* "BAR 2/4", or "1-16" for a part of one bar */
+{
+    char d[8];
+    t[0] = 0;
+    if (npages() > 1) {
+        text_cat(t, "BAR ");
+        int_text(ui.spage + 1, d);
+        text_cat(t, d);
+        text_cat(t, "/");
+        int_text(npages(), d);
+        text_cat(t, d);
+    } else {
+        text_cat(t, "1-16");
+    }
+}
+
+static void page_steps(void)              /* the drums' grid: 11 pads and the accents, 16 steps of the page; the bars */
 {
     dpart_t *p = dcur();
     int row, k, st = sq.t[TR_DRUM].step;
+    uint32_t has = 0;
     char t[24], hint[28];
-    steps_text(t);
+    bar_text(t);
     hint[0] = 0;
-    text_cat(hint, t + 6);                /* (STEPS 1-16: the steps, then the pad) */
+    text_cat(hint, t);                    /* (BAR 2/4: the bar, then the pad) */
     text_cat(hint, " ");
     text_cat(hint, trial_pad_name(drum_model(ui.pad), ui.pad));
     if (drum_lane_muted(ui.pad))
@@ -10895,50 +10934,60 @@ static void page_steps(void)              /* the drums' grid: 11 pads and the ac
     kit_band(ui.dtool || ui.held_step >= 0 ? "DRUM HIT" : "DRUM STEPS", hint, npages(), ui.spage);
     hits_take();
     for (row = 0; row < NPADS + 1; row++) {
-        int y = row * 11, muted = row < NPADS && (p->mute >> row & 1u), sel = row == ui.pad;
+        int y = row * 10, muted = row < NPADS && (p->mute >> row & 1u), sel = row == ui.pad;
         const uint32_t *bits = row < NPADS ? p->hit[row] : p->acc;
         uint16_t on = row == NPADS ? TH_HI : muted ? C_GRID : sel ? TH_FG : mix565(C_BODY, TH_INK, 118);
         if (sel) {                        /* the pad picked: its row a field, its name on violet */
-            rrect(0, y, 240, 11, 3, C_PANEL);
-            cv_rect(1, y + 1, 22, 9, C_VIOLET);
+            rrect(0, y, 240, 10, 3, C_PANEL);
+            cv_rect(1, y + 1, 22, 8, C_VIOLET);
         }
         if (row < NPADS && hit[row] > 0.05f)   /* the pad sounding: its name lights */
-            rrect(1, y + 1, 22, 9, 2, mix565(sel ? C_VIOLET : C_BODY, C_WHITE2, (int)(hit[row] * 230.0f)));
-        cv_text(3, y - 2, &FONT_XS, row < NPADS ? trial_pad_name(drum_model(row), row) : "AC",
+            rrect(1, y + 1, 22, 8, 2, mix565(sel ? C_VIOLET : C_BODY, C_WHITE2, (int)(hit[row] * 230.0f)));
+        cv_text(3, y - 3, &FONT_XS, row < NPADS ? trial_pad_name(drum_model(row), row) : "AC",
                 muted ? TH_RED : sel || (row < NPADS && hit[row] > 0.4f) ? C_INK : C_TXT2);
         if (row < NPADS)                  /* (0.5) its level now: a thin meter, HEAT */
-            vheat(23, y + 1, 2, 9, (int)(hit[row] * 9.0f + 0.5f));
+            vheat(23, y + 1, 2, 8, (int)(hit[row] * 8.0f + 0.5f));
         for (k = 0; k < 16; k++) {
             int s = ui.spage * 16 + k, x = 27 + k * 13;
             if (s >= p->len)
                 continue;
             if (!(k & 3))                 /* the beats (steps 1, 5, 9, 13 of the page): a column of their own */
-                cv_rect(x - 1, y, 13, 11, mix565(sel ? C_PANEL : C_BODY, TH_INK, 22));
+                cv_rect(x - 1, y, 13, 10, mix565(sel ? C_PANEL : C_BODY, TH_INK, 22));
             if (sq.playing && s == st)
-                cv_rect(x - 1, y, 13, 11, PLAYHEAD);
+                cv_rect(x - 1, y, 13, 10, PLAYHEAD);
             if (bit_get(bits, s)) {       /* (an accented hit: orange) */
-                rrect(x, y + 1, 11, 9, 2, row < NPADS && !muted && bit_get(p->acc, s) ? gradc(GR_HEAT, 40, 47) : on);
+                rrect(x, y + 1, 11, 8, 2, row < NPADS && !muted && bit_get(p->acc, s) ? gradc(GR_HEAT, 40, 47) : on);
                 if (row < NPADS && step_locked(p, s, row)) {
                     int j = lock_find(p, s, row, LK_SUB), q;
                     if (j < 0)
                         cv_rect(x + 7, y + 1, 4, 3, C_WHITE2);
                     for (q = 1; j >= 0 && q < p->lk[j].val; q++)   /* substeps: the hit cut in as many */
-                        cv_rect(x + q * 11 / p->lk[j].val, y + 1, 1, 9, C_CANVAS);
+                        cv_rect(x + q * 11 / p->lk[j].val, y + 1, 1, 8, C_CANVAS);
                 }
                 if (row == ui.pad && s == ui.held_step)
-                    cv_rect(x + 3, y + 3, 5, 5, C_WHITE2);
+                    cv_rect(x + 3, y + 3, 5, 4, C_WHITE2);
             } else {
-                cv_rect(x + 4, y + 4, 3, 3, (k & 3) ? C_GRID : C_TXT2);
+                cv_rect(x + 4, y + 4, 3, 2, (k & 3) ? C_GRID : C_TXT2);
             }
         }
     }
+    {   /* the bars with a hit in them, any pad's */
+        int b, q;
+        for (b = 0; b < npages(); b++)
+            for (row = 0; row < NPADS && !(has >> b & 1u); row++)
+                for (q = b * 16; q < b * 16 + 16 && q < p->len; q++)
+                    if (bit_get(p->hit[row], q)) {
+                        has |= 1u << b;
+                        break;
+                    }
+    }
+    bars_strip(has, st, p->len);
     cards_of(ui.dtool || ui.held_step >= 0 ? KD_DHIT : KD_SEQ, 0);
 }
 
 static void page_roll(void)               /* an instrument part: its notes, pitch up, 16 steps of the page */
 {
     /* (0.5) H: the roll; under it the steps' marks (6 px), then the bars' strip (BARS_H) */
-#define BARS_H 11
     int tr = ui.trk, st = sq.t[tr].step, k, i, s, lo = 127, hi = 0, rows, rh, top, n, H = BODY_H - 6 - BARS_H, laby = -99;
     ipart_t *p = ipart(tr);
     uint16_t col = TRK_RGB[tr];
@@ -10982,17 +11031,7 @@ static void page_roll(void)               /* an instrument part: its notes, pitc
     {
         char cx[44];
         cx[0] = 0;
-        if (npages() > 1) {               /* (0.5) BAR 2/4, then the notes or what a key does */
-            char d[4];
-            text_cat(cx, "BAR ");
-            int_text(ui.spage + 1, d);
-            text_cat(cx, d);
-            text_cat(cx, "/");
-            int_text(npages(), d);
-            text_cat(cx, d);
-        } else {
-            text_cat(cx, t + 6);          /* (STEPS 1-16) */
-        }
+        bar_text(cx);                     /* (0.5) BAR 2/4, then the notes or what a key does */
         text_cat(cx, "  ");
         text_cat(cx, u);
         band_set(col, TRK_NAME[tr], STOOL_NAME[ui.stool % NSTOOL], cx, npages(), ui.spage);
@@ -11085,26 +11124,13 @@ static void page_roll(void)               /* an instrument part: its notes, pitc
         if (ns->prob & NS_SLIDE)
             cv_rect(x + 9, H - 3, 4, 3, TH_FG);
     }
-    {   /* (0.5) the bars' strip: every bar of the part (16 steps each), the one shown framed, the ones with notes
-         * filled, the playhead running through all of them. OCT- / OCT+ step through them, black keys 1-8 jump */
-        const int nb = npages(), y = BODY_H - BARS_H + 1, wb = 212 / (nb ? nb : 1);
-        int b;
-        for (b = 0; b < nb; b++) {
-            int has = 0, x = 27 + b * wb;
-            char d[4];
-            for (s = b * 16; s < b * 16 + 16 && s < p->len; s++)
-                has |= p->st[s].note[0] != 0;
-            rrect(x, y, wb - 2, BARS_H - 2, 2, has ? mix565(C_BODY, TH_FG, b == ui.spage ? 150 : 80) : mix565(C_BODY, TH_INK, 28));
-            if (b == ui.spage)
-                frame(x, y, wb - 2, BARS_H - 2, C_BONE);
-            int_text(b + 1, d);
-            cv_text(x + 3, y - 2, &FONT_T, d, b == ui.spage ? C_BONE : C_TXT2);
-        }
-        if (sq.playing && st >= 0 && st < p->len)
-            cv_rect(27 + st * wb / 16, y, 2, BARS_H - 2, C_NOW);
-        cv_text(0, y - 2, &FONT_T, "BAR", C_TXT2);
+    {   /* the bars with notes in them */
+        uint32_t has = 0;
+        for (s = 0; s < p->len; s++)
+            if (p->st[s].note[0])
+                has |= 1u << (s / 16);
+        bars_strip(has, st, p->len);
     }
-#undef BARS_H
     if (ui.stool == ST_HARM || ui.stool == ST_MOD || (ui.held_step < 0 && ui.stool != ST_GROOVE))
         cards_of(KD_STOOL, ui.stool);
     else if (ui.held_step >= 0)

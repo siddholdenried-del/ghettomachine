@@ -206,7 +206,10 @@ bar whatever its swing.
   project's with them.
 - A part's swing is copied with the part or the pattern, saved with the project, and undone with EDIT + OCT−.
 
-### Finding your way in a long part (T2–T4's steps)
+### Finding your way in a long part (every track's steps)
+
+The drums' steps have the same bars' strip and BAR 2/4 as the instruments', and the same steady view; there OCT− /
+OCT+ step the bars (the black keys are the pads).
 
 A part longer than 16 steps is shown a **bar** (16 steps) at a time. Along the bottom of the steps page is the
 **bars' strip**: every bar of the part, numbered; the one you're looking at is framed, bars with notes in them are
