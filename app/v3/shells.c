@@ -3,9 +3,9 @@
 #include "kit_math.h"
 
 /* Time constants in milliseconds. All coefficients are computed at a strike.
- * FLOOR is -118 dBFS. The envelope bound, never an individual zero crossing or
- * the load of other voices, determines when a drum rests. */
-#define FLOOR 0.00000125f
+ * FLOOR is -96 dBFS (0.5, the CPU: it was -118; auditioned old against new). The envelope bound, never an
+ * individual zero crossing or the load of other voices, determines when a drum rests. */
+#define FLOOR 0.0000158f
 enum { RESTRIKE = 24 };
 static const unsigned body_outputs[] = {0, 3, 4, 5};
 
