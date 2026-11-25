@@ -35,6 +35,13 @@ Retuned the same day to the player's brief: ghost snares keep their body and los
 the wires longer; closed hats tight to open; open hats change at the front only; the kick's fundamental and drive
 steady; crash and ride on separate curves. ELECTRO's kick click 16 -> 30 %.
 
+**25 Nov 2026, the steps pages and the second factory set:** both steps pages have a bars' strip, BAR n/N and a view
+that stays put while you work; the instruments' rows are laid out as a keyboard and name their notes. The synth's 129
+factory sounds were replaced (tools/make_presets.py -> dsp/preset_table.inc): banks by kind (MONO BASS, MONO LEAD,
+POLY, STAB, HIT, DRUM), levelled to the first set's target. A track now carries its sound's trim; a project saved
+with a first-set sound keeps that sound, its name and its level (dsp/preset_legacy.inc). The simulator's older
+suites run on the first set (GM_OLD_PRESETS; tests/run_all.sh).
+
 **Historical hardware test: 0.5** (first installed over USB on 20 Nov). The first recording from it clicked now and then, so
 0.5 now keeps a deeper USB buffer, MASTER no longer changes what a computer records, and the drum steps' beats glow
 (1, 5, 9, 13): that build went on the FM-1 on 21 Nov, and a recording from it had no clicks. REC + GLO (erase the

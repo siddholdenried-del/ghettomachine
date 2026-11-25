@@ -117,7 +117,6 @@ enum { XL_LRATE, XL_LDEPTH, XL_ARATE, XL_AGATE, XL_NUM };
 _Static_assert(PRESET_LIMIT <= 256, "project and per-pattern preset IDs are unsigned bytes");
 static int user_preset_slot(int id) { return id >= PRESET_USER_FIRST && id < PRESET_NEW_FIRST ? id - PRESET_USER_FIRST : -1; }
 static int factory_preset_index(int id) { return id >= PRESET_NEW_FIRST ? id - NUSER : id; }
-static float preset_gain(int id);        /* (below: the preset's level trim as a gain) */
 #define LEVEL_MAX 200                     /* a track's LEVEL: 100 the start (0 dB), 200 twice that (+6 dB); 127 until 0.5 */
 #define NUKIT 8                           /* user kits (the drums) */
 /* the drums' presets PRESET steps through: the 909 (0), the 808 (1), the user kits (2 ..). The 606 and the 707 came
@@ -852,11 +851,22 @@ static void project_default(void)
     bit_set(proj.p[0].d.acc, 0);
     bit_set(proj.p[0].d.acc, 8);
     for (i = 0; i < NINST; i++) {
-        static const uint8_t SOUND[NINST] = {0, 9, 7};   /* SQR BASS, PLUCK, SOFT PAD */
+        static const uint8_t SOUND[NINST] = {0, 9, 7};   /* (the first set: SQR BASS, PLUCK, SOFT PAD) */
+        static const char *const SOUND2[NINST] = {"ELECTRO BASS", "PLUCK", "SOFT PAD"};   /* the second set's */
         track_t *ts = &proj.tr[i];
+        int k, id = SOUND[i];
+        for (k = 0; !syn_old_presets() && k < syn_presets(); k++) {   /* (by name: no strcmp on the FM-1) */
+            const char *x = syn_preset_name(k), *y = SOUND2[i];
+            while (*x && *x == *y)
+                x++, y++;
+            if (!*x && !*y)
+                id = k < SYN_FACTORY_LEGACY_COUNT ? k : k + NUSER;
+        }
         ts->level = 100;
-        ts->preset = SOUND[i];
-        ts->type = syn_preset(ts->preset, ts->snd) ? TY_MONO : TY_POLY;
+        ts->preset = (uint8_t)id;
+        ts->type = syn_preset(factory_preset_index(ts->preset), ts->snd) ? TY_MONO : TY_POLY;
+        ts->rsv[0] = (uint8_t)(int8_t)syn_preset_trim(factory_preset_index(ts->preset));
+        ts->rsv[1] = 1;
         ts->s_end = 1000;
         ts->s_root = 60;
         ts->arp_rate = 3;                 /* 1/16 */
@@ -1175,7 +1185,7 @@ static void project_check(void)           /* a loaded project's values kept in r
         for (t = 0; t < NINST; t++) {
             psound_t *q = &proj.psnd[i][t];
             int k;
-            q->used &= 1u;
+            /* (used: bit 0; bit 1 its own trim, bits 2-6 that trim in dB + 12: psnd_store) */
             if (q->type >= NTYPES)        /* (a SAMPLER's, until 0.5: POLY, as the track's own) */
                 q->type = TY_POLY;
             if (q->level > LEVEL_MAX)
@@ -1368,10 +1378,19 @@ static int preset_trim(int id)
     const int s = user_preset_slot(id);
     return s >= 0 ? (int8_t)user.snd[s].rsv[0] : syn_preset_trim(factory_preset_index(id));
 }
-static float preset_gain(int id)
+/* (0.5, the second factory set) a track carries its sound's trim with it (rsv[0], tenths of a dB; rsv[1] says so),
+ * set when a preset is loaded. A track saved before that has none: its preset number is the first set's, whose trim
+ * (and name) the firmware still knows, so a saved project plays and reads as it did */
+static int track_trim(const track_t *ts)
 {
-    float g = 1.0f, x = (float)preset_trim(id) * 0.011513f;   /* e^(dB/10 x ln10/20): its series, good to 12 dB */
-    float term = 1.0f;
+    const int s = user_preset_slot(ts->preset);
+    if (s >= 0)
+        return (int8_t)user.snd[s].rsv[0];
+    return ts->rsv[1] ? (int8_t)ts->rsv[0] : syn_legacy_trim(factory_preset_index(ts->preset));
+}
+static float db10_gain(int db10)          /* e^(dB/10 x ln10/20): its series, good to 12 dB */
+{
+    float g = 1.0f, x = (float)db10 * 0.011513f, term = 1.0f;
     int k;
     for (k = 1; k < 8; k++) {
         term *= x / (float)k;
@@ -1379,7 +1398,13 @@ static float preset_gain(int id)
     }
     return g;
 }
-static float track_gain(const track_t *ts) { return (float)ts->level / 127.0f * preset_gain(ts->preset); }
+static float track_gain(const track_t *ts) { return (float)ts->level / 127.0f * db10_gain(track_trim(ts)); }
+static void track_own_trim(track_t *ts)   /* a preset just loaded into the track: its trim goes with the sound */
+{
+    ts->rsv[0] = (uint8_t)(int8_t)preset_trim(ts->preset);
+    ts->rsv[1] = 1;
+}
+static void track_preset_name(const track_t *ts, char *t);
 
 static int dpreset_genre_of(int i)        /* a genre kit itself; a stock or user kit: ELECTRO, the DrumEngine's factory
                                            * kit, which every project played until the genre kits (none sounds new) */
@@ -1535,7 +1560,8 @@ static void psnd_store(int t, int p)      /* track t's sound now, kept with patt
         q->level = ts->level;
         q->preset = ts->preset;
         q->edited = ts->edited;
-        q->used = 1;
+        /* (0.5) the sound's own trim with it, in the spare bits: bit 1 it has one, bits 2-6 the dB + 12 */
+        q->used = (uint8_t)(1u | (ts->rsv[1] ? 2u : 0u) | (uint32_t)clamp(((int8_t)ts->rsv[0] + 125) / 10, 0, 18) << 2);
     }
 }
 
@@ -1557,6 +1583,8 @@ static int psnd_fetch(int t, int p)       /* pattern p's sound into track t (not
         ts->level = q->level;
         ts->preset = q->preset;
         ts->edited = q->edited;
+        ts->rsv[1] = (uint8_t)(q->used >> 1 & 1u);
+        ts->rsv[0] = (uint8_t)(int8_t)(((int)(q->used >> 2 & 31u) - 12) * 10);
         return 1;
     }
 }
@@ -5886,6 +5914,17 @@ static int preset_ok(int i)
     int s = user_preset_slot(i);
     return i >= 0 && i < npresets() && (s < 0 || user.snd[s].used);
 }
+static void preset_name(int i, char *t);
+static void track_preset_name(const track_t *ts, char *t)   /* the track's sound by name: a first-set sound saved in a
+                                                             * project keeps the name it had */
+{
+    if (user_preset_slot(ts->preset) < 0 && !ts->rsv[1]) {
+        t[0] = 0;
+        text_cat(t, syn_legacy_name(factory_preset_index(ts->preset)));
+        return;
+    }
+    preset_name(ts->preset, t);
+}
 static void preset_name(int i, char *t)
 {
     char u[4];
@@ -5959,9 +5998,11 @@ static void preset_load(int tr, int i, const char *bank)  /* one selected sound,
     ts->preset = (uint8_t)i;
     ts->edited = 0;
     ts->type = (uint8_t)(mono ? TY_MONO : TY_POLY);
+    track_own_trim(ts);
     f = plat_lock();
     syn_release(tr, 0);
     syn_sound(tr, ts->snd);
+    syn_level(tr, track_gain(ts));        /* (its level trim: the preset's own) */
     plat_unlock(f);
     dirty = 1;
     preset_name(i, t);
@@ -5985,9 +6026,12 @@ static void preset_bank_turn(int32_t e)
     static const uint16_t START[] = {0, PRESET_USER_FIRST, PRESET_NEW_FIRST, PRESET_EXTRA_FIRST,
         PRESET_EXTRA_FIRST + SYN_BANK_SIZE, PRESET_EXTRA_FIRST + 2 * SYN_BANK_SIZE,
         PRESET_EXTRA_FIRST + 3 * SYN_BANK_SIZE, PRESET_LIMIT};
-    static const char *const NAME[] = {"ORIGINAL", "USER SOUNDS", "MOTOR CITY", "AFTER HOURS",
+    static const char *const NAME1[] = {"ORIGINAL", "USER SOUNDS", "MOTOR CITY", "AFTER HOURS",
         "MACHINE FUNK", "WAREHOUSE", "DUB / BROKEN"};
-    int tr = ui.trk, p = tset(tr)->preset, n = (int)(sizeof NAME / sizeof NAME[0]);
+    /* (0.5, the second set) the banks are kinds of sound: SEL + PRESETS steps from one kind to the next */
+    static const char *const NAME2[] = {"MONO BASS", "USER SOUNDS", "MONO LEAD", "POLY", "STAB", "HIT", "DRUM"};
+    const char *const *NAME = syn_old_presets() ? NAME1 : NAME2;
+    int tr = ui.trk, p = tset(tr)->preset, n = (int)(sizeof NAME1 / sizeof NAME1[0]);
     int bank = 0, start, direction = e < 0 ? -1 : 1;
     unsigned jumps = e < 0 ? 0u - (uint32_t)e : (uint32_t)e;
     while (bank < n - 1 && p >= START[bank + 1])
@@ -6077,7 +6121,7 @@ static void save_user(void)               /* SAVE let go after choosing a slot: 
         track_t *ts = tset(ui.trk);
         usound_t *u = &user.snd[s];
         {
-            const int trim = preset_trim(ts->preset);   /* (as loud saved as it was: the trim it had goes with it) */
+            const int trim = track_trim(ts);   /* (as loud saved as it was: the trim it had goes with it) */
             u->rsv[0] = (uint8_t)(int8_t)trim;
         }
         u->used = 1;
@@ -10508,7 +10552,7 @@ static void sound_name(int tr, char *t)   /* the track's sound: the preset it st
 {
     const track_t *ts = tset(tr);
     t[0] = 0;
-    preset_name(ts->preset, t);
+    track_preset_name(ts, t);
     if (ts->edited)
         text_cat(t, " *");
 }
@@ -13774,7 +13818,7 @@ int app_expect(const char *what, int *got)
         int tr = u ? atoi(u + 1) - 1 : -1;
         if (q < 0 || q >= NPAT || tr < 0 || tr >= NTRK)
             return 0;
-        *got = tr == TR_DRUM ? proj.pkit[q] : proj.psnd[q][tr - 1].used;
+        *got = tr == TR_DRUM ? proj.pkit[q] : proj.psnd[q][tr - 1].used & 1;
     } else if (!strcmp(what, "rolls")) {  /* ROLL's replays since the last look */
         *got = (int)perf.rolls;
         perf.rolls = 0;
@@ -14054,6 +14098,11 @@ int app_expect(const char *what, int *got)
         int pad = atoi(what + 3);
         const char *u = strchr(what, '_');
         *got = u ? drums_get(drum_model(pad), pad, atoi(u + 1)) : -1;
+    } else if (!strncmp(what, "ptrim", 5) || !strncmp(what, "legacy", 6)) {   /* ptrimT: track T's sound's level trim,
+                                           * tenths of a dB; legacyT: 1 its sound is a first-set one from a save */
+        const int lg = what[0] == 'l', t = atoi(what + (lg ? 6 : 5)) - 1;
+        if (t < 1 || t >= NTRK) return 0;
+        *got = lg ? !tset(t)->rsv[1] && user_preset_slot(tset(t)->preset) < 0 : track_trim(tset(t));
     } else if (!strncmp(what, "pdrum", 5)) {    /* pdrumP: pattern P has drum sounds of its own */
         const int q = atoi(what + 5) - 1;
         if (q < 0 || q >= NPAT) return 0;

@@ -391,12 +391,18 @@ On STEPS an accented note has a white bar over it and a slide a mark at its end.
 
 ### Presets
 
-- **PRESETS** goes through 24 factory sounds (basses, leads, pads, keys...), then your own **USER 1–16**. A `*` after
-  the name means you've changed it since loading it.
-- **ACID** (since 0.4) has LEGATO SLIDE (keys played tied glide, others don't) and GLIDE 25. A sound you saved from
-  it before keeps its own settings.
-- The last nine show off the synth update: **FM BELL**, **FM BASS**, **FM KEYS**, **FOLD LEAD**, **WEST PLUCK**,
-  **RING METAL**, **DRIFT PAD**, **CRUSH BASS**, **WOBBLE**. MACRO 1 does something on each.
+- **PRESETS** steps through the factory sounds, 129 of them in six banks by **kind**, so you never step through a
+  mix: **MONO BASS** (24: acid, sub, FM, reese, wobble...), your own **USER 1–16**, then **MONO LEAD**, **POLY** (keys,
+  then pads), **STAB** (short chords), **HIT** (zaps, risers, blips, impacts) and **DRUM** (synth drums: kicks,
+  snares, hats, toms), 21 each. **Hold SEL and turn PRESETS** to jump from one kind to the next. A `*` after the name
+  means you've changed it since loading it.
+- The set was rebuilt in 0.5 (25 Nov 2026). **A project saved before that keeps its sounds exactly**: a track holds its
+  whole sound, so nothing you saved changes, and it still shows the old sound's name and plays at the old level
+  until you pick another preset on that track. The old sounds can't be picked from PRESETS any more; save one you
+  want to keep as a USER sound.
+- The **ACID** basses have LEGATO SLIDE (keys played tied glide, others don't) and GLIDE 25, for the 303 generator.
+- MACRO 1 does something on many of them (the filter, FM, the shaper, the LFO's rate); pressure opens the filter on
+  a few (TALK, SOLO BRASS, DARK PAD).
 - **To keep a sound:** hold **SAVE**, turn **PRESETS** to pick a USER slot (the screen says EMPTY or REPLACE), and let go
   of SAVE.
 - **On the drums**, PRESETS goes through the **genre kits**: ELECTRO (the factory kit, and what every project saved

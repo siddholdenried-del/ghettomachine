@@ -241,7 +241,10 @@ typedef struct {
 #define MOD(n, s, d, a) SP_XM + 3 * ((n) - 1), s, SP_XM + 3 * ((n) - 1) + 1, d, SP_XM + 3 * ((n) - 1) + 2, a
 /* WAVE DETUNE MIX INTV | SUB NOISE PWM DRIVE | CUT RES FENV FTYPE | KTR VEL SPREAD LEGATO | VOICES GLIDE |
  * AMP A D S R | FILTER A D S R; then the update's own */
-static const syn_preset_t PRESETS[] = {
+/* the first factory set: in the simulator only, for the suites written with it (GM_OLD_PRESETS in the environment);
+ * the FM-1 has the second set, below, and of the first only its names and trims (preset_legacy.inc) */
+#ifdef PLAT_HOST
+static const syn_preset_t PRESETS_OLD[] = {
     {"SQR BASS", 1, {1, 0, 0, 0, 60, 0, 64, 40, 50, 70, 30, 0, 64, 64, 20, 1, 1, 0, 0, 55, 40, 30, 0, 50, 0, 30}, 0},
     /* ACID (0.4, for the 303 generator): LEGATO SLIDE, so a note glides only when it is tied; GLIDE 25 (58 ms) */
     {"ACID", 1, {0, 0, 0, 0, 0, 0, 64, 25, 42, 108, 48, 0, 64, 80, 20, 2, 1, 25, 0, 50, 90, 25, 0, 45, 0, 25}, 0},
@@ -293,12 +296,45 @@ static const syn_preset_t PRESETS[] = {
 #undef V
 #undef ENTRY
 };
+#endif
+/* the second set (0.5): six banks by kind, tools/make_presets.py */
+#define ENTRY(name,mono,color,vals,ext) {name,mono,vals,ext},
+#define V(...) {__VA_ARGS__}
+static const syn_preset_t PRESETS[] = {
+#include "preset_table.inc"
+};
+#undef V
+#undef ENTRY
 #define NPRESETS ((int)(sizeof PRESETS / sizeof PRESETS[0]))
 #undef X
 #undef MOD
-
 #define ENTRY(name,mono,color,vals,ext) SYN_PRESET_COLOR_##color,
-static const uint8_t NEW_COLOR[] = {
+static const uint8_t PRESET_COLOR[] = {
+#include "preset_table.inc"
+};
+#undef ENTRY
+_Static_assert(NPRESETS == SYN_FACTORY_LEGACY_COUNT + SYN_MOTOR_CITY_COUNT + SYN_NEW_BANKS * SYN_BANK_SIZE, "129 factory sounds: the banks' places");
+#include "preset_legacy.inc"
+_Static_assert(sizeof LEGACY_TRIM == NPRESETS && sizeof LEGACY_NAME / sizeof LEGACY_NAME[0] == NPRESETS, "the first set's names and trims");
+#ifdef PLAT_HOST
+#include <stdlib.h>
+static int old_set(void)
+{
+    static int v = -1;
+    if (v < 0)
+        v = getenv("GM_OLD_PRESETS") != 0;
+    return v;
+}
+#else
+#define old_set() 0
+#endif
+int syn_old_presets(void) { return old_set(); }
+const char *syn_legacy_name(int i) { return i >= 0 && i < NPRESETS ? LEGACY_NAME[i] : ""; }
+int syn_legacy_trim(int i) { return i >= 0 && i < NPRESETS ? LEGACY_TRIM[i] : 0; }
+
+#ifdef PLAT_HOST
+#define ENTRY(name,mono,color,vals,ext) SYN_PRESET_COLOR_##color,
+static const uint8_t OLD_COLOR[] = {
 #include "preset_bank_house.inc"
 #include "preset_bank_electro.inc"
 #include "preset_bank_warehouse.inc"
@@ -306,15 +342,24 @@ static const uint8_t NEW_COLOR[] = {
 };
 #undef ENTRY
 #define OLD_FACTORY_TOTAL (SYN_FACTORY_LEGACY_COUNT + SYN_MOTOR_CITY_COUNT)
-_Static_assert(sizeof NEW_COLOR == SYN_NEW_BANKS * SYN_BANK_SIZE, "four banks of 21 factory sounds");
-_Static_assert(NPRESETS == OLD_FACTORY_TOTAL + (int)sizeof NEW_COLOR, "factory table and recipes agree");
+_Static_assert(sizeof PRESETS_OLD / sizeof PRESETS_OLD[0] == NPRESETS && sizeof OLD_COLOR == SYN_NEW_BANKS * SYN_BANK_SIZE, "the first set: 129 too");
+#define TABLE (old_set() ? PRESETS_OLD : PRESETS)
+#else
+#define TABLE PRESETS
+#endif
 int syn_preset_color(int i)
 {
-    return i >= OLD_FACTORY_TOTAL && i < NPRESETS ? NEW_COLOR[i - OLD_FACTORY_TOTAL] : SYN_PRESET_COLOR_KEEP;
+    if (i < 0 || i >= NPRESETS)
+        return SYN_PRESET_COLOR_KEEP;
+#ifdef PLAT_HOST
+    if (old_set())
+        return i >= OLD_FACTORY_TOTAL ? OLD_COLOR[i - OLD_FACTORY_TOTAL] : SYN_PRESET_COLOR_KEEP;
+#endif
+    return PRESET_COLOR[i];
 }
 
 int syn_presets(void) { return NPRESETS; }
-const char *syn_preset_name(int i) { return i >= 0 && i < NPRESETS ? PRESETS[i].name : ""; }
+const char *syn_preset_name(int i) { return i >= 0 && i < NPRESETS ? TABLE[i].name : ""; }
 void syn_defaults(int8_t *v, int from)
 {
     int k;
@@ -328,6 +373,8 @@ static const int8_t PRESET_TRIM[] = {
 };
 int syn_preset_trim(int i)
 {
+    if (old_set())
+        return syn_legacy_trim(i);
     return i >= 0 && i < (int)(sizeof PRESET_TRIM / sizeof PRESET_TRIM[0]) && i < NPRESETS ? PRESET_TRIM[i] : 0;
 }
 
@@ -338,12 +385,12 @@ int syn_preset(int i, int8_t *v)
     if (i < 0 || i >= NPRESETS)
         i = 0;
     for (k = 0; k < SP_NUM_V1; k++)
-        v[k] = PRESETS[i].v[k];
+        v[k] = TABLE[i].v[k];
     syn_defaults(v, SP_NUM_V1);
-    for (e = PRESETS[i].ext; e && e[0] >= 0; e += 2)
+    for (e = TABLE[i].ext; e && e[0] >= 0; e += 2)
         if (e[0] < SP_NUM)
             v[e[0]] = e[1];
-    return PRESETS[i].mono;
+    return TABLE[i].mono;
 }
 
 /* ------------------------------------------------------------------- the host --- */
