@@ -12,6 +12,11 @@ typedef struct {
     float cutoff_min, cutoff_offset, cutoff_decay;
     float pole1, pole2;
     float last, carry;
+    /* 0.5: the resonant filter (a state-variable one in the two poles' place while RESO or a band / high-pass asks
+       for it), and the SYNC model's second phase */
+    int filter;
+    float damp, ic1, ic2;
+    uint32_t sync_phase;
 } PercVoice;
 
 void perc_init(PercVoice *voice);

@@ -117,6 +117,7 @@ enum { XL_LRATE, XL_LDEPTH, XL_ARATE, XL_AGATE, XL_NUM };
 _Static_assert(PRESET_LIMIT <= 256, "project and per-pattern preset IDs are unsigned bytes");
 static int user_preset_slot(int id) { return id >= PRESET_USER_FIRST && id < PRESET_NEW_FIRST ? id - PRESET_USER_FIRST : -1; }
 static int factory_preset_index(int id) { return id >= PRESET_NEW_FIRST ? id - NUSER : id; }
+static float preset_gain(int id);        /* (below: the preset's level trim as a gain) */
 #define NUKIT 8                           /* user kits (the drums) */
 /* the drums' presets PRESET steps through: the 909 (0), the 808 (1), the user kits (2 ..). The 606 and the 707 came
  * after them (DPRESET_606, _707) until they were cut (21 Nov 2026, dsp/drums.h): a project saved on one loads on the
@@ -221,6 +222,7 @@ typedef struct {                          /* an instrument track's settings */
     uint8_t chord, chord_inv;             /* chord mode (ARP 2): a key plays CHORD_IV[chord], inverted chord_inv times */
     uint8_t rsv2;
 } track_t;
+static float track_gain(const track_t *ts);   /* (its LEVEL with its preset's trim: after the user presets) */
 
 typedef struct {                          /* a track's sound kept with a pattern (SETUP: SOUNDS PER PATTERN) */
     int8_t snd[SP_NUM];
@@ -931,7 +933,7 @@ static void tracks_to_voices(void)        /* (a track, then an FX knob, at a tim
         const track_t *ts = tset(t);
         uint32_t f = plat_lock();
         syn_sound(t, ts->snd);
-        syn_level(t, (float)ts->level / 127.0f);
+        syn_level(t, track_gain(ts));
         syn_mixer(t, proj.mix[t].pan, (float)proj.mix[t].rev / 127.0f, (float)proj.mix[t].dly / 127.0f);
         plat_unlock(f);
     }
@@ -1344,6 +1346,27 @@ typedef struct {
 _Static_assert(sizeof(user_t) <= 3840u, "the user presets fit one store object");
 static user_t user PLAT_POOL;
 
+/* a track's level as the synth takes it (0.5): its LEVEL, times the trim of the preset its sound came from, so the
+ * factory sounds come up about as loud as each other (dsp/synth_levels.inc). A user sound carries the trim of the
+ * preset it was saved from (usound_t.rsv[0], tenths of a dB; 0 in sounds saved before) */
+static int preset_trim(int id)
+{
+    const int s = user_preset_slot(id);
+    return s >= 0 ? (int8_t)user.snd[s].rsv[0] : syn_preset_trim(factory_preset_index(id));
+}
+static float preset_gain(int id)
+{
+    float g = 1.0f, x = (float)preset_trim(id) * 0.011513f;   /* e^(dB/10 x ln10/20): its series, good to 12 dB */
+    float term = 1.0f;
+    int k;
+    for (k = 1; k < 8; k++) {
+        term *= x / (float)k;
+        g += term;
+    }
+    return g;
+}
+static float track_gain(const track_t *ts) { return (float)ts->level / 127.0f * preset_gain(ts->preset); }
+
 static int dpreset_genre_of(int i)        /* a genre kit itself; a stock or user kit: ELECTRO, the DrumEngine's factory
                                            * kit, which every project played until the genre kits (none sounds new) */
 {
@@ -1503,7 +1526,7 @@ static void psnd_load(int t, int p)       /* pattern p's sound into track t and 
     } else {
         const track_t *ts = tset(t);
         syn_sound(t, ts->snd);
-        syn_level(t, (float)ts->level / 127.0f);
+        syn_level(t, track_gain(ts));
     }
 }
 
@@ -1537,7 +1560,7 @@ static void pmix_load(int t, int p, int engine)   /* pattern p's strip into trac
     proj.mix[t].rev = proj.pmix[p][t].rev;
     proj.mix[t].dly = proj.pmix[p][t].dly;
     if (engine && t != TR_DRUM) {
-        syn_level(t, (float)tset(t)->level / 127.0f);
+        syn_level(t, track_gain(tset(t)));
         syn_mixer(t, proj.mix[t].pan, (float)proj.mix[t].rev / 127.0f, (float)proj.mix[t].dly / 127.0f);
     }
 }
@@ -5996,6 +6019,10 @@ static void save_user(void)               /* SAVE let go after choosing a slot: 
     if (ui.trk != TR_DRUM) {
         track_t *ts = tset(ui.trk);
         usound_t *u = &user.snd[s];
+        {
+            const int trim = preset_trim(ts->preset);   /* (as loud saved as it was: the trim it had goes with it) */
+            u->rsv[0] = (uint8_t)(int8_t)trim;
+        }
         u->used = 1;
         u->mono = (uint8_t)(ts->type == TY_MONO);
         for (k = 0; k < SP_NUM; k++)
@@ -6062,7 +6089,7 @@ static void iedit_knob(int k, int32_t e)  /* an instrument track's EDIT pages: V
     } else {                              /* K_LEVEL */
         ts->level = (uint8_t)clamp(ts->level + e, 0, 127);
         f = plat_lock();
-        syn_level(tr, (float)ts->level / 127.0f);
+        syn_level(tr, track_gain(ts));
         plat_unlock(f);
         dirty = 1;
         int_text(ts->level, t);
@@ -6439,7 +6466,7 @@ static void mix_turn(int t, int page, int32_t e)   /* track t's mixer value page
         proj.mix[0].level = (uint8_t)clamp(proj.mix[0].level + e, 0, 127);
     } else if (page == 0) {
         tset(t)->level = (uint8_t)clamp(tset(t)->level + e, 0, 127);
-        syn_level(t, (float)tset(t)->level / 127.0f);
+        syn_level(t, track_gain(tset(t)));
     } else {
         uint8_t *v = page == 1 ? &proj.mix[t].pan : page == 2 ? &proj.mix[t].rev : &proj.mix[t].dly;
         *v = (uint8_t)clamp(*v + e, 0, 127);
@@ -7151,7 +7178,7 @@ static void reload_sound(void)            /* SAVE + OCT-: the track's sound (the
         ts->preset = q.used ? q.preset : t.preset;
         ts->edited = q.used ? q.edited : t.edited;
         syn_sound(tr, ts->snd);
-        syn_level(tr, (float)ts->level / 127.0f);
+        syn_level(tr, track_gain(ts));
         plat_unlock(f);
     }
     dirty = 1;

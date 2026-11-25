@@ -69,6 +69,7 @@ enum { SYN_PRESET_COLOR_KEEP, SYN_PRESET_COLOR_CLEAN, SYN_PRESET_COLOR_TAPE, SYN
        SYN_PRESET_COLOR_EDGE, SYN_PRESET_COLOR_DUST };
 int syn_preset_color(int i); /* a contiguous DSP factory index (not a user's project ID) */
 int syn_presets(void);
+int syn_preset_trim(int i);               /* factory sound i's level trim, tenths of a dB (synth_levels.inc) */
 const char *syn_preset_name(int i);
 int syn_preset(int i, int8_t *v);         /* fills v[SP_NUM]; returns 1 for a MONO sound, 0 for POLY */
 void syn_defaults(int8_t *v, int from);   /* v[from..SP_NUM - 1] at their defaults (a format-1 sound: from SP_NUM_V1) */

@@ -20,6 +20,11 @@ macros, per-key aftertouch out; Bluetooth audio back at power-on.
 
 **24 Nov 2026, after:** SWING is each part's own (a track's part of a pattern); SEL + SWING sets them all.
 
+**25 Nov 2026:** STUTTER 1/16, 1/8T, 1/8, 1/4 (1/32 out); the QUICK MIXER's STUTTER 1/16, 1/8, 1/4; ROLL's triplets
+1/4T and 1/8T. The percs: models G ZAP, H SYNC, I RING, RESO and FILTER on every model, eight electro presets. Levels:
+the drums' trims written again for every recipe (tests/drumengine_levels.c), and a trim for every synth factory
+sound for the first time (tests/synth_levels.c, dsp/synth_levels.inc).
+
 **Historical hardware test: 0.5** (first installed over USB on 20 Nov). The first recording from it clicked now and then, so
 0.5 now keeps a deeper USB buffer, MASTER no longer changes what a computer records, and the drum steps' beats glow
 (1, 5, 9, 13): that build went on the FM-1 on 21 Nov, and a recording from it had no clicks. REC + GLO (erase the

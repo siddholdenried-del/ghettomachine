@@ -68,7 +68,7 @@ key 7 up
 wait 700
 peakreset
 wait 200
-expect peak_db_min -75
+expect peak_db_min -80   # (0.5: the presets levelled; was -75)
 wait 3000
 # no sends: nothing after it
 press GLO   # (was 'tap GLO')

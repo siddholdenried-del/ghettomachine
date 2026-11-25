@@ -18,6 +18,7 @@ int kit_preset_match(const KitPatch *patch, int pad);  /* -1 = Custom */
 /* the genre kits (KIT_GENRES): a name; the preset each pad takes (PERC 2 another genre's percussion); all of them
  * applied to a patch (1 = done) */
 enum { KIT_GENRES = 12 };
+enum { KIT_MAX_RECIPES = 20 };           /* the most recipes a pad has (the percussion: the genres' and the electro set) */
 int kit_genre_count(void);
 const char *kit_genre_name(int genre);
 int kit_genre_recipe(int genre, int pad);

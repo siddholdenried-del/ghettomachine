@@ -3,7 +3,8 @@
 #include <stdint.h>
 
 #define COUNT(a) ((int)(sizeof(a)/sizeof((a)[0])))
-enum { MAX_PARAMS = 8, CYMBAL_MODE = 65535, TONE_FIELD = 65534, DRIVE_FIELD = 65533 };
+enum { MAX_PARAMS = 10, CYMBAL_MODE = 65535, TONE_FIELD = 65534, DRIVE_FIELD = 65533,
+       PERC_MODEL_F = 65532, PERC_RESO_F = 65531, PERC_FILTER_F = 65530 };   /* (the three packed in PercPatch.mode) */
 typedef struct {
     KitParamSpec spec;
     const char *const *choices;
@@ -22,7 +23,8 @@ static const char *const tom_models[] = {"Round", "Hard"};
 static const char *const profiles[] = {"Low", "High"};
 static const char *const articulations[] = {"Crash", "Ride", "Riser", "Noise Drop"};
 static const char *const perc_models[] = {"A Single osc", "B FM pair", "C Dual osc",
-                                         "D Vel sweep", "E Metal FM", "F Noise"};
+                                         "D Vel sweep", "E Metal FM", "F Noise", "G Zap", "H Sync", "I Ring"};
+static const char *const perc_filters[] = {"Low-pass", "Band-pass", "High-pass"};
 #define NUMBER(label,unit,lo,hi,step,dec,type,field,scale) \
     {{label,unit,lo,hi,step,1,dec},NULL,offsetof(type,field),scale}
 #define PERCENT(label,type,field) NUMBER(label,"%",0,1000,40,1,type,field,1000)
@@ -61,9 +63,11 @@ static const Param cymbal_params[] = {
 };
 
 static const Param perc_params[] = {
-    OPTION("Model",perc_models,PercPatch,mode), PERCENT("Tune",PercPatch,tune),
+    {{"Model","",0,COUNT(perc_models)-1,1,1,0},perc_models,PERC_MODEL_F,0}, PERCENT("Tune",PercPatch,tune),
     PERCENT("Decay",PercPatch,decay), PERCENT("Width",PercPatch,width),
-    NUMBER("Sweep","%",-1000,1000,80,1,PercPatch,sweep,1000), PERCENT("Speed",PercPatch,speed), SHAPING
+    NUMBER("Sweep","%",-1000,1000,80,1,PercPatch,sweep,1000), PERCENT("Speed",PercPatch,speed), SHAPING,
+    /* (0.5, after the shaping so the indices a project's locks and LFO use keep their meaning) */
+    {{"Reso","%",0,1000,40,1,1},NULL,PERC_RESO_F,1000}, {{"Filter","",0,2,1,1,0},perc_filters,PERC_FILTER_F,0}
 };
 
 /* Stored in display ticks; recipes are complete and independent of edit order. Every drum has one preset per genre,
@@ -126,13 +130,20 @@ static const Recipe cymbals[] = {
     {"Industrial", {3,1,700,800,0,500}},             {"Minimal",     {1,0,300,600}}
 };
 static const Recipe percussion[] = {
-    {"Electro",    {0,590,440,780,-880,820}},        {"House",       {1,420,350,640,-350,640}},
-    {"Techno",     {4,680,420,550,180,500}},         {"Trap",        {1,840,260,780,280,830}},
+    /* (0.5: Electro is a laser zap and Techno a resonant metal ping; the rest are as they were) */
+    {"Electro",    {6,440,400,900,-820,800,0,0,640,0}}, {"House",    {1,420,350,640,-350,640}},
+    {"Techno",     {4,680,420,700,180,500,0,0,560,1}},  {"Trap",     {1,840,260,780,280,830}},
     {"Boom Bap",   {0,290,610,370,-150,560}},        {"Drum & Bass", {0,700,300,600,-500,700}},
     {"Garage",     {1,600,300,700,200,700}},         {"Disco",       {3,330,530,520,0,500}},
     {"Dub",        {2,500,700,700,-200,400}},        {"Lo-Fi",       {5,460,780,680,0,500}},
-    {"Industrial", {4,500,600,800,400,800,0,400}},   {"Minimal",     {2,760,560,800,0,500}}
+    {"Industrial", {4,500,600,800,400,800,0,400}},   {"Minimal",     {2,760,560,800,0,500}},
+    /* past the genres (0.5): the electro set. Model, Tune, Decay, Width, Sweep, Speed, Tone, Drive, Reso, Filter */
+    {"Laser Zap",  {6,520,360,1000,-1000,860,0,0,700,0}},  {"Acid Blip",  {6,300,300,1000,-460,900,0,250,900,0}},
+    {"Reso Sweep", {5,500,820,1000,0,500,0,0,920,1}},      {"Sync Tear",  {7,360,520,820,-900,560,0,0,320,0}},
+    {"Sync Rise",  {7,300,620,700,800,320,0,0,420,2}},     {"Ring Ping",  {8,640,460,620,-420,800,0,0,520,1}},
+    {"Pew",        {6,700,240,1000,-700,920,0,0,780,1}},   {"Bubble",     {0,360,300,900,900,860,0,0,880,0}}
 };
+_Static_assert(sizeof percussion / sizeof percussion[0] <= KIT_MAX_RECIPES, "the level trims' table has a place for every recipe");
 
 /* the genre kits: every drum on its genre's preset, but PERC 2 on another genre's percussion so the two differ */
 static const char *const genres[] = {"Electro", "House", "Techno", "Trap", "Boom Bap", "Drum & Bass", "Garage", "Disco",
@@ -210,6 +221,9 @@ static float read_value(const KitPatch *p, int pad, const void *base, const Para
     if (param->offset==CYMBAL_MODE) return (float)p->metal_mode;
     if (param->offset==TONE_FIELD) return p->tone[pad-1];
     if (param->offset==DRIVE_FIELD) return p->drive[pad-1];
+    if (param->offset==PERC_MODEL_F) return (float)PERC_MODEL(p->perc[pad-10].mode);
+    if (param->offset==PERC_RESO_F) return (float)PERC_RESO(p->perc[pad-10].mode) * .001f;
+    if (param->offset==PERC_FILTER_F) return (float)PERC_FILTER(p->perc[pad-10].mode);
     const unsigned char *field=(const unsigned char *)base+param->offset;
     return param->scale ? *(const float *)field : (float)*(const int *)field;
 }
@@ -218,6 +232,13 @@ static void write_tick(KitPatch *p, int pad, void *base, const Param *param, int
     if (param->offset==CYMBAL_MODE) { p->metal_mode=tick; return; }
     if (param->offset==TONE_FIELD) { p->tone[pad-1]=(float)tick/(float)param->scale; return; }
     if (param->offset==DRIVE_FIELD) { p->drive[pad-1]=(float)tick/(float)param->scale; return; }
+    if (param->offset>=PERC_FILTER_F && param->offset<=PERC_MODEL_F) {
+        int *m=&p->perc[pad-10].mode;
+        if (param->offset==PERC_MODEL_F) *m=(*m & ~15) | (tick & 15);
+        else if (param->offset==PERC_RESO_F) *m=(*m & ~(1023<<8)) | ((tick > 1000 ? 1000 : tick < 0 ? 0 : tick)<<8);
+        else *m=(*m & ~(3<<4)) | ((tick & 3)<<4);
+        return;
+    }
     unsigned char *field=(unsigned char *)base+param->offset;
     if (param->scale) *(float *)field=(float)tick/(float)param->scale;
     else *(int *)field=tick;
@@ -239,7 +260,7 @@ int kit_param_editable(const KitPatch *p, int pad, int index)
 {
     if (!p || !parameter(pad,index)) return 0;
     if (pad<10 || index<4 || index>5) return 1;
-    const int model=p->perc[pad-10].mode;
+    const int model=PERC_MODEL(p->perc[pad-10].mode);
     return model!=3 && model!=5; /* Velocity sweep supplies its own glide. Noise has no pitched source. */
 }
 int kit_param_set(KitPatch *p, int pad, int index, int tick)

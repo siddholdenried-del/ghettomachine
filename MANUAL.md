@@ -135,6 +135,22 @@ On instrument STEPS, hold a step and turn **K3 GATE**. Slow turns edit in eighth
 
 A very dense collection of long parts can exceed the fixed FM-1 project save slot. If SAVE reports **PROJECT TOO LARGE**, the previous save is kept and the current edits stay in memory. Shorten or clear unused parts before saving again.
 
+### The two percs (P1, P2)
+
+Each perc has nine models and a resonant filter:
+
+- **Models A–F** as before (single oscillator, FM pair, dual oscillator, velocity sweep, metal FM, noise), and three
+  electro ones: **G ZAP** (a saw that falls, or climbs, up to four octaves: a laser), **H SYNC** (hard sync: a sine
+  restarted by another, the tearing sweep) and **I RING** (two sines multiplied: a clangy blip). On G, H and I,
+  **SWEEP** is how far (down: it starts high and lands on TUNE; up: it starts on TUNE and climbs) and **SPEED** how fast.
+- **RESO** (page 2) and **FILTER** (page 3: LOW-PASS, BAND-PASS, HIGH-PASS) work on every model. **WIDTH** is still how
+  far the filter opens at the hit and **DECAY** how fast it closes, so WIDTH up with RESO up is the squelch. RESO at 0
+  on LOW-PASS is the filter the percs always had.
+- Their editor now has three pages: TUNE DECAY WIDTH SWEEP; SPEED TONE DRIVE RESO; MODEL FILTER.
+- **Presets** (PRESETS in the drum's editor): the twelve genres' percs, then the electro set: LASER ZAP, ACID BLIP,
+  RESO SWEEP, SYNC TEAR, SYNC RISE, RING PING, PEW, BUBBLE. The ELECTRO kit's P1 is now a zap and TECHNO's perc a
+  resonant ping (a project keeps the percs it was saved with).
+
 ### The beat generator (BEAT)
 
 On the drums' steps, press **SEQ** again: **BEAT** writes the part's hits for you. SEQ once more goes back to the
@@ -715,6 +731,14 @@ the sound saved with the pattern it's on.
 - **Bluetooth** (SETUP, SELECT: MIDI, K2): a computer or phone connects to the FM-1; one at a time. Bluetooth's
   timing is looser than USB's (messages arrive in bunches), so for a tight clock use the cable.
   The FM-1 has no MIDI out jack: its TRS jack is MIDI in only.
+
+## Levels: every preset about as loud
+
+Every factory drum sound and every factory synth sound has a level trim measured into the firmware, so stepping
+through presets doesn't jump in volume. The drums' are per drum and preset (each on its drum's target); the synth's
+bring every sound toward the middle of the set: up 6 dB at most (a sound made for one register isn't forced), down
+12 at most. A user sound keeps the trim of the preset it was saved from. **Projects made before this will sound a
+little different in level** on the synth tracks: louder presets came down, quieter ones up; set LEVEL to taste.
 
 ## Not in 0.5
 

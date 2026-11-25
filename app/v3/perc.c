@@ -33,7 +33,7 @@ void perc_hit(PercVoice *v, float velocity, const PercPatch *p)
     float sweep = 2.0f * kit_unit((p->sweep + 1.0f) * .5f) - 1.0f;
     float speed = kit_unit(p->speed);
 
-    v->mode = p->mode >= 0 && p->mode < 6 ? p->mode : 0;
+    v->mode = PERC_MODEL(p->mode) < 9 ? PERC_MODEL(p->mode) : 0;
     float hz = 46.0f + 1120.0f * tune * tune;
     float interval = sweep >= 0.0f ? 1.0f + 2.4f*sweep : 1.0f + .76f*sweep;
     float glide = .009f + .37f * (1.0f-speed) * (1.0f-speed);
@@ -45,6 +45,19 @@ void perc_hit(PercVoice *v, float velocity, const PercPatch *p)
     v->pitch_end = increment * interval;
     v->pitch_offset = increment - v->pitch_end;
     v->pitch_decay = smoothing(glide);
+    if (v->mode >= 6) {
+        /* The electro models (G ZAP, H SYNC, I RING): Sweep is up to four octaves. Down (negative) the voice starts
+           that far above Tune and falls onto it, a laser; up, it starts on Tune and climbs. Speed is how fast. */
+        float a = sweep < 0.0f ? -sweep : sweep, span = 1.0f + a * (3.0f + a * (4.0f + a * 8.0f));   /* 1 .. 16 */
+        if (sweep < 0.0f) {
+            v->pitch_end = increment;
+            v->pitch_offset = increment * (span - 1.0f);
+        } else {
+            v->pitch_end = increment * span;
+            v->pitch_offset = increment - v->pitch_end;
+        }
+        v->pitch_decay = smoothing(.004f + .30f * (1.0f-speed) * (1.0f-speed));
+    }
 
     /* A tune-tracking resting corner and a velocity-sensitive, decaying
        excursion. The two poles stay stable throughout the excursion. */
@@ -59,7 +72,17 @@ void perc_hit(PercVoice *v, float velocity, const PercPatch *p)
     v->attack = 1.0f;
     v->carry = v->last;
     v->pole1 = v->pole2 = 0.0f;
-    v->phase = v->mod_phase = 0u;
+    v->phase = v->mod_phase = v->sync_phase = 0u;
+    {   /* RESO and the filter's kind: any of them puts the state-variable filter in. 1/Q from 1.6 down to 0.07; the
+           level comes down as the peak goes up, so a ringing filter is no louder than a plain one */
+        float reso = (float)PERC_RESO(p->mode) * .001f;
+        if (reso > 1.0f) reso = 1.0f;
+        v->filter = (reso > 0.0f || PERC_FILTER(p->mode)) ? 1 + PERC_FILTER(p->mode) : 0;
+        v->damp = 1.6f - 1.53f * reso * (2.0f - reso);
+        v->ic1 = v->ic2 = 0.0f;
+        if (v->filter)
+            v->amplitude *= 1.0f - .55f * reso;
+    }
 }
 
 static float triangle(uint32_t phase)
@@ -96,6 +119,23 @@ static float source(PercVoice *v, float increment)
         float overtone = kit_sine(v->mod_phase);
         return swept ? .80f*body + .20f*overtone : .64f*body + .36f*overtone;
     }
+    case 6: {                             /* G ZAP: a saw with a little sub, for the filter to bite on */
+        v->phase += (uint32_t)increment;
+        return .78f * ((float)(v->phase >> 8) * (2.0f/16777216.0f) - 1.0f) + .22f * kit_sine(v->phase >> 1);
+    }
+    case 7: {                             /* H SYNC: a sine at Tune restarts a sine swept above it: the hard-sync tear */
+        uint32_t before = v->sync_phase;
+        v->sync_phase += (uint32_t)v->pitch_end < (uint32_t)increment ? (uint32_t)v->pitch_end : (uint32_t)increment;
+        v->phase += (uint32_t)increment > (uint32_t)v->pitch_end ? (uint32_t)increment : (uint32_t)v->pitch_end;
+        if (v->sync_phase < before)
+            v->phase = 0u;
+        return kit_sine(v->phase);
+    }
+    case 8: {                             /* I RING: the swept sine times a fixed one, an inharmonic blip */
+        v->phase += (uint32_t)increment;
+        v->mod_phase += (uint32_t)(v->pitch_end * 1.483f);
+        return kit_sine(v->phase) * kit_sine(v->mod_phase);
+    }
     default:
         return kit_noise(&v->noise);
     }
@@ -111,9 +151,25 @@ void perc_render(PercVoice *v, float *mono, unsigned n)
         float signal = source(v, increment);
         float k = v->cutoff_min + v->cutoff_offset;
         v->cutoff_offset = v->cutoff_offset > 1e-10f ? v->cutoff_offset*v->cutoff_decay : 0.0f;
-        v->pole1 += k * (signal - .30f*v->pole2 - v->pole1);
-        v->pole2 += k * (v->pole1 - v->pole2);
-        float sample = v->carry*v->attack + v->amplitude * v->level * (1.0f-v->attack) * v->pole2;
+        float out;
+        if (!v->filter) {
+            v->pole1 += k * (signal - .30f*v->pole2 - v->pole1);
+            v->pole2 += k * (v->pole1 - v->pole2);
+            out = v->pole2;
+        } else {
+            /* A zero-delay state-variable filter at the same swept corner (g from the pole's coefficient: k/(1-k)
+               is the corner's angle a sample, half of it the integrators' gain). Stable at any corner and Q. */
+            float g = .5f * k / (1.0f - k);
+            if (g > 3.0f) g = 3.0f;
+            float a1 = 1.0f / (1.0f + g * (g + v->damp)), a2 = g * a1;
+            float v3 = signal - v->ic2;
+            float bp = a1 * v->ic1 + a2 * v3, lp = v->ic2 + a2 * v->ic1 + g * a2 * v3;
+            v->ic1 = 2.0f * bp - v->ic1;
+            v->ic2 = 2.0f * lp - v->ic2;
+            if (v->ic1 > 4.0f) v->ic1 = 4.0f; else if (v->ic1 < -4.0f) v->ic1 = -4.0f;   /* (a ring held in bounds) */
+            out = v->filter == 1 ? lp : v->filter == 2 ? bp * v->damp * 1.4f + bp * .6f : signal - v->damp * bp - lp;
+        }
+        float sample = v->carry*v->attack + v->amplitude * v->level * (1.0f-v->attack) * out;
         mono[i] += sample;
         v->last = sample;
         v->attack = v->attack > 1e-8f ? v->attack*.955f : 0.0f;

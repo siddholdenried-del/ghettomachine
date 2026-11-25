@@ -142,7 +142,7 @@ key 7 down
 wait 200
 peakreset
 wait 300
-expect peak_db_min -26
+expect peak_db_min -29   # (0.5: the presets levelled; was -26)
 key 7 up
 wait 400
 spin K1 -60

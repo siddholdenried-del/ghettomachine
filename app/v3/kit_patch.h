@@ -1,8 +1,14 @@
 /* Controls are sampled at each strike. The caller owns and can copy this patch. */
 #ifndef FM1_ORIGINAL_PATCH_H
 #define FM1_ORIGINAL_PATCH_H
+/* (GhettoMachine 0.5) mode packs three controls, so the patch keeps its size: bits 0-3 the model (A through I), 4-5
+   the filter (0 low-pass, as before; 1 band-pass; 2 high-pass), 8-17 the resonance in thousandths (0: the filter as it
+   was). A patch from before has only the model. */
+#define PERC_MODEL(m) ((m) & 15)
+#define PERC_FILTER(m) (((m) >> 4) & 3)
+#define PERC_RESO(m) (((m) >> 8) & 1023)
 typedef struct {
-    int mode;                         /* A through F */
+    int mode;                         /* PERC_MODEL, PERC_FILTER, PERC_RESO */
     float tune, decay, width;
     float sweep;                      /* -1 to +1, neutral at 0 */
     float speed;

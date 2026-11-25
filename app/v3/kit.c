@@ -33,8 +33,9 @@ KitPatch kit_default_patch(void)
     p.snare_tune = 0.47f; p.snare_body = 0.55f;
     p.snare_snappy = 0.60f; p.snare_wire = 0.46f;
     p.clap_spread = 0.46f; p.clap_tone = 0.54f; p.clap_tail = 0.48f;
-    p.perc[0] = (PercPatch){0, 0.59f, 0.44f, 0.78f, -0.88f, 0.82f};
-    p.perc[1] = (PercPatch){4, 0.68f, 0.42f, 0.55f,  0.18f, 0.50f};
+    /* (the Electro and Techno recipes, presets.c: model | filter << 4 | reso << 8) */
+    p.perc[0] = (PercPatch){6 | 640 << 8, 0.44f, 0.40f, 0.90f, -0.82f, 0.80f};
+    p.perc[1] = (PercPatch){4 | 1 << 4 | 560 << 8, 0.68f, 0.42f, 0.70f,  0.18f, 0.50f};
     return p;
 }
 

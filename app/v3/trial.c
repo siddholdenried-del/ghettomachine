@@ -58,7 +58,7 @@ enum { FADE_FRAMES = 64 };
 #define DE_STAGE 5.0f                     /* the kit's scale to the drum track's (1 / FX_BUS_TRIM) */
 #define DE_RAMP 32u                       /* a pad's trim changing (another recipe struck): over 0.7 ms */
 /* each factory recipe's trim, tenths of a dB (presets.c's order; DE_TRIM_RECIPES the most a pad has) */
-enum { DE_TRIM_RECIPES = KIT_GENRES };
+enum { DE_TRIM_RECIPES = KIT_MAX_RECIPES };
 static const int16_t DE_TRIM[KIT_PADS][DE_TRIM_RECIPES] = {
 #include "levels.inc"
 };

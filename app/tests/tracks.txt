@@ -22,7 +22,7 @@ expect voices2 1
 wav t2_note.wav
 wait 300
 wavstop
-expect peak_db_min -30
+expect peak_db_min -34   # (0.5: the presets levelled; was -30)
 shot keys.png
 key 7 up
 wait 30
@@ -167,7 +167,7 @@ expect voices3 3
 wav chord.wav
 wait 1000
 wavstop
-expect peak_db_min -30
+expect peak_db_min -34   # (0.5: the presets levelled; was -30)
 tap PLAY
 wait 400
 # live recording on T2 (MONO): REC while playing, C3 pressed early in step 3, held about 1.6 steps

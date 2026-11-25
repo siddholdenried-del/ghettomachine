@@ -126,11 +126,13 @@ said Tune
 unsaid Model
 turn SELECT 1 0   # (0.5: SELECT turns an editor's pages; was 'tap EDIT')
 wait 80
+turn SELECT 1 0   # (0.5: the percs' third page: page 2 is SPEED, TONE, DRIVE, RESO)
+wait 80
 wait 100
-turn K4 1
+turn K1 1
 wait 100
-said Model B FM pair
-# the screen reader reads the knobs in the same order (page 2: SPEED, TONE, DRIVE, MODEL)
+said Model H Sync
+# the screen reader reads the knobs in the same order (page 3: MODEL, FILTER)
 where
 wait 100
-said K4 B FM pair
+said K1 H Sync

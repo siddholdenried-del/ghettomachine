@@ -321,6 +321,16 @@ void syn_defaults(int8_t *v, int from)
     for (k = from; k < SP_NUM; k++)
         v[k] = PARAMS[k].def;
 }
+/* each factory sound's level trim, tenths of a dB (0.5): measured (tests/synth_levels.c: a note or a chord, the loudest
+ * 100 ms, K-weighted) so every preset comes up about as loud. The app applies it with the track's level */
+static const int8_t PRESET_TRIM[] = {
+#include "synth_levels.inc"
+};
+int syn_preset_trim(int i)
+{
+    return i >= 0 && i < (int)(sizeof PRESET_TRIM / sizeof PRESET_TRIM[0]) && i < NPRESETS ? PRESET_TRIM[i] : 0;
+}
+
 int syn_preset(int i, int8_t *v)
 {
     const int8_t *e;
@@ -661,7 +671,7 @@ void syn_pressure(int t, float p)
 void syn_level(int t, float level)
 {
     if (t >= 1 && t < SYN_TRACKS)
-        tk[t].level = level < 0.0f ? 0.0f : level > 1.0f ? 1.0f : level;
+        tk[t].level = level < 0.0f ? 0.0f : level > 4.0f ? 4.0f : level;   /* (over 1: a quiet preset's trim, 0.5) */
 }
 
 static void rel(int i)                    /* a voice lets go */
