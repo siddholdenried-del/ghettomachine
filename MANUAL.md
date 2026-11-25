@@ -732,6 +732,13 @@ the sound saved with the pattern it's on.
   timing is looser than USB's (messages arrive in bunches), so for a tight clock use the cable.
   The FM-1 has no MIDI out jack: its TRS jack is MIDI in only.
 
+## LEVEL, in dB
+
+A track's **LEVEL** (the mixer's first page, the QUICK MIXER's K1, a synth's VOICE page) reads in **dB**: every track
+starts at **0.0 dB**, the top is **+6.0 dB** (twice as loud as the start; the old top was +2.1), and all the way
+down is **OFF**. A click is about a tenth of a dB around 0 dB, coarser far below it. The mixer's fader has a line at
+0 dB. Projects keep the levels they had: an old 100 is 0.0 dB, an old 127 is +2.1 dB.
+
 ## Levels: every preset about as loud
 
 Every factory drum sound and every factory synth sound has a level trim measured into the firmware, so stepping

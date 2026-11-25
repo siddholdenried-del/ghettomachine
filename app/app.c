@@ -118,6 +118,7 @@ _Static_assert(PRESET_LIMIT <= 256, "project and per-pattern preset IDs are unsi
 static int user_preset_slot(int id) { return id >= PRESET_USER_FIRST && id < PRESET_NEW_FIRST ? id - PRESET_USER_FIRST : -1; }
 static int factory_preset_index(int id) { return id >= PRESET_NEW_FIRST ? id - NUSER : id; }
 static float preset_gain(int id);        /* (below: the preset's level trim as a gain) */
+#define LEVEL_MAX 200                     /* a track's LEVEL: 100 the start (0 dB), 200 twice that (+6 dB); 127 until 0.5 */
 #define NUKIT 8                           /* user kits (the drums) */
 /* the drums' presets PRESET steps through: the 909 (0), the 808 (1), the user kits (2 ..). The 606 and the 707 came
  * after them (DPRESET_606, _707) until they were cut (21 Nov 2026, dsp/drums.h): a project saved on one loads on the
@@ -223,6 +224,7 @@ typedef struct {                          /* an instrument track's settings */
     uint8_t rsv2;
 } track_t;
 static float track_gain(const track_t *ts);   /* (its LEVEL with its preset's trim: after the user presets) */
+static void level_text(int v, char *t);   /* (a LEVEL in dB) */
 
 typedef struct {                          /* a track's sound kept with a pattern (SETUP: SOUNDS PER PATTERN) */
     int8_t snd[SP_NUM];
@@ -1058,7 +1060,7 @@ static void project_check(void)           /* a loaded project's values kept in r
     for (t = 0; t < NINST; t++) {
         if (proj.tr[t].type >= NTYPES)
             proj.tr[t].type = TY_POLY;
-        if (proj.tr[t].level > 127)
+        if (proj.tr[t].level > LEVEL_MAX)
             proj.tr[t].level = 100;
         proj.tr[t].oct = (int8_t)clamp(proj.tr[t].oct, -3, 3);
         if (proj.tr[t].preset >= syn_presets() + NUSER)   /* a factory sound or a user slot */
@@ -1102,7 +1104,8 @@ static void project_check(void)           /* a loaded project's values kept in r
         }
     }
     for (t = 0; t < NTRK; t++) {
-        proj.mix[t].level &= 127u;
+        if (proj.mix[t].level > LEVEL_MAX)
+            proj.mix[t].level = 100;
         proj.mix[t].pan &= 127u;
         proj.mix[t].rev &= 127u;
         proj.mix[t].dly &= 127u;
@@ -1169,7 +1172,8 @@ static void project_check(void)           /* a loaded project's values kept in r
             q->used &= 1u;
             if (q->type >= NTYPES)        /* (a SAMPLER's, until 0.5: POLY, as the track's own) */
                 q->type = TY_POLY;
-            q->level &= 127u;
+            if (q->level > LEVEL_MAX)
+                q->level = 100;
             q->edited &= 1u;
             if (q->preset >= syn_presets() + NUSER)
                 q->preset = 0;
@@ -6087,12 +6091,12 @@ static void iedit_knob(int k, int32_t e)  /* an instrument track's EDIT pages: V
         }
         app_say("TYPE", TYPE_NAME[ts->type]);
     } else {                              /* K_LEVEL */
-        ts->level = (uint8_t)clamp(ts->level + e, 0, 127);
+        ts->level = (uint8_t)clamp(ts->level + e, 0, LEVEL_MAX);
         f = plat_lock();
         syn_level(tr, track_gain(ts));
         plat_unlock(f);
         dirty = 1;
-        int_text(ts->level, t);
+        level_text(ts->level, t);
         app_say("LEVEL", t);
     }
 }
@@ -6434,6 +6438,30 @@ static const char *const FX_LABEL[FXP_ALL] = {"DECAY", "DAMP", "PRE-DELAY", "LEV
                                               "WIDTH", "WOBBLE", "LOW CUT", "SIZE", "MOTION", "LOW CUT"};
 _Static_assert(sizeof FX_LABEL / sizeof FX_LABEL[0] == FXP_ALL, "a label for each FX knob");
 
+/* LEVEL (0.5): a track's level reads in dB against 100, where every track starts (0.0 dB), and goes on past the old
+ * top of 127 to 200 (+6.0 dB), a step at a time: about a tenth of a dB around the middle. 0 is OFF */
+static void level_text(int v, char *t)
+{
+    float x = (float)v * 0.01f, db = 0.0f, y;
+    int d;
+    t[0] = 0;
+    if (v <= 0) {
+        text_cat(t, "OFF");
+        return;
+    }
+    while (x >= 2.0f) x *= 0.5f, db += 6.0206f;
+    while (x < 1.0f) x *= 2.0f, db -= 6.0206f;
+    y = (x - 1.0f) / (x + 1.0f);          /* ln x = 2 atanh((x - 1) / (x + 1)) */
+    db += 17.3718f * y * (1.0f + y * y * (0.333333f + y * y * (0.2f + y * y * 0.142857f)));
+    d = (int)(db * 10.0f + (db < 0.0f ? -0.5f : 0.5f));
+    text_cat(t, d > 0 ? "+" : d < 0 ? "-" : "");
+    if (d < 0) d = -d;
+    int_text(d / 10, t + strlen(t));
+    text_cat(t, ".");
+    int_text(d % 10, t + strlen(t));
+    text_cat(t, " dB");
+}
+
 static int mix_value(int t, int page)
 {
     switch (page) {
@@ -6448,7 +6476,9 @@ static void mix_text(int t, int page, char *s)
 {
     int v = mix_value(t, page);
     s[0] = 0;
-    if (page != 1) {
+    if (page == 0) {
+        level_text(v, s);
+    } else if (page != 1) {
         int_text(v, s);
     } else if (v == 64) {
         text_cat(s, "C");
@@ -6463,9 +6493,9 @@ static void mix_turn(int t, int page, int32_t e)   /* track t's mixer value page
     char s[12], u[24];
     uint32_t f = plat_lock();
     if (page == 0 && t == TR_DRUM) {
-        proj.mix[0].level = (uint8_t)clamp(proj.mix[0].level + e, 0, 127);
+        proj.mix[0].level = (uint8_t)clamp(proj.mix[0].level + e, 0, LEVEL_MAX);
     } else if (page == 0) {
-        tset(t)->level = (uint8_t)clamp(tset(t)->level + e, 0, 127);
+        tset(t)->level = (uint8_t)clamp(tset(t)->level + e, 0, LEVEL_MAX);
         syn_level(t, track_gain(tset(t)));
     } else {
         uint8_t *v = page == 1 ? &proj.mix[t].pan : page == 2 ? &proj.mix[t].rev : &proj.mix[t].dly;
@@ -10128,8 +10158,8 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
         } else if (id == K_TYPE) {
             card_put(c, "TYPE", TYPE_NAME[ts->type], ts->type, 0, NTYPES - 1, -1);
         } else if (id == K_LEVEL) {
-            int_text(ts->level, t);
-            card_put(c, "LEVEL", t, ts->level, 0, 127, -1);
+            level_text(ts->level, t);
+            card_put(c, "LEVEL", t, ts->level, 0, LEVEL_MAX, 100);
         } else {
             int mn = syn_param(id)->min;
             v = snd_value(tr, id);
@@ -10169,7 +10199,7 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
         return 1;
     case KD_QMIX:                         /* the QUICK MIXER: the track picked's LEVEL, REVERB, DELAY, PAN */
         mix_text(ui.trk, QM_PAGE[k], t);
-        card_put(c, QM_KNOB[k], t, mix_value(ui.trk, QM_PAGE[k]), 0, 127, QM_PAGE[k] == 1 ? 64 : -1);
+        card_put(c, QM_KNOB[k], t, mix_value(ui.trk, QM_PAGE[k]), 0, QM_PAGE[k] ? 127 : LEVEL_MAX, QM_PAGE[k] == 1 ? 64 : QM_PAGE[k] ? -1 : 100);
         c->acc = trk_rgb(ui.trk);
         return 1;
     case KD_MIX:
@@ -10180,7 +10210,7 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
             return 1;
         }
         mix_text(k, page, t);
-        card_put(c, k == TR_DRUM ? "DRUMS" : TRK_NAME[k], t, mix_value(k, page), 0, 127, page == 1 ? 64 : -1);
+        card_put(c, k == TR_DRUM ? "DRUMS" : TRK_NAME[k], t, mix_value(k, page), 0, page ? 127 : LEVEL_MAX, page == 1 ? 64 : page ? -1 : 100);
         c->acc = trk_rgb(k);
         return 1;
     case KD_FX:
@@ -12144,9 +12174,12 @@ static void page_mix(void)                /* the mixer: a strip a track, its met
             cv_rect(x + 35, 70, 1, 14, C_TXT2);
             rrect(x + 18 + v * 30 / 127, 68, 6, 18, 3, col);
         } else {                          /* a bar up */
-            int b = v * 92 / 127;
+            const int mx = ui.mixpage ? 127 : LEVEL_MAX;
+            int b = v * 92 / mx;
             rrect(x + 20, 30, 30, 92, 4, C_GRID);
             vheat(x + 20, 30, 30, 92, b);
+            if (!ui.mixpage)              /* LEVEL: a line at 0 dB (100) */
+                cv_rect(x + 18, 122 - 100 * 92 / mx, 34, 1, TH_TXT);
         }
     }
     cards_of(KD_MIX, ui.mixpage);

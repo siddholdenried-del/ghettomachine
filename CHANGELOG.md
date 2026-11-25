@@ -24,6 +24,7 @@ macros, per-key aftertouch out; Bluetooth audio back at power-on.
 1/4T and 1/8T. The percs: models G ZAP, H SYNC, I RING, RESO and FILTER on every model, eight electro presets. Levels:
 the drums' trims written again for every recipe (tests/drumengine_levels.c), and a trim for every synth factory
 sound for the first time (tests/synth_levels.c, dsp/synth_levels.inc).
+LEVEL reads in dB (100 = 0.0 dB) and goes to 200 (+6.0 dB).
 
 **Historical hardware test: 0.5** (first installed over USB on 20 Nov). The first recording from it clicked now and then, so
 0.5 now keeps a deeper USB buffer, MASTER no longer changes what a computer records, and the drum steps' beats glow

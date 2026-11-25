@@ -1,0 +1,44 @@
+# LEVEL in dB (0.5): 100 is 0.0 dB, the top is 200 (+6.0 dB), 0 is OFF.  app/build/host/ghettomachine_host app/tests/levels.txt OUTDIR
+# mixN_0: track N's level
+wait 600
+press GLO
+wait 38
+release GLO
+turn SELECT -40 0
+wait 60
+expect page 9
+expect mixpage 0
+expect mix2_0 100
+listen
+spin K2 1
+wait 30
+said T2 LEVEL +0.1 dB
+spin K2 -1
+wait 30
+said T2 LEVEL 0.0 dB
+spin K2 120
+wait 30
+expect mix2_0 200
+said T2 LEVEL +6.0 dB
+shot level_db.png
+spin K2 -150
+wait 30
+expect mix2_0 50
+said T2 LEVEL -6.0 dB
+spin K2 -60
+wait 30
+expect mix2_0 0
+said T2 LEVEL OFF
+spin K2 100
+wait 30
+# the drums too, and it is kept with the project
+spin K1 41
+wait 30
+expect mix1_0 141
+said LEVEL +3.0 dB
+tap SAVE
+wait 400
+reboot
+wait 600
+expect mix1_0 141
+expect mix2_0 100
