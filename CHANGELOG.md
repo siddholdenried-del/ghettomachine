@@ -34,6 +34,9 @@ within -108 dB of the old one), the sine's table read in line, the voice's state
 loop runs from RAM (1.8 KB of it; 320 B of RAM code left). The cymbals, hats and sweeps: to the sample as before; the
 bank's and the voices' state in the loops' own variables, and each lane its own copy of its loop, so the lane's
 choices are made once a block and not a sample at a time. Cut: kit_sine as a function.
+Then the shells (kick, snare, clap, toms): their state in the loops' own variables, to the sample as before. The drum
+bus when it is on: its .75, level, pan and the track's gain inside each pad's gains and the first pad setting the
+buffers, so four clears and a scaling pass a block are gone (the same sound to -124 dB: float rounding).
 
 **25 Nov 2026, the drums' velocity:** hats, snare, kick, crash and ride shaped by velocity at the strike (kit_hard /
 kit_soft around the normal 88/127, which sounds as before); hats' and cymbals' tails idle at -90 dB, not -119 (a

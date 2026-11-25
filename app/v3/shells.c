@@ -101,8 +101,12 @@ static void kick_hit(BodyVoice *v, struct KickImpact *impact, float velocity, co
     impact->seed = 0xe3a12877u;
 }
 
-static void kick_render(BodyVoice *v, struct KickImpact *impact, float *out, unsigned n)
+static void kick_render(BodyVoice *voice, struct KickImpact *struck, float *out, unsigned n)
 {
+    /* (0.5, the CPU) the voice's state in the loop's own variables, as the percs' and the cymbals': the output could
+       be any float as far as the compiler knows. To the sample as before. */
+    BodyVoice state = *voice, *v = &state;
+    struct KickImpact blow = *struck, *impact = &blow;
     Membrane *m = &v->head;
     for (unsigned i=0; i<n && m->level>FLOOR; ++i) {
         float x = membrane_wave(m);
@@ -133,6 +137,8 @@ static void kick_render(BodyVoice *v, struct KickImpact *impact, float *out, uns
         ++v->age;
     }
     if (m->level <= FLOOR) v->last = 0.f;
+    *voice = state;
+    *struck = blow;
 }
 
 float kit_tom_pitch_hz(int pad, TomPatch controls)
@@ -170,8 +176,9 @@ static void tom_hit(BodyVoice *v, unsigned tom, float vel, const KitPatch *p)
     v->age = 0;
 }
 
-static void tom_render(BodyVoice *v, float *out, unsigned frames)
+static void tom_render(BodyVoice *voice, float *out, unsigned frames)
 {
+    BodyVoice state = *voice, *v = &state;   /* (the CPU: see kick_render) */
     Membrane *m = &v->head;
     for (unsigned i = 0; i < frames && m->level > FLOOR; ++i) {
         float fundamental = membrane_wave(m);
@@ -192,6 +199,7 @@ static void tom_render(BodyVoice *v, float *out, unsigned frames)
         m->level *= m->level_rate;
     }
     if (m->level <= FLOOR) v->last = 0.f;
+    *voice = state;
 }
 
 static void snare_hit(SnareVoice *v, float vel, const KitPatch *p)
@@ -243,8 +251,13 @@ static inline int snare_active(const SnareVoice *v)
     return v->head[0].level > FLOOR || v->head[1].level > FLOOR || v->wire > FLOOR;
 }
 
-static void snare_render(SnareVoice *v, float *out, unsigned frames)
+static void snare_render(SnareVoice *voice, float *out, unsigned frames)
 {
+    if (!snare_active(voice)) {           /* at rest: nothing to copy */
+        if (frames) voice->last = 0.f;
+        return;
+    }
+    SnareVoice state = *voice, *v = &state;   /* (the CPU: see kick_render) */
     for (unsigned i = 0; i < frames; ++i) {
         if (!snare_active(v)) {
             v->last = 0.f;
@@ -271,6 +284,7 @@ static void snare_render(SnareVoice *v, float *out, unsigned frames)
         out[i] += v->last;
         ++v->age;
     }
+    *voice = state;
 }
 
 static void clap_hit(ClapVoice *v, float vel, const KitPatch *p)
@@ -311,8 +325,13 @@ static inline int clap_active(const ClapVoice *v)
     return v->fired != v->count || v->wash > FLOOR || v->tooth > FLOOR;
 }
 
-static void clap_render(ClapVoice *v, float *out, unsigned frames)
+static void clap_render(ClapVoice *voice, float *out, unsigned frames)
 {
+    if (!clap_active(voice)) {
+        if (frames) voice->last = 0.f;
+        return;
+    }
+    ClapVoice state = *voice, *v = &state;    /* (the CPU: see kick_render) */
     for (unsigned i = 0; i < frames; ++i) {
         if (!clap_active(v)) {
             v->last = 0.f;
@@ -347,6 +366,7 @@ static void clap_render(ClapVoice *v, float *out, unsigned frames)
         out[i] += v->last;
         ++v->age;
     }
+    *voice = state;
 }
 
 void shells_init(Shells *s)
