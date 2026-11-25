@@ -135,6 +135,18 @@ On instrument STEPS, hold a step and turn **K3 GATE**. Slow turns edit in eighth
 
 A very dense collection of long parts can exceed the fixed FM-1 project save slot. If SAVE reports **PROJECT TOO LARGE**, the previous save is kept and the current edits stay in memory. Shorten or clear unused parts before saving again.
 
+### Velocity shapes the drums
+
+How hard a drum is hit changes its sound, not only its level, set once as the hit starts. A hit at the sequencer's
+normal velocity sounds exactly as the drum is set; softer and harder ones differ:
+
+- **Hats:** a soft hat is shorter and darker; a hard one a touch brighter.
+- **Snare:** a hard snare has more wire, a brighter wire band and more edge on the head; a soft one is rounder.
+- **Kick:** an accent adds click and a little body drive; a soft kick loses some click.
+- **Crash and ride:** a soft one is shorter, darker and slower to rise; a hard one quicker and a little brighter.
+
+Use the hit's own VELOCITY (hold a step, K1), accents, or velocity from the pads and MIDI.
+
 ### The two percs (P1, P2)
 
 Each perc has nine models and a resonant filter:

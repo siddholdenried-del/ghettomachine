@@ -6,6 +6,12 @@ enum { CLOSED, OPEN, CRASH, RIDE, RISER, DROP, VOICES };
 enum { CHOKE_FRAMES = 160, BELL_BLEND = 64, PIECE = 32 };
 /* Envelope retirement below -119 dB, independent of CPU or active voice count. */
 static const float quiet = 0.000001f;
+/* A hat's or a cymbal's tail goes idle once it is nearly silent (-90 dB: under a 16-bit output's last bit), not at
+   -119 dB: a third of a long tail's time and work, none of what is heard. A harder cut was tried and heard. */
+#ifndef METAL_IDLE
+#define METAL_IDLE 0.00003f
+#endif
+static const float idle = METAL_IDLE;
 static const float tuning[2][6] = {
     {218.3f, 301.7f, 379.1f, 518.9f, 627.1f, 811.3f},
     {331.7f, 453.1f, 591.7f, 751.9f, 1003.1f, 1279.7f}
@@ -25,14 +31,26 @@ void metal_init(Metal *m)
 
 /* Each articulation mixes the existing filter taps independently. Changing
    one pad's brightness leaves the shared oscillator bank and its filters alone. */
-static void metal_controls(MetalVoice *v, int lane, MetalPatch param)
+static void metal_controls(MetalVoice *v, int lane, MetalPatch param, float velocity)
 {
+    /* Velocity, at the strike, on the shared source's taps: a soft hat is shorter and darker; a soft cymbal shorter,
+       darker and slower to rise, a hard one a little brighter and quicker. The normal hit is the patch as written. */
+    const float hard = kit_hard(velocity), soft = kit_soft(velocity);
     static const float rate[VOICES] = {
         .99843738f, .9999035f, .9999496f, .99995465f, .99973326f, .99993331f
     };
     float brightness = 2.f * kit_unit(param.brightness) - 1.f;
     float time = 2.f * kit_unit(param.decay) - 1.f;
     float stretch = 1.f + time * (time < 0.f ? .60f : .50f);
+    if (lane <= OPEN) {
+        brightness += .12f * hard - .55f * soft;
+        stretch *= 1.f - .45f * soft;
+    } else if (lane <= RIDE) {
+        brightness += .15f * hard - .40f * soft;
+        stretch *= 1.f - .30f * soft;
+        v->attack = (lane == CRASH ? .0029f : .022f) * (1.f + .90f * hard) * (1.f - .45f * soft);
+    }
+    if (brightness < -1.f) brightness = -1.f; else if (brightness > 1.f) brightness = 1.f;
     v->decay_rate = 1.f - (1.f - rate[lane]) / stretch;
     switch (lane) {
     case CLOSED:
@@ -99,13 +117,17 @@ void metal_hit(Metal *m, int pad, float velocity, const KitPatch *patch)
     MetalVoice *v = &b->voice[lane];
     int sounding = !!(b->active & (1u << lane));
     if (!sounding) V3_CLEAR(v, 0, sizeof *v);
-    metal_controls(v, lane, param);
+    metal_controls(v, lane, param, velocity);
     if (!sounding) v->cutoff = lane == DROP ? .852f + (v->bright_weight - .83f) : .023f;
     b->active |= 1u << lane;
     v->level = v->accent = velocity;
     v->age = v->choke = 0;
     v->movement = 1.0f;
     v->dark = 1.0f;                       /* (bright again at the strike; the ring's low-pass keeps its state) */
+    /* A soft hat is darker: the open hat's ring starts part-way down its darkening; the closed hat goes through
+       the same low-pass, held (a normal or harder closed hat does not: it is as it was, to the sample). */
+    if (lane == OPEN) v->dark = 1.0f - .60f * kit_soft(velocity);
+    else if (lane == CLOSED) v->dark = 1.0f - .78f * kit_soft(velocity);
     if (lane == RIDE) {
         /* Re-striking does not abruptly replace the ringing bell. The two
            copies have the same poles: collapse an unfinished crossfade into
@@ -229,9 +251,13 @@ static int render_hat(MetalVoice *v, int lane, const Taps *tap, float *out, unsi
             v->dark *= .99993521f;        /* (0.35 s) */
             s = v->tone;
         }
+        else if (v->dark < 1.0f) {        /* a soft closed hat: darker, by the same pole, held */
+            v->tone += v->dark * (s - v->tone);
+            s = v->tone;
+        }
         out[i] += s;
         if (v->movement > 1e-8f) v->movement *= settle;
-        if ((v->choke && --v->choke == 0) || v->gain < quiet) return 0;
+        if ((v->choke && --v->choke == 0) || (v->gain < idle && v->level < idle)) return 0;
     }
     return 1;
 }
@@ -275,7 +301,7 @@ static int render_cymbal(MetalVoice *v, int lane, unsigned p, const Taps *tap, f
             v->dark *= .99998866f;        /* (2 s) */
             out[i] += v->tone;
         }
-        v->gain += (lane == CRASH ? .0029f : .022f) * (v->level-v->gain);
+        v->gain += v->attack * (v->level-v->gain);
         if (lane == CRASH && v->movement>1e-8f) v->movement *= .9998740f;
         v->level *= v->decay_rate;
         if (v->accent > 1e-8f) {
@@ -284,7 +310,7 @@ static int render_cymbal(MetalVoice *v, int lane, unsigned p, const Taps *tap, f
         } else {
             v->accent = v->accent_gain = 0;
         }
-        if (v->gain < quiet) return 0;
+        if (v->gain < idle && v->level < idle) return 0;
     }
     return 1;
 }

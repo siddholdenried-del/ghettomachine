@@ -83,10 +83,14 @@ static void kick_hit(BodyVoice *v, struct KickImpact *impact, float velocity, co
     float ratio = drop_ratio(bound(p->drop_st, 0.f, 36.f));
     float drop_ms = bound(p->drop_ms, 2.f, 120.f);
     float drive = kit_unit(p->drive);
+    /* An accented kick bites: more of its click and a little more body drive, set here once. A soft one loses
+       some click. The normal hit is the patch as written. */
+    const float hard = kit_hard(velocity), soft = kit_soft(velocity);
+    drive = kit_unit(drive + .22f * hard);
     excite(&v->head, f, velocity*.96f/(1.f+.10f*drive), t60*(1.f/6.90775528f),
            f*(ratio-1.f), drop_ms, 0.f, 1.f);
     v->shape = drive;
-    v->stick = kit_unit(p->click);
+    v->stick = kit_unit(kit_unit(p->click) * (1.f + .55f * hard - .50f * soft) + .10f * hard);
     v->carry = v->last;
     v->age = 0;
     /* The head is under pressure briefly before free decay begins. */
@@ -213,13 +217,17 @@ static void snare_hit(SnareVoice *v, float vel, const KitPatch *p)
      * travel of Snappy retains a full, bright noise burst for live accents. */
     float snappy2 = snappy*snappy;
     float wire_gain = hard ? .07f + 1.75f*snappy2*snappy2*snappy2 : dry ? 1.13f : 1.06f;
+    /* A hard snare snaps: more wire, a brighter wire band and more of the head's edge. A soft one is rounder. */
+    const float hit_hard = kit_hard(vel), hit_soft = kit_soft(vel);
+    wire_gain *= 1.f + .45f * hit_hard - .30f * hit_soft;
     v->wire = vel * snappy * wire_gain;
     /* The Hard pitched component dies before its quieter high-passed wires. */
     v->wire_rate = fall((dry ? 13.f + 146.f*wire*wire : hard ? 20.f + 287.f*wire*wire : 9.f + 100.f*wire*wire) * len);
     /* Two moving averages give the independently decaying snappy band. */
     v->wire_hp = hard ? .145f : dry ? .13f + .065f * vel : .083f;
     v->wire_lp = hard ? .67f : dry ? .32f + .42f * vel : .58f;
-    v->edge = dry ? .25f + .8f * vel * vel : hard ? .65f : .12f;
+    v->wire_lp = bound(v->wire_lp + .14f * hit_hard - .14f * hit_soft, .12f, .93f);
+    v->edge = (dry ? .25f + .8f * vel * vel : hard ? .65f : .12f) * (1.f + .60f * hit_hard);
     v->edge_rate = fall(dry ? 17.f : 8.f);
     v->low = v->band = 0.f;
     v->carry = v->last;

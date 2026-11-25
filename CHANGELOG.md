@@ -28,6 +28,10 @@ LEVEL reads in dB (100 = 0.0 dB) and goes to 200 (+6.0 dB).
 Project format 13: with SOUNDS PER PATTERN each pattern keeps every drum's own settings. LFO 2's page draws and
 scrolls as LFO 1's. The delay's line 59400 -> 58200 samples for the pool.
 
+**25 Nov 2026, the drums' velocity:** hats, snare, kick, crash and ride shaped by velocity at the strike (kit_hard /
+kit_soft around the normal 88/127, which sounds as before); hats' and cymbals' tails idle at -90 dB, not -119 (a
+fifth less metal rendering over every recipe; the difference from full tails under -97 dBFS).
+
 **Historical hardware test: 0.5** (first installed over USB on 20 Nov). The first recording from it clicked now and then, so
 0.5 now keeps a deeper USB buffer, MASTER no longer changes what a computer records, and the drum steps' beats glow
 (1, 5, 9, 13): that build went on the FM-1 on 21 Nov, and a recording from it had no clicks. REC + GLO (erase the
