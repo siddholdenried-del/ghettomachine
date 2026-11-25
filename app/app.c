@@ -100,7 +100,7 @@ enum { XL_LRATE, XL_LDEPTH, XL_ARATE, XL_AGATE, XL_NUM };
 #define NKEYS 27
 #define KEY_NOTE0 53                      /* key 0 (F3) at octave 0 */
 #define PROJ_MAGIC 0x31544745u            /* "EGT1": fm1-eight 0.1's project; another magic loads the default project */
-#define PROJ_VERSION 12                   /* 12: MIX PER PATTERN (pmix, pfx) appended (11's layout before them); 11: 32 locks a part (10's patterns had 16: pattern_v10_t); 10: the DrumEngine's patch (the drums' edits) appended (9's layout before
+#define PROJ_VERSION 13                   /* 13: each pattern's drum sounds (pdrum) appended (12's layout before them); 12: MIX PER PATTERN (pmix, pfx) appended (11's layout before them); 11: 32 locks a part (10's patterns had 16: pattern_v10_t); 10: the DrumEngine's patch (the drums' edits) appended (9's layout before
                                            * it); 9: BongVerb's and BongDelay's knobs in the sends' slots (fx_migrate; the
                                            * layout is 8's); 8: each clip its own LFO (plfo); 7: combined Color and mixed
                                            * kits; 1-5 and 7-9 readable, private divergent v6 rejected */
@@ -273,6 +273,7 @@ typedef struct {
 } dgen_t;
 _Static_assert(sizeof(dgen_t) == 12u, "the drum generator's record as format 12 saved it");
 
+#define PDRUM_N 76                        /* the DrumEngine's controls, all eleven drums' (kit_param_count: pdrum_ok) */
 typedef struct {
     uint32_t magic;
     uint8_t kit;                          /* KIT_909 / KIT_808 / KIT_606 */
@@ -332,6 +333,9 @@ typedef struct {
     struct { uint8_t used, v[FXP_ALL]; } pfx[NPAT];
     uint8_t gkeep[NPAT][NINST][NSTEPS / 8];   /* format 12: the 303 generator's KEEP: a bit a step it leaves alone */
     dgen_t dgen[NPAT];                    /* format 12: each drum part's generator */
+    /* format 13: SOUNDS PER PATTERN keeps the drums' own sounds too: every control of every drum (the DrumEngine's
+     * parameters, presets.h: PDRUM_N of them, in ticks), on top of the pattern's kit (pkit). used 0: none yet */
+    struct { uint8_t used, rsv; int16_t tick[PDRUM_N]; } pdrum[NPAT];
 } project_t;
 static uint8_t *fxv(int i);               /* an FX knob's place in the project: fx, or fx2 past FXP_NUM */
 /* format 4..10's 128-step pattern, 16 locks a part: a record of such a file is decoded as this, then spread */
@@ -362,6 +366,8 @@ _Static_assert(offsetof(dpart_v10_t, lk) == offsetof(dpart_t, lk) && offsetof(ip
 #define PROJ_V7_TAIL_BYTES ((PROJ_V7_META_BYTES + 3u) & ~3u)
 #define PROJ_V9_TAIL_BYTES (offsetof(project_t, dpatch) - PROJ_TAIL)   /* formats 8 and 9 ended before the drums' patch */
 #define PROJ_V11_TAIL_BYTES (offsetof(project_t, pmix) - PROJ_TAIL)   /* formats 10 and 11 ended before MIX PER PATTERN */
+#define PROJ_V12_TAIL_BYTES (offsetof(project_t, pdrum) - PROJ_TAIL)   /* format 12 ended before the patterns' drum sounds */
+_Static_assert((offsetof(project_t, pdrum) & 3u) == 0, "format 12 ended on a word");
 _Static_assert((offsetof(project_t, pmix) & 3u) == 0, "formats 10/11 ended on a word");
 _Static_assert((offsetof(project_t, dpatch) & 3u) == 0, "formats 8/9 ended on a word");
 
@@ -1221,6 +1227,8 @@ static int proj_file_format(void)
         return 0;
     if (sz >= (int)PROJ_META && sz <= (int)PROJ_CAPACITY && ver == PROJ_VERSION)
         return PROJ_VERSION;
+    if (sz >= (int)(PROJ_PREFIX + PROJ_V12_TAIL_BYTES) && sz <= (int)PROJ_CAPACITY && ver == 12)
+        return 12;                        /* (13's layout without the patterns' drum sounds) */
     if (sz >= (int)(PROJ_PREFIX + PROJ_V11_TAIL_BYTES) && sz <= (int)PROJ_CAPACITY && ver == 11)
         return 11;                        /* (12's layout without MIX PER PATTERN) */
     if (sz >= (int)(PROJ_PREFIX + PROJ_V11_TAIL_BYTES) && sz <= (int)PROJ_CAPACITY && ver == 10)
@@ -1280,6 +1288,8 @@ static int project_load(void)
     }
     if (fmt < 8)                          /* before each clip had its own LFO: every clip its track's */
         plfo_fill();
+    if (fmt < 13)                         /* before the patterns' drum sounds: none has its own */
+        memset(proj.pdrum, 0, sizeof proj.pdrum);
     if (fmt < 12)                         /* before MIX PER PATTERN: no pattern has a mix of its own, the switch off */
         pmix_clear();
     if (fmt < 10) {                       /* before the FX's second pages: theirs as the effects were (fx.c's defaults) */
@@ -1467,11 +1477,51 @@ static void kit_raw(int i, const uint8_t *scene, int use_slot_pots)
             pots_apply_pad(drums_model(base, map, r), r);
 }
 
+/* the drums' own sounds with a pattern (0.5, format 13): every control of every drum as it is now, in ticks */
+static int pdrum_ok(void)                 /* (the table is as long as the DrumEngine has controls) */
+{
+    int pad, n = 0;
+    for (pad = 1; pad <= NPADS; pad++)
+        n += kit_param_count(pad);
+    return n == PDRUM_N;
+}
+static void pdrum_store(int p)
+{
+    KitPatch cur;
+    int pad, k, i = 0;
+    if (!V3ON || !pdrum_ok())
+        return;
+    trial_snapshot(1, &cur);
+    for (pad = 1; pad <= NPADS; pad++)
+        for (k = 0; k < kit_param_count(pad); k++)
+            proj.pdrum[p].tick[i++] = (int16_t)kit_param_get(&cur, pad, k);
+    proj.pdrum[p].used = 1;
+}
+static void pdrum_load(int p)             /* pattern p's drum sounds onto the kit playing (only what differs is set) */
+{
+    KitPatch cur;
+    int pad, k, i = 0, changed = 0;
+    if (!V3ON || !pdrum_ok())
+        return;
+    if (!proj.pdrum[p].used) {
+        pdrum_store(p);
+        return;
+    }
+    trial_snapshot(1, &cur);
+    for (pad = 1; pad <= NPADS; pad++)
+        for (k = 0; k < kit_param_count(pad); k++, i++)
+            if (kit_param_get(&cur, pad, k) != proj.pdrum[p].tick[i])
+                changed |= kit_param_set(&cur, pad, k, proj.pdrum[p].tick[i]);
+    if (changed)
+        trial_restore(&cur);
+}
+
 static void psnd_store(int t, int p)      /* track t's sound now, kept with pattern p */
 {
     if (p < 0 || p >= NPAT)
         return;
     if (t == TR_DRUM) {
+        pdrum_store(p);
         proj.pkit[p] = (uint8_t)(proj.dpreset + 1);
         for (int pad = 0; pad < NPADS; pad++)
             proj.pattern_model[p][pad] = proj.model[pad];
@@ -1527,6 +1577,7 @@ static void psnd_load(int t, int p)       /* pattern p's sound into track t and 
             locks_release();
             kit_raw(id, proj.pattern_model[p], new_slot);
         }
+        pdrum_load(p);                    /* and the drums' own sounds on it */
     } else {
         const track_t *ts = tset(t);
         syn_sound(t, ts->snd);
@@ -3310,11 +3361,11 @@ static void synth_add(float *l, float *r, float *rv, float *dl, uint32_t n, uint
     }
 }
 
-/* the delay's line, lent to STUTTER and TAPE STOP while they play: int16, 0.67 s of stereo (63000, 0.71 s, until
+/* the delay's line, lent to STUTTER and TAPE STOP while they play: int16, 0.66 s of stereo (59400 until the patterns' drum sounds, format 13; 63000, 0.71 s, until
  * Bluetooth audio's stack needed 7 KB of the pool; 66160 until format 11's
  * locks needed 6 KB of the pool: the sampler's recording buffer's size, which went in 0.5. STUTTER's longest slice,
  * 1/8 of a bar at 60 BPM, is 0.5 s; TAPE STOP winds down what's in it) */
-#define DLY_LEN 59400
+#define DLY_LEN 58200
 static int16_t shared_buf[DLY_LEN] PLAT_POOL;
 
 /* the render's buses: the dry mix and the reverb and delay sends of a block. Two sets (0.5, the second CPU pass): the
@@ -13908,6 +13959,10 @@ int app_expect(const char *what, int *got)
         int pad = atoi(what + 3);
         const char *u = strchr(what, '_');
         *got = u ? drums_get(drum_model(pad), pad, atoi(u + 1)) : -1;
+    } else if (!strncmp(what, "pdrum", 5)) {    /* pdrumP: pattern P has drum sounds of its own */
+        const int q = atoi(what + 5) - 1;
+        if (q < 0 || q >= NPAT) return 0;
+        *got = proj.pdrum[q].used;
     } else if (!strncmp(what, "pswing", 6)) {   /* pswingT: track T's part's SWING as it plays; pswing0: the project's */
         const int t = atoi(what + 6);
         if (t < 0 || t > NTRK) return 0;

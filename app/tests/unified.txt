@@ -112,10 +112,10 @@ expect fx11 0
 expect fxlive1 70
 tap SAVE
 wait 400
-expect projfmt 12
+expect projfmt 13
 reboot
 wait 600
-expect projfmt 12
+expect projfmt 13
 expect fx1 70
 expect fx2 20
 expect fx9 27

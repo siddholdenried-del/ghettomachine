@@ -1,0 +1,40 @@
+# Made once with the last format-12 build (25 Nov 2026, the commit before the patterns' drum sounds), to keep a
+# project as that build saved it for app/tests/drum_pattern.txt: proj_v12.img. Run with that build only (for the record)
+wait 600
+# the drums' part: SWING 60; a beat generated; the bass drum's Body tune up (EDIT, K1)
+spin K3 10
+wait 30
+expect pswing1 60
+tap SEQ
+wait 30
+tap OCT+
+wait 60
+expect dgen0 >0
+tap SEQ
+wait 30
+tap EDIT
+wait 60
+spin K1 5
+wait 60
+tap EDIT
+wait 60
+# SETUP: SOUNDS own (K2), MIX own (K4)
+tap HOME
+wait 30
+tap HOME
+wait 30
+tap HOME
+wait 30
+tap HOME
+wait 30
+expect page 13
+spin K2 1
+wait 30
+spin K4 1
+wait 30
+expect sounds 1
+expect mixpp 1
+tap SAVE
+wait 400
+expect projfmt 12
+flash_dump app/tests/fixtures/proj_v12.img

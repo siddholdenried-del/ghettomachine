@@ -1,0 +1,63 @@
+# The drums' own sounds with each pattern (SOUNDS PER PATTERN, project format 13), and a format-12 project loaded.
+#   app/build/host/ghettomachine_host app/tests/drum_pattern.txt OUTDIR
+# dparamPAD_I: the DrumEngine's parameter I of pad PAD (1 the bass drum), its tick; pdrumP: pattern P has its own
+flash_load app/tests/fixtures/proj_v12.img
+reboot
+wait 600
+expect projfmt 12
+expect sounds 1
+expect mixpp 1
+expect pswing1 60
+expect dgen0 >0
+expect pdrum1 0
+expect pdrum2 0
+expect dparam1_0 620
+# ---- pattern 2 (HOME, white key 2) takes the sounds playing; there the bass drum's Body tune goes down
+tap HOME
+wait 30
+key 2 down
+wait 30
+key 2 up
+wait 60
+expect pat 2
+expect pdrum1 1
+expect dparam1_0 620
+tap SEQ
+wait 30
+tap EDIT
+wait 60
+spin K1 -8
+wait 60
+expect dparam1_0 460
+# back to pattern 1: its own again; pattern 2: as it was left
+tap HOME
+wait 30
+key 0 down
+wait 30
+key 0 up
+wait 60
+expect pat 1
+expect dparam1_0 620
+expect pdrum2 1
+key 2 down
+wait 30
+key 2 up
+wait 60
+expect pat 2
+expect dparam1_0 460
+# ---- saved in format 13; after a restart each pattern still has its own
+tap SAVE
+wait 400
+expect projfmt 13
+reboot
+wait 600
+expect pat 2
+expect dparam1_0 460
+expect pswing1 50
+key 0 down
+wait 30
+key 0 up
+wait 60
+expect pat 1
+expect dparam1_0 620
+expect pswing1 60

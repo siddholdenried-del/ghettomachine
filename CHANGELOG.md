@@ -25,6 +25,8 @@ macros, per-key aftertouch out; Bluetooth audio back at power-on.
 the drums' trims written again for every recipe (tests/drumengine_levels.c), and a trim for every synth factory
 sound for the first time (tests/synth_levels.c, dsp/synth_levels.inc).
 LEVEL reads in dB (100 = 0.0 dB) and goes to 200 (+6.0 dB).
+Project format 13: with SOUNDS PER PATTERN each pattern keeps every drum's own settings. LFO 2's page draws and
+scrolls as LFO 1's. The delay's line 59400 -> 58200 samples for the pool.
 
 **Historical hardware test: 0.5** (first installed over USB on 20 Nov). The first recording from it clicked now and then, so
 0.5 now keeps a deeper USB buffer, MASTER no longer changes what a computer records, and the drum steps' beats glow

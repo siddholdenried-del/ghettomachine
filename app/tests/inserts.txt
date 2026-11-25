@@ -72,7 +72,7 @@ expect stem2 -1200
 midi 81 3C 00
 tap SAVE
 wait 400
-expect projfmt 12
+expect projfmt 13
 reboot
 wait 600
 expect insert2 2

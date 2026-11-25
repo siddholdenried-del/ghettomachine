@@ -23,7 +23,7 @@ wait 1350
 shot mixed-model.png
 tap SAVE
 wait 300
-expect projfmt 12
+expect projfmt 13
 reboot
 wait 600
 expect model7 1

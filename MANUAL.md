@@ -654,7 +654,8 @@ Press HOME on the SONG page.
   clock after Start, measures the tempo over the last 4 beats and pulls its groove to the clock every 16th, so they
   don't drift apart. A jump in tempo is caught within about two beats.
 - **K2 SOUNDS:** **SHARED** (one sound per track, whatever the pattern) or **OWN** (**sounds per pattern**): each
-  pattern keeps T2–T4's sounds and the drums' kit. A track moving to another pattern (a scene, a clip, the song, a
+  pattern keeps T2–T4's sounds, the drums' kit and every drum's own settings (tune, decay, model and the rest: edit a
+  drum on one pattern and the others keep theirs). A track moving to another pattern (a scene, a clip, the song, a
   follow action) takes that pattern's sound; a pattern with none yet takes the sound that's playing. So pattern 1 can
   be a 909 with a soft pad and pattern 2 an 808 with an acid bass. The grid shows which patterns have their own.
 - **K3 USB PORT:** **COMPUTER** or **MIDI HOST** (a USB controller or synth plugged straight into the FM-1).

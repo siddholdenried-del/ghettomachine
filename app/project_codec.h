@@ -60,7 +60,8 @@ static uint32_t codec_pack(const pattern_t *p)
 static int project_decode(const uint8_t *in, uint32_t size, int fmt)
 {
     uint32_t tail_bytes = fmt == 4 ? PROJ_V4_TAIL_BYTES : fmt == 5 ? PROJ_V5_TAIL_BYTES :
-                          fmt == 7 ? PROJ_V7_TAIL_BYTES : fmt < 10 ? PROJ_V9_TAIL_BYTES : fmt < 12 ? PROJ_V11_TAIL_BYTES : PROJ_TAIL_BYTES;
+                          fmt == 7 ? PROJ_V7_TAIL_BYTES : fmt < 10 ? PROJ_V9_TAIL_BYTES : fmt < 12 ? PROJ_V11_TAIL_BYTES :
+                          fmt < 13 ? PROJ_V12_TAIL_BYTES : PROJ_TAIL_BYTES;
     uint32_t meta_bytes = fmt == 4 ? offsetof(project_t, insert) - PROJ_TAIL :
                           fmt == 5 ? PROJ_V5_META_BYTES : fmt == 7 ? PROJ_V7_META_BYTES : tail_bytes;
     uint32_t at = PROJ_PREFIX + tail_bytes, j, i;
