@@ -760,6 +760,9 @@ the sound saved with the pattern it's on.
 
 - **In:** channel 10 plays the pads (General MIDI drum notes), channels 2–4 play T2–T4, and channel 1 plays the
   track picked.
+- **MIDI is watched closely only while it's coming.** With nothing sending, the FM-1 looks for MIDI every fourth
+  block of sound, so the first message after a silence can wait up to 23 ms; from then on (until 2 s after the last
+  message) it looks every block, as before. An FM-1 played alone doesn't pay for the look each block.
 - **Controllers in:** on channels 2–4 (and 1, the track picked), CC 20–23 turn the track's MACRO 1–4 and the mod
   wheel (CC 1) MACRO 1.
 - **Song Position:** followed and stopped, a position sent before Continue is where Continue goes on from.

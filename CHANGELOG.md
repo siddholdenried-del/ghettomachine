@@ -42,6 +42,11 @@ POLY, STAB, HIT, DRUM), levelled to the first set's target. A track now carries 
 with a first-set sound keeps that sound, its name and its level (dsp/preset_legacy.inc). The simulator's older
 suites run on the first set (GM_OLD_PRESETS; tests/run_all.sh).
 
+**25 Nov 2026, the CPU:** measured on the FM-1 against AC84F7D2 with the same scores: the block's input stage had
+gone from 14 to 149 us and the drums up 14-18 % (the percs' filter: +46 % on the Mac). MIDI is now read every block
+only while it is coming (every fourth otherwise), the tempo is told to the synth when it changes, and the note-offs'
+scan runs only while a note is out and somebody listens.
+
 **Historical hardware test: 0.5** (first installed over USB on 20 Nov). The first recording from it clicked now and then, so
 0.5 now keeps a deeper USB buffer, MASTER no longer changes what a computer records, and the drum steps' beats glow
 (1, 5, 9, 13): that build went on the FM-1 on 21 Nov, and a recording from it had no clicks. REC + GLO (erase the

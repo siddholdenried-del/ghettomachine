@@ -532,6 +532,7 @@ static int drum_lfo_moved;                /* the last hit's move by the drums' L
 #define MIDI_TO (TO_USB | TO_BLE)
 #define MO_N 24
 static struct { uint8_t on, ch, note; int32_t left; } mo[MO_N];
+static uint8_t mo_n;                      /* notes out now (mo_tick is skipped at 0) */
 static const uint8_t PAD_GM[NPADS];
 static int seq_out(void) { return (int)(proj.mflags & 1u); }
 
@@ -539,12 +540,16 @@ static void mo_off(int i)
 {
     plat_midi_send(0x08u | (0x80u | mo[i].ch) << 8 | (uint32_t)mo[i].note << 16, MIDI_TO);
     mo[i].on = 0;
+    if (mo_n)
+        mo_n--;
 }
 
 static void mo_note(int ch, int note, int vel, int32_t gate)   /* audio interrupt, or the lock held */
 {
     int i, at = -1, old = 0;
     if (!seq_out() || note < 1 || note > 127)
+        return;
+    if (!plat_midi_out_room(MIDI_TO))     /* (0.5) nobody listening on USB or Bluetooth: nothing sent, nothing kept */
         return;
     for (i = 0; i < MO_N; i++) {
         if (mo[i].on && mo[i].ch == ch && mo[i].note == note) {   /* the same note again: its off first */
@@ -563,6 +568,7 @@ static void mo_note(int ch, int note, int vel, int32_t gate)   /* audio interrup
     }
     plat_midi_send(0x09u | (0x90u | (uint32_t)ch) << 8 | (uint32_t)note << 16 | (uint32_t)clamp(vel, 1, 127) << 24, MIDI_TO);
     mo[at].on = 1;
+    mo_n++;
     mo[at].ch = (uint8_t)ch;
     mo[at].note = (uint8_t)note;
     mo[at].left = gate > 0 ? gate : 2205;
@@ -2962,6 +2968,24 @@ static void mh_usb_disconnected(void)
 }
 #endif
 
+/* (0.5, the CPU) MIDI is looked for every block only while it is coming: within MI_HOT of the last message from
+ * anything (a computer, a controller, Bluetooth, the jack, the remote tools). With nothing connected or nothing sent
+ * it is looked for every fourth block (23 ms at most before the first message of a burst is taken; then every block)
+ * so an FM-1 played alone doesn't pay for the read each block */
+#define MI_HOT (2u * 44100u)
+static uint32_t mi_last;
+static uint8_t mi_any, mi_skip;
+static int mi_due(void)
+{
+    if (mi_any && render_t - mi_last < MI_HOT)
+        return 1;
+    mi_any = 0;
+    if (++mi_skip < 4u)
+        return 0;
+    mi_skip = 0;
+    return 1;
+}
+
 static void midi_in(void)                 /* audio interrupt */
 {
     uint32_t pkt;
@@ -2972,6 +2996,8 @@ static void midi_in(void)                 /* audio interrupt */
 #endif
     while (plat_midi_in(&pkt, &port)) {
         uint32_t st = (pkt >> 8) & 0xFFu, d1 = (pkt >> 16) & 0x7Fu, d2 = pkt >> 24 & 0x7Fu, ch = st & 0x0Fu;
+        mi_last = render_t;               /* (MIDI is coming: looked for every block for a while, mi_due) */
+        mi_any = 1;
 #if FM1B_USB_HOST
         if (usb_host_selected && port == PORT_USB &&
             ((st == 0xBFu && d1 >= 109u && d1 <= 119u) || (st == 0x9Fu && d1 >= 36u && d1 <= 46u)))
@@ -3853,10 +3879,18 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         if (stems_on)
             stems_send(n);
     }
-    midi_in();
+    if (mi_due())
+        midi_in();
     pfx_follow();                         /* MIX PER PATTERN: the focused pattern's FX */
-    syn_tempo((float)proj.bpm10 * 0.1f);
-    mo_tick((int32_t)n);                  /* SEQ OUT: the note-offs due */
+    {   /* (0.5, the CPU) the synth is told the tempo when it changes, not every block */
+        static uint16_t bpm_told;
+        if (proj.bpm10 != bpm_told) {
+            bpm_told = proj.bpm10;
+            syn_tempo((float)proj.bpm10 * 0.1f);
+        }
+    }
+    if (mo_n)
+        mo_tick((int32_t)n);              /* SEQ OUT: the note-offs due (only while a note is out) */
     render_t += n;
     tempo_stretch();
     {   /* the perform keys: what changed since the last block (ROLL here; the output's effects: post_job); and the
