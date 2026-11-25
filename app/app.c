@@ -11584,28 +11584,41 @@ static void page_lfo(void)                /* the track's LFO: its shape, where i
             pic_matrix(tr);
         } else {
             int sh = v[SP_L2SHAPE];
-            grid_bg();                     /* (the atlas: curves on a grid, on black) */
+            /* (0.5) LFO 1's scope: the wave scrolls through a dot fixed in the middle. LFO 2 is each note's own, so it
+             * follows the first voice sounding (its phase and value); other voices are dots where they are on the
+             * wave; with no note sounding the wave stands where it stopped */
+            static float l2_ph[NTRK];
+            uint8_t st2[8];
+            float ph2[8], val2[8];
+            const int nv = syn_voice_view(tr, 3, st2, ph2, val2, 8);
+            int k2;
+            if (nv)
+                l2_ph[tr] = ph2[0];
+            grid_bg();
             cv_rect(10, 64, 220, 1, C_GRID);
+            cv_rect(120, 6, 1, 101, PLAYHEAD);
             for (c = 0; c < 220; c++) {
-                float ph = (float)(c % 110) / 110.0f, a = RND[c / 44], b = RND[c / 44 + 1];
-                float w = (sh == LS_SH || sh == LS_SMOOTH) ? lfo_wave(sh, (float)(c % 44) / 44.0f, a, b)
-                                                           : lfo_wave(sh, ph, 0.0f, 0.0f);
-                int y = 64 - (int)(w * 50.0f);
-                if (c) {                   /* (0.5: as LFO 1 draws its wave: the glow under it, the heat line; routed
-                                            * or not, the band says which) */
+                float pos = l2_ph[tr] + (float)(c - 110) / 110.0f, f, w;
+                int kc = (int)(pos + 8.0f) - 8, y;
+                f = pos - (float)kc;
+                w = (sh == LS_SH || sh == LS_SMOOTH) ? lfo_wave(sh, f, RND[(kc + 12) % 6], RND[(kc + 13) % 6]) : lfo_wave(sh, f, 0.0f, 0.0f);
+                y = 64 - (int)(w * 50.0f);
+                if (c) {
                     glow_col(10 + c, y, 64);
                     gline(10 + c - 1, py, 10 + c, y, 12, 116);
                 }
                 py = y;
             }
-            {                             /* (0.5) each voice's LFO 2 now: a yellow dot in the first cycle */
-                uint8_t st2[8];
-                float ph2[8], val2[8];
-                int nv = syn_voice_view(tr, 3, st2, ph2, val2, 8), k2;
-                for (k2 = 0; k2 < nv; k2++) {   /* (LFO 1's dot: yellow, ringed) */
-                    const int x2 = 10 + (int)(ph2[k2] * 110.0f), y2 = 64 - (int)(val2[k2] * 50.0f);
-                    rrect(x2 - 5, y2 - 5, 11, 11, 5, C_NOW);
-                    rrect(x2 - 3, y2 - 3, 7, 7, 3, C_INK);
+            for (k2 = nv - 1; k2 >= 0; k2--) {   /* the voices: the first in the middle, ringed as LFO 1's dot */
+                float d = ph2[k2] - l2_ph[tr];
+                int x2, y2 = 64 - (int)(val2[k2] * 50.0f);
+                d -= (float)(int)(d > 0.5f ? 1 : d < -0.5f ? -1 : 0);
+                x2 = 120 + (int)(d * 110.0f);
+                if (k2 == 0) {
+                    rrect(115, y2 - 5, 11, 11, 5, C_NOW);
+                    rrect(117, y2 - 3, 7, 7, 3, C_INK);
+                } else {
+                    now_dot(x2, y2);
                 }
             }
             if (v[SP_L2FADE]) {           /* FADE IN: a ramp under the first cycle */
