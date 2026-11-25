@@ -220,7 +220,7 @@ wait 60
 expect rmask 0
 expect qmheld 0
 # STUTTER (white 10-12): T3 plays a slice of its own steps round and round while its part goes on underneath.
-# Stopped and started again (the first step at once), held at the third: STUTTER 1/2 (white 12), steps 1-8
+# Stopped and started again (the first step at once), held at the third: STUTTER 1/4 (white 12), steps 1-4
 tap PLAY
 wait 60
 expect playing 0
@@ -230,19 +230,19 @@ expect playing 1
 expect tstep3 <5
 key 19 down
 wait 60
-expect stut 8
+expect stut 4
 wait 600
-expect stutps <9
+expect stutps <5
 wait 600
-expect stutps <9
+expect stutps <5
 expect tstep3 >9
-# STUTTER 1/8 (white 10) too: the last wins, the 2 steps it's in; let go: the 8 again
+# STUTTER 1/16 (white 10) too: the last wins, the step it's in; let go: the 4 again
 key 16 down
 wait 60
-expect stut 2
+expect stut 1
 key 16 up
 wait 60
-expect stut 8
+expect stut 4
 key 19 up
 wait 60
 expect stut 0
@@ -338,7 +338,7 @@ key 24 down
 wait 40
 expect qmheld 16913
 expect rmask 4
-expect stut 2
+expect stut 1
 tap PLAY
 wait 60
 expect playing 0

@@ -2139,9 +2139,11 @@ static struct {
  * CRUSH lowers the output's bits and rate; FILL plays the next pattern's drums. Let go: as before */
 enum { PF_ROLL, PF_FILL, PF_STUT, PF_FILT, PF_THROW, PF_WASH, PF_CRUSH, NPF, PF_TAPE = NPF };
 static const char *const PF_NAME[NPF + 1] = {"ROLL", "FILL", "STUTTER", "FILTER", "THROW", "WASH", "CRUSH", "TAPE STOP"};
-static const char *const ROLL_NAME[5] = {"1/8", "1/16", "1/32", "1/16T", "1/32T"};
-static const float ROLL_F[5] = {2.0f, 1.0f, 0.5f, 2.0f / 3.0f, 1.0f / 3.0f};
-static const char *const STUT_NAME[3] = {"1/32", "1/16", "1/8"};
+static const char *const ROLL_NAME[5] = {"1/8", "1/16", "1/32", "1/4T", "1/8T"};   /* (0.5: the triplets were 1/16T, 1/32T) */
+static const float ROLL_F[5] = {2.0f, 1.0f, 0.5f, 8.0f / 3.0f, 4.0f / 3.0f};
+#define NSTUT 4                           /* STUTTER's lengths (0.5: 1/32 out; 1/8T and 1/4 in), sixteenths of a bar x 3 */
+static const char *const STUT_NAME[NSTUT] = {"1/16", "1/8T", "1/8", "1/4"};
+static const uint8_t STUT_48[NSTUT] = {3, 4, 6, 12};
 static struct {
     volatile uint8_t want;                /* the keys held (a bit each, PF_*) */
     uint8_t on;                           /* the interrupt's, as it last saw them */
@@ -3411,7 +3413,8 @@ static void post_job(uint32_t which)      /* a block's tail (the second core's j
     {   /* STUTTER, TAPE STOP: their slices set going as their keys go down; let go, the live sound fades back */
         uint8_t w = j->want, up = (uint8_t)(w & ~pf_was), down = (uint8_t)(pf_was & ~w);
         if (up >> PF_STUT & 1u) {
-            perf.st_len = (int32_t)(bar_samples() * (1.0f / 32.0f) * (float)(1 << (perf.stut_len % 3)));
+            perf.st_len = (int32_t)(bar_samples() * (1.0f / 48.0f) * (float)STUT_48[perf.stut_len % NSTUT]);   /* (a 1/4 under
+                                           * 89 BPM is longer than the line: as much as it holds) */
             if (perf.st_len > DLY_LEN / 2)
                 perf.st_len = DLY_LEN / 2;
             perf.st_n = perf.st_pos = 0;
@@ -6473,11 +6476,12 @@ static void mix_knob(int k, int32_t e)    /* the mixer: K1..K4 are the drums, T2
 enum { QM_CLOSE, QM_OPEN, QM_SPLASH, QM_THROW, QM_ROLL, QM_STUT = QM_ROLL + 5, QM_OCT = QM_STUT + 3,
        QM_MOVES = QM_OCT + 4 };
 static const char *const QM_NAME[QM_MOVES] = {"FILTER CLOSE", "FILTER OPEN", "VERB SPLASH", "DELAY THROW",
-    "ROLL 1/8", "ROLL 1/16", "ROLL 1/32", "ROLL 1/16T", "ROLL 1/32T", "STUTTER 1/8", "STUTTER 1/4", "STUTTER 1/2",
+    "ROLL 1/8", "ROLL 1/16", "ROLL 1/32", "ROLL 1/4T", "ROLL 1/8T", "STUTTER 1/16", "STUTTER 1/8", "STUTTER 1/4",
     "OCT -2", "OCT -1", "OCT +1", "OCT +2"};
 static const char *const QM_SHORT[QM_MOVES] = {"CLOSE", "OPEN", "SPLASH", "THROW", "R 1/8", "R 1/16", "R 1/32",
-    "R 1/16T", "R 1/32T", "ST 1/8", "ST 1/4", "ST 1/2", "OCT -2", "OCT -1", "OCT +1", "OCT +2"};
-static const uint8_t QM_STUT_N[3] = {2, 4, 8};    /* STUTTER's slices, in steps (1/8, 1/4, 1/2 at 1/16 a step) */
+    "R 1/4T", "R 1/8T", "ST 1/16", "ST 1/8", "ST 1/4", "OCT -2", "OCT -1", "OCT +1", "OCT +2"};
+static const uint8_t QM_STUT_N[3] = {1, 2, 4};    /* STUTTER's slices, in steps (1/16, 1/8, 1/4 at 1/16 a step; 0.5: were
+                                                   * 1/8, 1/4, 1/2) */
 static const int8_t QM_OCT_N[4] = {-2, -1, 1, 2};
 static const uint8_t QM_PAGE[4] = {0, 2, 3, 1};   /* K1..K4: the mixer's LEVEL, REVERB, DELAY, PAN */
 static const char *const QM_KNOB[4] = {"LEVEL", "REVERB", "DELAY", "PAN"};
@@ -6805,7 +6809,7 @@ static void pf_knob(int i, int32_t e)     /* K1 with a perform key held: how it 
         perf.roll_rate = (uint8_t)clamp(perf.roll_rate + e, 0, 4);
         perf.roll_len = bar_samples() * (1.0f / 16.0f) * ROLL_F[perf.roll_rate];
         break;
-    case PF_STUT: perf.stut_len = (uint8_t)clamp(perf.stut_len + e, 0, 2); break;
+    case PF_STUT: perf.stut_len = (uint8_t)clamp(perf.stut_len + e, 0, NSTUT - 1); break;
     case PF_FILT:
         perf.filt = (uint8_t)clamp(perf.filt + e, 0, 127);
         fx_set(FXP_FILTER, perf.filt);
@@ -10279,7 +10283,7 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
             return 0;
         switch (page) {
         case PF_ROLL: card_put(c, "RATE", ROLL_NAME[perf.roll_rate % 5], perf.roll_rate, 0, 4, -1); break;
-        case PF_STUT: card_put(c, "LENGTH", STUT_NAME[perf.stut_len % 3], perf.stut_len, 0, 2, -1); break;
+        case PF_STUT: card_put(c, "LENGTH", STUT_NAME[perf.stut_len % NSTUT], perf.stut_len, 0, NSTUT - 1, -1); break;
         case PF_FILT:
             t[0] = 0;
             text_cat(t, perf.filt < 60 ? "LP" : perf.filt > 68 ? "HP" : "OFF");

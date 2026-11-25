@@ -573,7 +573,7 @@ Hold one and it works; let go and the sound is as it was. **K1 while you hold it
 | --- | --- | --- |
 | **5 ROLL** | Repeats each track's step as it was when you pressed, while the pattern goes on silently underneath; let go and it's where it would have been. | 1/8, 1/16, 1/32, 1/16T, 1/32T |
 | **6 FILL** | The drums play the next pattern's part, by its own LENGTH and RATE. Let go, they are back on their own clip where it would have been, in step with the other tracks. | |
-| **7 STUTTER** | Loops a slice of the output. | 1/32, 1/16, 1/8 |
+| **7 STUTTER** | Loops a slice of the output. | 1/16, 1/8T, 1/8, 1/4 (a 1/4 under 89 BPM is cut to what the buffer holds) |
 | **8 FILTER** | The DJ filter at K1's place (left low-pass, right high-pass). | the sweep |
 | **9 THROW** | Everything into the delay, with long feedback: an echo throw. | feedback |
 | **10 WASH** | Everything into the reverb, with a long tail. | decay |
@@ -603,8 +603,8 @@ The moves, held, on the selected instrument track:
 | **2 FILTER OPEN** | Its cutoff up as much: brighter. Hold both and the last one pressed wins; let it go while the other is down and the other takes over. |
 | **3 VERB SPLASH** | The track's reverb send raised (to 90 %, or left where it is if it's higher). |
 | **4 DELAY THROW** | Its delay send raised the same way. The repeats ring on after you let go. |
-| **5–9 ROLL 1/8, 1/16, 1/32, 1/16T, 1/32T** | This track's step as it was when you pressed, again and again at that rate, while its part goes on silently underneath; let go and it's where it would have been. The other tracks play on. |
-| **10–12 STUTTER 1/8, 1/4, 1/2** | This track plays the 2, 4 or 8 of its own steps it's in (1/8, 1/4 or 1/2 of a bar at 1/16 a step), round and round, while its part goes on underneath; let go and it's where it would have been. |
+| **5–9 ROLL 1/8, 1/16, 1/32, 1/4T, 1/8T** | This track's step as it was when you pressed, again and again at that rate, while its part goes on silently underneath; let go and it's where it would have been. The other tracks play on. |
+| **10–12 STUTTER 1/16, 1/8, 1/4** | This track plays the 1, 2 or 4 of its own steps it's in (1/16, 1/8 or 1/4 note at 1/16 a step), round and round, while its part goes on underneath; let go and it's where it would have been. |
 | **13–16 OCT −2, −1, +1, +2** | This track's notes an octave or two down or up while held, the ones already sounding too. |
 
 Within a group (the two filter keys, the five ROLLs, the three STUTTERs, the four OCTs) the last one pressed wins;
