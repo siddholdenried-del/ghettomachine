@@ -5511,6 +5511,7 @@ static void istep_down(int k)
     ipart_t *p = ipart(tr);
     int s = ui.spage * 16 + k;
     uint32_t f;
+    ui.spage_t = plat_ms();               /* (0.5) a step touched: the view stays on this bar while you work in it */
     if (s >= p->len) {
         app_say("STEP", "PAST THE END");
         return;
@@ -10936,15 +10937,35 @@ static void page_steps(void)              /* the drums' grid: 11 pads and the ac
 
 static void page_roll(void)               /* an instrument part: its notes, pitch up, 16 steps of the page */
 {
-    int tr = ui.trk, st = sq.t[tr].step, k, i, s, lo = 127, hi = 0, rows, rh, top, n, H = BODY_H - 6;
+    /* (0.5) H: the roll; under it the steps' marks (6 px), then the bars' strip (BARS_H) */
+#define BARS_H 11
+    int tr = ui.trk, st = sq.t[tr].step, k, i, s, lo = 127, hi = 0, rows, rh, top, n, H = BODY_H - 6 - BARS_H, laby = -99;
     ipart_t *p = ipart(tr);
     uint16_t col = TRK_RGB[tr];
     char t[24], u[40], note[8];
     const track_t *ts = tset(tr);
     steps_text(t);
-    if (ui.held_step >= 0 && ui.held_step < p->len) {
+    if (ui.held_step >= 0 && ui.held_step < p->len) {   /* the held step: its notes by name */
+        const nstep_t *hs = &p->st[ui.held_step];
         u[0] = 0;
-        text_cat(u, "HOLD + ARP: PICK NOTES");
+        for (i = 0; i < NCHORD && hs->note[i]; i++) {
+            note_text(hs->note[i], note);
+            upper(note);
+            text_cat(u, i ? " " : "");
+            text_cat(u, note);
+        }
+        if (!hs->note[0])
+            text_cat(u, "EMPTY");
+    } else if (sq.playing && st >= 0 && st < p->len && p->st[st].note[0]) {   /* playing: the notes sounding now */
+        const nstep_t *hs = &p->st[st];
+        u[0] = 0;
+        text_cat(u, "> ");
+        for (i = 0; i < NCHORD && hs->note[i]; i++) {
+            note_text(hs->note[i], note);
+            upper(note);
+            text_cat(u, i ? " " : "");
+            text_cat(u, note);
+        }
     } else {
         note_text(track_note(tr), note);
         upper(note);
@@ -10961,8 +10982,18 @@ static void page_roll(void)               /* an instrument part: its notes, pitc
     {
         char cx[44];
         cx[0] = 0;
-        text_cat(cx, t + 6);              /* (STEPS 1-16: the steps, then what a key does) */
-        text_cat(cx, " ");
+        if (npages() > 1) {               /* (0.5) BAR 2/4, then the notes or what a key does */
+            char d[4];
+            text_cat(cx, "BAR ");
+            int_text(ui.spage + 1, d);
+            text_cat(cx, d);
+            text_cat(cx, "/");
+            int_text(npages(), d);
+            text_cat(cx, d);
+        } else {
+            text_cat(cx, t + 6);          /* (STEPS 1-16) */
+        }
+        text_cat(cx, "  ");
         text_cat(cx, u);
         band_set(col, TRK_NAME[tr], STOOL_NAME[ui.stool % NSTOOL], cx, npages(), ui.spage);
     }
@@ -10987,13 +11018,29 @@ static void page_roll(void)               /* an instrument part: its notes, pitc
     top = H - rows * rh;
     for (n = lo; n <= hi; n++) {
         int y = top + (hi - n) * rh;
-        int b = n % 12 == 1 || n % 12 == 3 || n % 12 == 6 || n % 12 == 8 || n % 12 == 10;
-        if (b)
-            cv_rect(26, y, 214, rh, mix565(C_BODY, TH_INK, 16));
-        if (n % 12 == 0) {
+        int b = n % 12 == 1 || n % 12 == 3 || n % 12 == 6 || n % 12 == 8 || n % 12 == 10, used = 0;
+        /* (0.5) as a keyboard lies: the white keys' rows lighter, the black keys' dark (they were the other way
+         * round), and the keys themselves down the left edge */
+        if (!b)
+            cv_rect(26, y, 214, rh, mix565(C_BODY, TH_INK, 34));
+        cv_rect(19, y, 6, rh > 1 ? rh - 1 : rh, b ? C_INK : C_BONE);
+        if (n % 12 == 0)
             cv_rect(26, y + rh - 1, 214, 1, C_GRID);
-            note_text(n, t);
-            cv_text(1, y + rh - 13 < 0 ? 0 : y + rh - 13, &FONT_XS, t, C_TXT2);
+        for (k = 0; k < 16 && !used; k++) {   /* a row with a note on this page: named, where there is room */
+            const int q = ui.spage * 16 + k;
+            for (i = 0; q < p->len && i < NCHORD && p->st[q].note[i]; i++)
+                used |= p->st[q].note[i] == n;
+        }
+        if ((n % 12 == 0 && rh < 6) || (used && rh >= 6) || (n % 12 == 0 && !used && rh >= 6)) {
+            const int ly = y + rh / 2 - 6 < 0 ? 0 : y + rh / 2 - 6;
+            if (ly - laby >= 10 || ly - laby <= -10 || used) {
+                note_text(n, t);
+                upper(t);
+                if (used || ly - laby >= 10 || ly - laby <= -10) {
+                    cv_text(0, ly, &FONT_T, t, used ? TH_TXT : C_TXT2);
+                    laby = ly;
+                }
+            }
         }
     }
     for (k = 0; k < 16; k++) {
@@ -11025,7 +11072,8 @@ static void page_roll(void)               /* an instrument part: its notes, pitc
             if (x + w > 240)
                 w = 240 - x;
             rrect(x, top + (hi - nn) * rh, w, rh > 2 ? rh - 1 : rh, 2,
-                  s != ui.held_step ? mix565(C_BODY, TH_FG, 110 + ns_vel(ns))
+                  s != ui.held_step ? (sq.playing && s == st ? C_BONE   /* (sounding now: white) */
+                                       : mix565(C_BODY, TH_FG, 176 + ns_vel(ns) * 80 / 127))
                   : ui.hnote && hnote_at(ns) != i ? TH_FG : hnote_at(ns) == i ? C_NOW : TH_HI);
         }
         if (istep_locked(p, s))
@@ -11037,6 +11085,26 @@ static void page_roll(void)               /* an instrument part: its notes, pitc
         if (ns->prob & NS_SLIDE)
             cv_rect(x + 9, H - 3, 4, 3, TH_FG);
     }
+    {   /* (0.5) the bars' strip: every bar of the part (16 steps each), the one shown framed, the ones with notes
+         * filled, the playhead running through all of them. OCT- / OCT+ step through them, black keys 1-8 jump */
+        const int nb = npages(), y = BODY_H - BARS_H + 1, wb = 212 / (nb ? nb : 1);
+        int b;
+        for (b = 0; b < nb; b++) {
+            int has = 0, x = 27 + b * wb;
+            char d[4];
+            for (s = b * 16; s < b * 16 + 16 && s < p->len; s++)
+                has |= p->st[s].note[0] != 0;
+            rrect(x, y, wb - 2, BARS_H - 2, 2, has ? mix565(C_BODY, TH_FG, b == ui.spage ? 150 : 80) : mix565(C_BODY, TH_INK, 28));
+            if (b == ui.spage)
+                frame(x, y, wb - 2, BARS_H - 2, C_BONE);
+            int_text(b + 1, d);
+            cv_text(x + 3, y - 2, &FONT_T, d, b == ui.spage ? C_BONE : C_TXT2);
+        }
+        if (sq.playing && st >= 0 && st < p->len)
+            cv_rect(27 + st * wb / 16, y, 2, BARS_H - 2, C_NOW);
+        cv_text(0, y - 2, &FONT_T, "BAR", C_TXT2);
+    }
+#undef BARS_H
     if (ui.stool == ST_HARM || ui.stool == ST_MOD || (ui.held_step < 0 && ui.stool != ST_GROOVE))
         cards_of(KD_STOOL, ui.stool);
     else if (ui.held_step >= 0)
@@ -13414,7 +13482,8 @@ void app_frame(void)
     if (t != ui.last_ticks) {             /* a step went by: the playhead moves, the page follows it */
         int st = sq.t[ui.trk].step;
         ui.last_ticks = t;
-        if (sq.playing && st >= 0 && now - ui.spage_t > 3000u &&
+        if (sq.playing && st >= 0 && ui.held_step < 0 && now - ui.spage_t > 6000u &&   /* (6 s since a page turn or a step
+                                                                                        * touched, and no step held) */
             (ui.page == PG_SEQ || ui.page == PG_GEN || (ui.trk == TR_DRUM && ui.page == PG_EDIT)))
             ui.spage = (uint8_t)(st / 16);
         ui.redraw = 1;

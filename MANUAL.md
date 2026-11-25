@@ -206,6 +206,20 @@ bar whatever its swing.
   project's with them.
 - A part's swing is copied with the part or the pattern, saved with the project, and undone with EDIT + OCT−.
 
+### Finding your way in a long part (T2–T4's steps)
+
+A part longer than 16 steps is shown a **bar** (16 steps) at a time. Along the bottom of the steps page is the
+**bars' strip**: every bar of the part, numbered; the one you're looking at is framed, bars with notes in them are
+filled, and while it plays a yellow mark runs through them. The top line says **BAR 2/4**.
+
+- **OCT− / OCT+** step to the bar before or after; **black keys 1–8** jump straight to a bar.
+- While it plays the view follows the playhead, but not while you work: touch a step or turn the bar and the view
+  stays on that bar until 6 seconds after your last touch (and for as long as a step is held).
+- The rows are laid out as a keyboard: the white keys' rows lighter, the black keys' darker, with the keys themselves
+  down the left edge. Rows with a note on this bar are named.
+- The top line names the notes: a held step's, or while playing the notes sounding now (after **>**). A note
+  sounding is drawn white.
+
 ### Microtiming, and copy and paste (every track)
 
 - **Nudge:** hold a step and turn **PRESETS**: the step plays late, up to 15 sixteenths of its own length (the
