@@ -11591,20 +11591,27 @@ static void page_lfo(void)                /* the track's LFO: its shape, where i
                 float w = (sh == LS_SH || sh == LS_SMOOTH) ? lfo_wave(sh, (float)(c % 44) / 44.0f, a, b)
                                                            : lfo_wave(sh, ph, 0.0f, 0.0f);
                 int y = 64 - (int)(w * 50.0f);
-                if (c)
-                    thick(10 + c - 1, py, 10 + c, y, n ? TH_FG : C_GRID);
+                if (c) {                   /* (0.5: as LFO 1 draws its wave: the glow under it, the heat line; routed
+                                            * or not, the band says which) */
+                    glow_col(10 + c, y, 64);
+                    gline(10 + c - 1, py, 10 + c, y, 12, 116);
+                }
                 py = y;
             }
             {                             /* (0.5) each voice's LFO 2 now: a yellow dot in the first cycle */
                 uint8_t st2[8];
                 float ph2[8], val2[8];
                 int nv = syn_voice_view(tr, 3, st2, ph2, val2, 8), k2;
-                for (k2 = 0; k2 < nv; k2++)
-                    now_dot(10 + (int)(ph2[k2] * 110.0f), 64 - (int)(val2[k2] * 50.0f));
+                for (k2 = 0; k2 < nv; k2++) {   /* (LFO 1's dot: yellow, ringed) */
+                    const int x2 = 10 + (int)(ph2[k2] * 110.0f), y2 = 64 - (int)(val2[k2] * 50.0f);
+                    rrect(x2 - 5, y2 - 5, 11, 11, 5, C_NOW);
+                    rrect(x2 - 3, y2 - 3, 7, 7, 3, C_INK);
+                }
             }
             if (v[SP_L2FADE]) {           /* FADE IN: a ramp under the first cycle */
                 int fw = 10 + v[SP_L2FADE] * 100 / 127;
-                thick(10, 118, 10 + fw, 104, mix565(C_PANEL, TH_FG, 120));
+                gline(10, 118, 10 + fw, 104, 104, 118);
+                cv_text(14 + fw, 104, &FONT_XS, "FADE IN", C_TXT2);
             }
         }
         cards_of(KD_LFO, pg);
