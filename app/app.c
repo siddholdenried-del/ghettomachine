@@ -6456,9 +6456,14 @@ static void level_text(int v, char *t)
     d = (int)(db * 10.0f + (db < 0.0f ? -0.5f : 0.5f));
     text_cat(t, d > 0 ? "+" : d < 0 ? "-" : "");
     if (d < 0) d = -d;
-    int_text(d / 10, t + strlen(t));
-    text_cat(t, ".");
-    int_text(d % 10, t + strlen(t));
+    {   /* (no strlen on the FM-1: each number in its own buffer) */
+        char u[8];
+        int_text(d / 10, u);
+        text_cat(t, u);
+        text_cat(t, ".");
+        int_text(d % 10, u);
+        text_cat(t, u);
+    }
     text_cat(t, " dB");
 }
 
