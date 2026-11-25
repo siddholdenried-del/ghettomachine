@@ -8888,11 +8888,22 @@ static void part_resize(int up)
     ui.redraw = 1;
 }
 
+/* (the transport's audit) the longest the keys went unread, ms, since the CPU view last said it: a frame's drawing
+   stands between two reads */
+static uint32_t in_last;
+static uint16_t in_gap_max;
+
 static void input(void)
 {
     uint32_t keys, btn = plat_buttons(), k, pressed, released, kp, kr;
     int32_t e;
     int inst;
+    {
+        const uint32_t ms = plat_ms(), gap = ms - in_last;
+        if (in_last && gap > in_gap_max)
+            in_gap_max = (uint16_t)(gap > 60000u ? 60000u : gap);
+        in_last = ms;
+    }
     touch_poll();
     keys = touch_keys();
     syn_text_track(ui.trk);
@@ -13241,6 +13252,10 @@ static void speak_line(int which, char *t)
             int_text((int32_t)(m + 0.5f), u);
             text_cat(t, u);
         }
+        text_cat(t, ". KEYS MS MAX ");    /* (since it was last said) */
+        int_text((int32_t)in_gap_max, u);
+        text_cat(t, u);
+        in_gap_max = 0;
         ann_say(t, 0, 0);
     }
 }
