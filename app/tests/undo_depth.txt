@@ -1,4 +1,4 @@
-# Exercise every undo and redo level (NUNDO: 3 since 0.5's RAM pass; 6 before, 8 before BongVerb), a full stack
+# Exercise every undo and redo level (NUNDO: 5 since 0.5's RAM pass; 6 before, 8 before BongVerb), a full stack
 # swap, and branch discard.
 expect demode_0 1                 # (the stock 808 / 909: the DrumEngine has its own suites)
 wait 600
@@ -28,85 +28,34 @@ wait 30
 key 11 up
 wait 30
 expect hits0 9
-expect undo 3
-press EDIT
-wait 20
-tap OCT-
-wait 20
-release EDIT
-wait 30
-expect hits0 8
-press EDIT
-wait 20
-tap OCT-
-wait 20
-release EDIT
-wait 30
-expect hits0 7
-press EDIT
-wait 20
-tap OCT-
-wait 20
-release EDIT
-wait 30
-expect hits0 6
-press EDIT
-wait 20
-tap OCT-
-wait 20
-release EDIT
-wait 30
-expect hits0 6
-press EDIT
-wait 20
-tap OCT+
-wait 20
-release EDIT
-wait 30
-expect hits0 7
-press EDIT
-wait 20
-tap OCT+
-wait 20
-release EDIT
-wait 30
-expect hits0 8
-press EDIT
-wait 20
-tap OCT+
-wait 20
-release EDIT
-wait 30
-expect hits0 9
-press EDIT
-wait 20
-tap OCT+
-wait 20
-release EDIT
-wait 30
-expect hits0 9
-press EDIT
-wait 20
-tap OCT-
-wait 20
-release EDIT
-wait 30
-expect hits0 8
-press EDIT
-wait 20
-tap OCT-
-wait 20
-release EDIT
-wait 30
-expect hits0 7
 key 12 down
 wait 30
 key 12 up
 wait 30
-expect hits0 8
+expect hits0 10
+key 16 down
+wait 30
+key 16 up
+wait 30
+expect hits0 11
+expect undo 5
 press EDIT
 wait 20
-tap OCT+
+tap OCT-
+wait 20
+release EDIT
+wait 30
+expect hits0 10
+press EDIT
+wait 20
+tap OCT-
+wait 20
+release EDIT
+wait 30
+expect hits0 9
+press EDIT
+wait 20
+tap OCT-
 wait 20
 release EDIT
 wait 30
@@ -120,8 +69,97 @@ wait 30
 expect hits0 7
 press EDIT
 wait 20
+tap OCT-
+wait 20
+release EDIT
+wait 30
+expect hits0 6
+press EDIT
+wait 20
+tap OCT-
+wait 20
+release EDIT
+wait 30
+expect hits0 6
+press EDIT
+wait 20
+tap OCT+
+wait 20
+release EDIT
+wait 30
+expect hits0 7
+press EDIT
+wait 20
 tap OCT+
 wait 20
 release EDIT
 wait 30
 expect hits0 8
+press EDIT
+wait 20
+tap OCT+
+wait 20
+release EDIT
+wait 30
+expect hits0 9
+press EDIT
+wait 20
+tap OCT+
+wait 20
+release EDIT
+wait 30
+expect hits0 10
+press EDIT
+wait 20
+tap OCT+
+wait 20
+release EDIT
+wait 30
+expect hits0 11
+press EDIT
+wait 20
+tap OCT+
+wait 20
+release EDIT
+wait 30
+expect hits0 11
+press EDIT
+wait 20
+tap OCT-
+wait 20
+release EDIT
+wait 30
+expect hits0 10
+press EDIT
+wait 20
+tap OCT-
+wait 20
+release EDIT
+wait 30
+expect hits0 9
+key 18 down
+wait 30
+key 18 up
+wait 30
+expect hits0 10
+press EDIT
+wait 20
+tap OCT+
+wait 20
+release EDIT
+wait 30
+expect hits0 10
+press EDIT
+wait 20
+tap OCT-
+wait 20
+release EDIT
+wait 30
+expect hits0 9
+press EDIT
+wait 20
+tap OCT+
+wait 20
+release EDIT
+wait 30
+expect hits0 10

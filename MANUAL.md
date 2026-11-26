@@ -727,7 +727,7 @@ Press HOME on the SONG page.
   - **It's late.** The sound reaches the ear 150 to 300 ms after a key, the device's own buffer: for listening
     back, not for playing in time.
   - **Undo keeps one step while it's on** (its memory is lent to the radio), and the undo history is emptied when
-    you turn it on or off. All three steps come back when it's off.
+    you turn it on or off. All five steps come back when it's off.
   - If it's on when you SAVE the project, it comes back on at power-on and reconnects to the last device.
 - **SELECT again: CPU.** Turn SELECT to see where the processor's time goes, live: **DRUMS**, **SYNTH**, **INSERT+COLOR**,
   **REV+DLY CORE2**, **MASTER CORE2**, **OTHER** and the **TOTAL**, each as a share of the time the FM-1 has for each

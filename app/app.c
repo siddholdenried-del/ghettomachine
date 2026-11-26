@@ -4370,7 +4370,8 @@ void app_init(void)
 
 /* ---------------------------------------------------------------------- undo --- */
 /* a snapshot is a whole pattern (all four tracks) */
-#define NUNDO 3                           /* (0.5, RAM: 6 before, 8 until BongVerb's lines took 26 KB of the pool: a step 3.9 KB) */
+#define NUNDO 5                           /* (0.5, RAM: 6 before, 8 until BongVerb's lines took 26 KB of the pool: a step 3.9 KB;
+                                           * five fit the room Bluetooth audio needs beside the first anyway) */
 #define BTA_LEND 17920u                   /* Bluetooth audio's buffers (plat_bta_mem_bytes: 17.7 KB), beside undo's first step */
 typedef struct { pattern_t p; gen_t g[NINST]; dgen_t dg; uint8_t k[NINST][NSTEPS / 8]; uint8_t idx; } snap_t;   /* (the parts' generators with them) */
 /* The total can never exceed NUNDO: a new edit drops redo, and undo/redo

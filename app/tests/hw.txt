@@ -2,7 +2,7 @@
 #   app/build/host/ghettomachine_host app/tests/hw.txt OUTDIR
 # btaon: Bluetooth audio on; btast: its state (plat.h PLAT_BTA_*: 2 found, 7 streaming); nundo: undo's steps now
 wait 600
-expect nundo 3
+expect nundo 5
 # ---- pressure: T2's keys (SEQ twice from its steps: ACID, then the keys); a key held and leaned on sends channel pressure
 turn ALGO 1
 wait 30
@@ -83,7 +83,7 @@ expect page 13
 spin K1 -1
 wait 300
 expect btaon 0
-expect nundo 3
+expect nundo 5
 # ---- the headphone jack: said as it changes
 listen
 jack in
@@ -139,4 +139,4 @@ wait 400
 reboot
 wait 5000
 expect btaon 0
-expect nundo 3
+expect nundo 5
