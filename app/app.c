@@ -76,7 +76,8 @@ static const char *trial_pad_name(int kit, int pad)
 #define NPOTS 12                          /* knob positions kept per pad (the engines have at most 11) */
 #define OLD_LOCKS 16                      /* a part's locks up to format 10, drums and instruments alike */
 #define V13_LOCKS 32                      /* a part's locks in formats 11 to 13 */
-#define NLOCKS 64                         /* (format 14; 32 before) per drum part: a step's chance or a knob locked for one pad's step */
+#define PAT_LOCKS 256                     /* (format 14) a pattern's locks, its four parts' between them */
+#define NLOCKS 255                        /* (format 14: the pattern's pool; 32 a part before; nlk is a byte) per drum part: a step's chance or a knob locked for one pad's step */
 #define LK_KIT606 0x40u                    /* 606 locks keep their own pots */
 #define LK_KIT808 0x80u                   /* lock_t.param: the 808's knob (else the 909's) */
 #define LK_KIT707 (LK_KIT606 | LK_KIT808) /* both bits unused by legacy locks */
@@ -167,8 +168,7 @@ typedef struct {                          /* the drum track's part of a pattern 
     uint8_t nlk;                          /* locks in use */
     uint8_t swing;                        /* (0.5) the part's own SWING, 50..75 %; 0: the project's (every save before) */
     uint8_t rsv[2];
-    lock_t lk[NLOCKS];
-} dpart_t;
+} dpart_t;                                 /* (its locks: the pattern's pool, LK) */
 
 typedef struct {                          /* an instrument step (format 1 had a spare byte more: nstep_v1_t) */
     uint8_t note[NCHORD];                 /* MIDI notes, packed from the first; note[0] == 0: the step is off */
@@ -187,7 +187,7 @@ typedef struct {                          /* an instrument step (format 1 had a 
 static inline int ns_vel(const nstep_t *s) { return s->vel & 0x7F; }
 static inline int ns_prob(const nstep_t *s) { return s->prob & 0x7F; }
 
-#define NILOCKS 64                        /* (format 14; 32 before) per instrument part: a sound parameter locked for one step */
+#define NILOCKS NLOCKS                    /* (format 14: the pattern's pool) per instrument part: a sound parameter locked for one step */
 typedef struct {
     uint8_t step, param;                  /* param: dsp/synth.h SP_* */
     int8_t val;
@@ -198,12 +198,16 @@ typedef struct {                          /* an instrument track's part of a pat
     nstep_t st[NSTEPS];
     uint8_t len, rate, nlk;
     uint8_t swing;                        /* (0.5) the part's own SWING, as the drums' */
-    ilock_t lk[NILOCKS];
-} ipart_t;
+} ipart_t;                                 /* (its locks: the pattern's pool, LK) */
 
+typedef union { lock_t d; ilock_t i; } plock_t;
+_Static_assert(sizeof(lock_t) == 4 && sizeof(ilock_t) == 4 && sizeof(plock_t) == 4, "a lock is four bytes, either kind");
 typedef struct {
     dpart_t d;
     ipart_t t[NINST];                     /* T2..T4 */
+    /* (0.5, format 14) the parts' locks, one pool: the drums' first, then T2's, T3's, T4's, each part's nlk long, one
+     * after another (no gaps; past them zeros). A part takes what the others leave. LK(part) is a part's own */
+    plock_t lk[PAT_LOCKS];
 } pattern_t;
 
 typedef struct {                          /* an instrument track's settings */
@@ -351,14 +355,14 @@ typedef struct {
     ilock_t lk[OLD_LOCKS];
 } ipart_v10_t;
 typedef struct { dpart_v10_t d; ipart_v10_t t[NINST]; } pattern_v10_t;
-_Static_assert(offsetof(dpart_v10_t, lk) == offsetof(dpart_t, lk) && offsetof(ipart_v10_t, lk) == offsetof(ipart_t, lk),
-               "format 11 only lengthens the parts' lock tables");
+_Static_assert(offsetof(dpart_v10_t, lk) == sizeof(dpart_t) && offsetof(ipart_v10_t, lk) == sizeof(ipart_t),
+               "formats 4 to 13: a part is today's, then its own locks");
 /* a saved pattern with n locks a part (formats 4..10: 16; 11..13: 32): the parts one after another, each its head and
  * its n locks. Format 14 only lengthens the tables again */
-#define PAT_BYTES_WITH(n) ((uint32_t)(offsetof(dpart_t, lk) + (n) * sizeof(lock_t) + \
-                                      NINST * (offsetof(ipart_t, lk) + (n) * sizeof(ilock_t))))
+#define PAT_BYTES_WITH(n) ((uint32_t)(sizeof(dpart_t) + (n) * sizeof(lock_t) + NINST * (sizeof(ipart_t) + (n) * sizeof(ilock_t))))
 _Static_assert(PAT_BYTES_WITH(OLD_LOCKS) == sizeof(pattern_v10_t), "a format-10 pattern is its parts' heads and 16 locks each");
-_Static_assert(PAT_BYTES_WITH(NLOCKS) == sizeof(pattern_t) && NLOCKS == NILOCKS, "a pattern is its parts' heads and their locks, no padding");
+_Static_assert(sizeof(pattern_t) == sizeof(dpart_t) + NINST * sizeof(ipart_t) + PAT_LOCKS * sizeof(plock_t),
+               "a pattern is its parts, then its locks, no padding");
 #define PROJ_PREFIX ((uint32_t)offsetof(project_t, p))
 #define PROJ_TAIL ((uint32_t)offsetof(project_t, pots))
 #define PROJ_TAIL_BYTES (sizeof(project_t) - PROJ_TAIL)
@@ -714,12 +718,117 @@ static int nstep_add(nstep_t *s, int note, int vel)   /* 0: the note is in the s
     return -1;
 }
 
+/* ---- (0.5, format 14) the pattern's lock pool. A part is found in the project by its address (every part with locks
+ * is one of proj.p's; a part elsewhere, a stand-in with nlk 0, has none) */
+static pattern_t *pat_of(const void *part, int *seg)
+{
+    const uintptr_t a = (uintptr_t)part, b = (uintptr_t)proj.p;
+    pattern_t *pt;
+    if (a < b || a >= b + sizeof proj.p)
+        return 0;
+    pt = &proj.p[(a - b) / sizeof(pattern_t)];
+    *seg = a == (uintptr_t)&pt->d ? 0 : 1 + (int)((a - (uintptr_t)pt->t) / sizeof(ipart_t));
+    return pt;
+}
+static uint8_t *seg_n(pattern_t *pt, int s) { return s ? &pt->t[s - 1].nlk : &pt->d.nlk; }
+static int seg_off(const pattern_t *pt, int s)   /* where part s's locks start: the parts' before it */
+{
+    int o = 0, k;
+    for (k = 0; k < s; k++)
+        o += k ? pt->t[k - 1].nlk : pt->d.nlk;
+    return o;
+}
+static int pat_nlk(const pattern_t *pt) { return seg_off(pt, NTRK); }
+static plock_t lk_none[1];
+static plock_t *seg_lk(const void *part)
+{
+    int s;
+    pattern_t *pt = pat_of(part, &s);
+    return pt ? &pt->lk[seg_off(pt, s)] : lk_none;
+}
+static lock_t *dlk(const dpart_t *d) { return &seg_lk(d)->d; }
+static ilock_t *ilk(const ipart_t *p) { return &seg_lk(p)->i; }
+#define LK(x) _Generic((x), dpart_t *: dlk, const dpart_t *: dlk, ipart_t *: ilk, const ipart_t *: ilk)(x)
+
+static int lk_add(const void *part)       /* a new lock at the end of the part's: its index, or -1 (the pattern full) */
+{
+    int s, total, at, k;
+    uint8_t *n;
+    uint32_t f;
+    pattern_t *pt = pat_of(part, &s);
+    if (!pt)
+        return -1;
+    n = seg_n(pt, s);
+    total = pat_nlk(pt);
+    if (total >= PAT_LOCKS || *n >= NLOCKS)
+        return -1;
+    at = seg_off(pt, s) + *n;
+    f = plat_lock();                      /* (the audio interrupt reads the pool: never half moved) */
+    for (k = total; k > at; k--)
+        pt->lk[k] = pt->lk[k - 1];
+    memset(&pt->lk[at], 0, sizeof pt->lk[at]);
+    (*n)++;
+    plat_unlock(f);
+    return *n - 1;
+}
+static void lk_del(const void *part, int i)   /* the part's lock i out, the rest in order */
+{
+    int s, total, at, k;
+    uint8_t *n;
+    uint32_t f;
+    pattern_t *pt = pat_of(part, &s);
+    if (!pt)
+        return;
+    n = seg_n(pt, s);
+    if (i < 0 || i >= *n)
+        return;
+    total = pat_nlk(pt);
+    at = seg_off(pt, s) + i;
+    f = plat_lock();
+    for (k = at; k + 1 < total; k++)
+        pt->lk[k] = pt->lk[k + 1];
+    memset(&pt->lk[total - 1], 0, sizeof pt->lk[0]);
+    (*n)--;
+    plat_unlock(f);
+}
+static void lk_swapdel(const void *part, int i)   /* lock i out, the part's last in its place */
+{
+    int s;
+    pattern_t *pt = pat_of(part, &s);
+    plock_t *l = seg_lk(part);
+    uint8_t n;
+    if (!pt || i < 0 || i >= (n = *seg_n(pt, s)))
+        return;
+    l[i] = l[n - 1];
+    lk_del(part, n - 1);
+}
+static void lk_clear(const void *part)    /* every lock of the part */
+{
+    int s;
+    pattern_t *pt = pat_of(part, &s);
+    if (pt)
+        while (*seg_n(pt, s))
+            lk_del(part, *seg_n(pt, s) - 1);
+}
+static void pat_locks_check(pattern_t *pt)   /* (a load) counts past the pool: none kept */
+{
+    int k, bad = pt->d.nlk > NLOCKS;
+    for (k = 0; k < NINST; k++)
+        bad |= pt->t[k].nlk > NLOCKS;
+    if (bad || pat_nlk(pt) > PAT_LOCKS) {
+        pt->d.nlk = 0;
+        for (k = 0; k < NINST; k++)
+            pt->t[k].nlk = 0;
+        memset(pt->lk, 0, sizeof pt->lk);
+    }
+}
+
 /* an instrument part's locks: a sound parameter's value for one step */
 static int ilock_find(const ipart_t *p, int step, int param)
 {
     int i;
     for (i = 0; i < p->nlk; i++)
-        if (p->lk[i].step == step && p->lk[i].param == param)
+        if (LK(p)[i].step == step && LK(p)[i].param == param)
             return i;
     return -1;
 }
@@ -728,24 +837,21 @@ static int ilock_put(ipart_t *p, int step, int param, int val)   /* 0, or -1: no
 {
     int i = ilock_find(p, step, param);
     if (i < 0) {
-        if (p->nlk >= NILOCKS)
+        if ((i = lk_add(p)) < 0)
             return -1;
-        i = p->nlk++;
-        p->lk[i].step = (uint8_t)step;
-        p->lk[i].param = (uint8_t)param;
+        LK(p)[i].step = (uint8_t)step;
+        LK(p)[i].param = (uint8_t)param;
     }
-    p->lk[i].val = (int8_t)val;
+    LK(p)[i].val = (int8_t)val;
     return 0;
 }
 
 static int ilock_clear_step(ipart_t *p, int step)   /* how many went */
 {
-    int i = 0, j, n = 0;
+    int i = 0, n = 0;
     while (i < p->nlk) {
-        if (p->lk[i].step == step) {
-            for (j = i; j + 1 < p->nlk; j++)
-                p->lk[j] = p->lk[j + 1];
-            p->nlk--;
+        if (LK(p)[i].step == step) {
+            lk_del(p, i);
             n++;
         } else {
             i++;
@@ -758,7 +864,7 @@ static int istep_locked(const ipart_t *p, int step)
 {
     int i;
     for (i = 0; i < p->nlk; i++)
-        if (p->lk[i].step == step)
+        if (LK(p)[i].step == step)
             return 1;
     return 0;
 }
@@ -768,7 +874,7 @@ static int lock_find(const dpart_t *p, int step, int pad, int param)
 {
     int i;
     for (i = 0; i < p->nlk; i++)
-        if (p->lk[i].step == step && p->lk[i].pad == pad && p->lk[i].param == param)
+        if (LK(p)[i].step == step && LK(p)[i].pad == pad && LK(p)[i].param == param)
             return i;
     return -1;
 }
@@ -777,30 +883,23 @@ static int lock_put(dpart_t *p, int step, int pad, int param, int val)   /* 0, o
 {
     int i = lock_find(p, step, pad, param);
     if (i < 0) {
-        if (p->nlk >= NLOCKS)
+        if ((i = lk_add(p)) < 0)
             return -1;
-        i = p->nlk++;
-        p->lk[i].step = (uint8_t)step;
-        p->lk[i].pad = (uint8_t)pad;
-        p->lk[i].param = (uint8_t)param;
+        LK(p)[i].step = (uint8_t)step;
+        LK(p)[i].pad = (uint8_t)pad;
+        LK(p)[i].param = (uint8_t)param;
     }
-    p->lk[i].val = (uint8_t)val;
+    LK(p)[i].val = (uint8_t)val;
     return 0;
 }
 
-static void lock_del(dpart_t *p, int i)
-{
-    for (; i + 1 < p->nlk; i++)
-        p->lk[i] = p->lk[i + 1];
-    if (p->nlk)
-        p->nlk--;
-}
+static void lock_del(dpart_t *p, int i) { lk_del(p, i); }
 
 static int lock_clear_step(dpart_t *p, int step, int pad)   /* every lock of that pad's step: how many went */
 {
     int i = 0, n = 0;
     while (i < p->nlk) {
-        if (p->lk[i].step == step && p->lk[i].pad == pad) {
+        if (LK(p)[i].step == step && LK(p)[i].pad == pad) {
             lock_del(p, i);
             n++;
         } else {
@@ -814,9 +913,45 @@ static int step_locked(const dpart_t *p, int step, int pad)
 {
     int i;
     for (i = 0; i < p->nlk; i++)
-        if (p->lk[i].step == step && p->lk[i].pad == pad)
+        if (LK(p)[i].step == step && LK(p)[i].pad == pad)
             return 1;
     return 0;
+}
+
+/* a part over another (paste): its steps and its locks, as many as the pattern has room for (how many did not) */
+static int ipart_copy(ipart_t *d, const ipart_t *o)
+{
+    int i, k, out = 0, n = o->nlk;
+    if (d == o)
+        return 0;
+    lk_clear(d);
+    *d = *o;
+    d->nlk = 0;                           /* (its pool: empty, as cleared) */
+    for (i = 0; i < n; i++) {
+        if ((k = lk_add(d)) < 0) {
+            out++;
+            continue;
+        }
+        LK(d)[k] = LK(o)[i];              /* (LK again each time: o's may have moved) */
+    }
+    return out;
+}
+static int dpart_copy(dpart_t *d, const dpart_t *o)
+{
+    int i, k, out = 0, n = o->nlk;
+    if (d == o)
+        return 0;
+    lk_clear(d);
+    *d = *o;
+    d->nlk = 0;
+    for (i = 0; i < n; i++) {
+        if ((k = lk_add(d)) < 0) {
+            out++;
+            continue;
+        }
+        LK(d)[k] = LK(o)[i];
+    }
+    return out;
 }
 
 static int lk_param(int kit, int i) { return (kit == DRUM_MODEL_707_CB ? (int)LK_707_CB : kit == DRUM_MODEL_707_TB ? (int)LK_707_TB : kit == KIT_707 ? (int)LK_KIT707 : kit == KIT_606 ? (int)LK_KIT606 : kit == KIT_808 ? (int)LK_KIT808 : 0) | i; }
@@ -1064,8 +1199,7 @@ static void project_check(void)           /* a loaded project's values kept in r
             d->len = 16;
         if (d->rate >= NRATES)
             d->rate = RATE_16;
-        if (d->nlk > NLOCKS)
-            d->nlk = 0;
+        pat_locks_check(&proj.p[i]);
         for (t = 0; t < NINST; t++) {
             ipart_t *p = &proj.p[i].t[t];
             if (p->len < 1 || p->len > NSTEPS)
@@ -1146,11 +1280,9 @@ static void project_check(void)           /* a loaded project's values kept in r
     for (i = 0; i < NPAT; i++)
         for (t = 0; t < NINST; t++) {
             ipart_t *p = &proj.p[i].t[t];
-            if (p->nlk > NILOCKS)
-                p->nlk = 0;
             for (s = 0; s < p->nlk; s++)
-                if ((p->lk[s].param >= SP_NUM && p->lk[s].param < IL_X0) || p->lk[s].step >= NSTEPS)
-                    p->lk[s].param = 0, p->lk[s].step = 0, p->lk[s].val = (int8_t)syn_param(0)->def;
+                if ((LK(p)[s].param >= SP_NUM && LK(p)[s].param < IL_X0) || LK(p)[s].step >= NSTEPS)
+                    LK(p)[s].param = 0, LK(p)[s].step = 0, LK(p)[s].val = (int8_t)syn_param(0)->def;
         }
     for (i = 0; i < NPAT; i++)            /* the generators: one never used (seed 0) all zero (every other seed, 1..65535,
                                            * is OCT+'s since 0.5; 0.4 drew 1..999) */
@@ -2121,7 +2253,7 @@ static void locks_apply(const dpart_t *p, int step, int pad)
     uint16_t want = 0, back;
     int i;
     for (i = 0; i < p->nlk; i++) {
-        const lock_t *l = &p->lk[i];
+        const lock_t *l = &LK(p)[i];
         int k = l->param & (lk_model(l->param) >= KIT_NUM ? 0x0F : 0x3F);
         if (l->step != step || l->pad != pad || l->param == LK_PROB || k >= NPOTS ||
             lk_model(l->param) != drum_model(pad))
@@ -2164,12 +2296,12 @@ static void ilocks_apply(int tr, const ipart_t *p, int step)
     uint8_t xon = 0;
     int i;
     for (i = 0; i < p->nlk; i++)
-        if (p->lk[i].step == step && p->lk[i].param < SP_NUM) {
-            syn_set(tr, p->lk[i].param, p->lk[i].val);
-            want |= (uint64_t)1 << p->lk[i].param;
-        } else if (p->lk[i].step == step && p->lk[i].param >= IL_X0 && p->lk[i].param < IL_X0 + XL_NUM) {
-            xlk[tr][p->lk[i].param - IL_X0] = p->lk[i].val;
-            xon |= (uint8_t)(1u << (p->lk[i].param - IL_X0));
+        if (LK(p)[i].step == step && LK(p)[i].param < SP_NUM) {
+            syn_set(tr, LK(p)[i].param, LK(p)[i].val);
+            want |= (uint64_t)1 << LK(p)[i].param;
+        } else if (LK(p)[i].step == step && LK(p)[i].param >= IL_X0 && LK(p)[i].param < IL_X0 + XL_NUM) {
+            xlk[tr][LK(p)[i].param - IL_X0] = LK(p)[i].val;
+            xon |= (uint8_t)(1u << (LK(p)[i].param - IL_X0));
         }
     xlk_on[tr] = xon;
     back = ilk_mask[tr] & ~want;
@@ -2211,7 +2343,7 @@ static uint32_t rnd100(void)              /* 0..99 */
 static int chance_skips(const dpart_t *p, int step, int pad)   /* the step's chance says no this time */
 {
     int i = lock_find(p, step, pad, LK_PROB);
-    return i >= 0 && (int)rnd100() >= p->lk[i].val;
+    return i >= 0 && (int)rnd100() >= LK(p)[i].val;
 }
 
 static float base_step(int tr)            /* a step of the track's part without swing, samples */
@@ -2404,12 +2536,12 @@ static void seq_drum(void)                /* audio interrupt: the drum part's ne
             continue;
         locks_apply(p, next, pad);
         {
-            int j = lock_find(p, next, pad, LK_VEL), a = j >= 0 ? p->lk[j].val & 127 : bit_get(p->acc, next) ? 255 : 0;
+            int j = lock_find(p, next, pad, LK_VEL), a = j >= 0 ? LK(p)[j].val & 127 : bit_get(p->acc, next) ? 255 : 0;
             float v = sub_vel(a);         /* (its own velocity, else its accent's) */
             int late = lock_find(p, next, pad, LK_NUDGE);
             if (late >= 0) {              /* late: the pad's slot plays it, its substeps after */
                 j = lock_find(p, next, pad, LK_SUB);
-                sub_late(pad, j >= 0 ? p->lk[j].val : 1, sq.t[TR_DRUM].dur, a, p->lk[late].val, 0);
+                sub_late(pad, j >= 0 ? LK(p)[j].val : 1, sq.t[TR_DRUM].dur, a, LK(p)[late].val, 0);
                 continue;
             }
             pad_fire(pad, v);
@@ -2418,7 +2550,7 @@ static void seq_drum(void)                /* audio interrupt: the drum part's ne
                 pump_key(drum_model(0), v);
             j = lock_find(p, next, pad, LK_SUB);
             if (j >= 0)
-                sub_arm(pad, p->lk[j].val, sq.t[TR_DRUM].dur, a);
+                sub_arm(pad, LK(p)[j].val, sq.t[TR_DRUM].dur, a);
         }
     }
     sq.t[TR_DRUM].to_next += sq.t[TR_DRUM].dur;
@@ -2458,12 +2590,12 @@ static void seq_inst(int tr)              /* audio interrupt: an instrument part
     gate = note_gate_samples(tr, ps, p->len, s->gate);
     if (!ts->arp_mode && (i = ilock_find(p, ps, IL_NUDGE)) >= 0) {   /* late: the track's slot plays it */
         const int j = ilock_find(p, ps, IL_SUB);
-        sub_late(NPADS + tr - 1, j >= 0 ? p->lk[j].val : 1, sq.t[tr].dur, ps, p->lk[i].val, gate);
+        sub_late(NPADS + tr - 1, j >= 0 ? LK(p)[j].val : 1, sq.t[tr].dur, ps, LK(p)[i].val, gate);
         sq.slid[tr] = 0;
         return;
     }
     if (!ts->arp_mode && (i = ilock_find(p, ps, IL_SUB)) >= 0) {   /* substeps: this note as short as theirs */
-        sub_arm(NPADS + tr - 1, p->lk[i].val, sq.t[tr].dur, ps);
+        sub_arm(NPADS + tr - 1, LK(p)[i].val, sq.t[tr].dur, ps);
         if (sub_on >> (NPADS + tr - 1) & 1u)
             gate = (int32_t)(sub[NPADS + tr - 1].len * 0.5f);
     }
@@ -4874,7 +5006,7 @@ static void step_up(int k)
 static void held_chance(int32_t e)        /* a step held + SELECT: its chance, 100 % (no lock) down to 5 % */
 {
     dpart_t *p = dcur();
-    int s = ui.held_step, i = lock_find(p, s, ui.pad, LK_PROB), c = i >= 0 ? p->lk[i].val : 100, r = 0;
+    int s = ui.held_step, i = lock_find(p, s, ui.pad, LK_PROB), c = i >= 0 ? LK(p)[i].val : 100, r = 0;
     char t[12];
     uint32_t f;
     c = clamp(c + 5 * e, 5, 100);
@@ -4908,14 +5040,14 @@ static void held_sub(int32_t e)           /* a step held + ALGORITHM: its subste
     if (p ? !p->st[s].note[0] : !bit_get(d->hit[ui.pad], s))
         return;
     i = p ? ilock_find(p, s, IL_SUB) : lock_find(d, s, ui.pad, LK_SUB);
-    n = clamp((i >= 0 ? (p ? p->lk[i].val : d->lk[i].val) : 1) + e, 1, 4);
+    n = clamp((i >= 0 ? (p ? LK(p)[i].val : LK(d)[i].val) : 1) + e, 1, 4);
     if (!ui.held_used)
         undo_mark(0);
     ui.held_used = 1;
     f = plat_lock();
     if (n < 2) {
         if (i >= 0 && p)
-            p->lk[i] = p->lk[--p->nlk];
+            lk_swapdel(p, i);
         else if (i >= 0)
             lock_del(d, i);
     } else {
@@ -4980,24 +5112,22 @@ static void cb_paste(int kind, int pad)
     if (kind == CB_PART && inst) {
         ipart_t *d = ipart(tr);
         const ipart_t *o = &proj.p[cb.pat].t[cb.trk - 1];
-        if (d != o)
-            *d = *o;
+        full = ipart_copy(d, o) > 0;
     } else if (kind == CB_PART) {
         dpart_t *d = dcur();
         const dpart_t *o = &proj.p[cb.pat].d;
-        if (d != o)
-            *d = *o;
+        full = dpart_copy(d, o) > 0;
     } else if (kind == CB_STEP && inst) {
         ipart_t *d = ipart(tr);
         const ipart_t *o = &proj.p[cb.pat].t[cb.trk - 1];
         ilock_t keep[8];
         for (i = n = 0; i < o->nlk && n < 8; i++)   /* (the source's locks first: it may be this very part) */
-            if (o->lk[i].step == cb.step)
-                keep[n++] = o->lk[i];
+            if (LK(o)[i].step == cb.step)
+                keep[n++] = LK(o)[i];
         d->st[to] = o->st[cb.step];
         for (i = d->nlk - 1; i >= 0; i--)
-            if (d->lk[i].step == to)
-                d->lk[i] = d->lk[--d->nlk];
+            if (LK(d)[i].step == to)
+                lk_swapdel(d, i);
         for (i = 0; i < n; i++)
             full |= ilock_put(d, to, keep[i].param, keep[i].val);
     } else if (kind == CB_STEP) {
@@ -5009,8 +5139,8 @@ static void cb_paste(int kind, int pad)
         for (i = 0; i < NPADS; i++)
             hits |= (uint16_t)(bit_get(o->hit[i], cb.step) << i);
         for (i = n = 0; i < o->nlk && n < 12; i++)
-            if (o->lk[i].step == cb.step)
-                keep[n++] = o->lk[i];
+            if (LK(o)[i].step == cb.step)
+                keep[n++] = LK(o)[i];
         for (i = 0; i < NPADS; i++) {
             lock_clear_step(d, to, i);
             if (hits >> i & 1u) bit_set(d->hit[i], to); else bit_clear(d->hit[i], to);
@@ -5030,8 +5160,8 @@ static void cb_paste(int kind, int pad)
             for (i = 0; i < STEP_WORDS; i++)
                 d->hit[pad][i] = h[i];
             for (i = 0, n = o->nlk; i < n && i < o->nlk; i++)
-                if (o->lk[i].pad == cb.pad && (d != o || 1))
-                    full |= lock_put(d, o->lk[i].step, pad, o->lk[i].param, o->lk[i].val);
+                if (LK(o)[i].pad == cb.pad && (d != o || 1))
+                    full |= lock_put(d, LK(o)[i].step, pad, LK(o)[i].param, LK(o)[i].val);
         }
     }
     plat_unlock(f);
@@ -5073,14 +5203,14 @@ static void held_nudge(int32_t e)         /* a step held + PRESETS: how late it 
     if (p ? !p->st[s].note[0] : !bit_get(d->hit[ui.pad], s))
         return;
     i = p ? ilock_find(p, s, IL_NUDGE) : lock_find(d, s, ui.pad, LK_NUDGE);
-    n = clamp((i >= 0 ? (p ? p->lk[i].val : d->lk[i].val) : 0) + e, 0, 15);
+    n = clamp((i >= 0 ? (p ? LK(p)[i].val : LK(d)[i].val) : 0) + e, 0, 15);
     if (!ui.held_used)
         undo_mark(0);
     ui.held_used = 1;
     f = plat_lock();
     if (!n) {
         if (i >= 0 && p)
-            p->lk[i] = p->lk[--p->nlk];
+            lk_swapdel(p, i);
         else if (i >= 0)
             lock_del(d, i);
     } else {
@@ -5112,7 +5242,7 @@ static int xl_base(int tr, int i)
 }
 static int xl_value(int tr, int step, int i, char *t)   /* the step's value (its lock, else the track's): 1 locked */
 {
-    int j = step >= 0 ? ilock_find(ipart(tr), step, (int)IL_X0 + i) : -1, v = j >= 0 ? ipart(tr)->lk[j].val : xl_base(tr, i);
+    int j = step >= 0 ? ilock_find(ipart(tr), step, (int)IL_X0 + i) : -1, v = j >= 0 ? LK(ipart(tr))[j].val : xl_base(tr, i);
     t[0] = 0;
     if (i == XL_LRATE && proj.lfo[tr].sync)
         text_cat(t, DIV_NAME[v < NDIV ? v : NDIV - 1]);
@@ -5138,14 +5268,14 @@ static void xl_knob(int i, int32_t e)
     lo = i == XL_LDEPTH ? -64 : i == XL_AGATE ? 5 : 0;
     hi = i == XL_LRATE ? (proj.lfo[tr].sync ? NDIV - 1 : 127) : i == XL_LDEPTH ? 63 : i == XL_ARATE ? NARPRATES - 1 : 100;
     j = ilock_find(p, s, (int)IL_X0 + i);
-    v = clamp((j >= 0 ? p->lk[j].val : xl_base(tr, i)) + e * (i == XL_AGATE ? 5 : 1), lo, hi);
+    v = clamp((j >= 0 ? LK(p)[j].val : xl_base(tr, i)) + e * (i == XL_AGATE ? 5 : 1), lo, hi);
     if (!ui.held_used)
         undo_mark(0);
     ui.held_used = 1;
     f = plat_lock();
     if (v == xl_base(tr, i)) {
         if (j >= 0)
-            p->lk[j] = p->lk[--p->nlk];
+            lk_swapdel(p, j);
     } else {
         r = ilock_put(p, s, (int)IL_X0 + i, v);
     }
@@ -5180,7 +5310,7 @@ static void dhit_knob(int k, int32_t e)   /* the drums' STEPS, a hit held (or th
             undo_mark(0);
         ui.held_used = 1;
         i = lock_find(p, s, ui.pad, LK_VEL);
-        v = clamp((i >= 0 ? p->lk[i].val : bit_get(p->acc, s) ? 127 : (int)(DRUMS_VEL_NORMAL * 127.0f + 0.5f)) + e, 1, 127);
+        v = clamp((i >= 0 ? LK(p)[i].val : bit_get(p->acc, s) ? 127 : (int)(DRUMS_VEL_NORMAL * 127.0f + 0.5f)) + e, 1, 127);
         f = plat_lock();
         if (k == 0)
             i = lock_put(p, s, ui.pad, LK_VEL, v);
@@ -5211,7 +5341,7 @@ static void held_lock(int i, int32_t e)   /* EDIT, a step held + a knob: that kn
         return;
     }
     if (j >= 0)
-        v = p->lk[j].val;
+        v = LK(p)[j].val;
     else
         v = (ovr_mask[ui.pad] >> i & 1u) ? ovr_base[ui.pad][i] : drums_get(drum_model(ui.pad), ui.pad, i);
     v = clamp(v + e, 0, d->max);
@@ -5443,11 +5573,11 @@ static void quantize(void)
                 }
         }
         for (i = 0; i < p->nlk; i++)
-            p->lk[i].step = (uint8_t)q_to(p->lk[i].step, g, len);
+            LK(p)[i].step = (uint8_t)q_to(LK(p)[i].step, g, len);
         for (i = 0; i < p->nlk; i++)      /* two locks of a knob now on one step: the first stays */
             for (j = i + 1; j < p->nlk; j++)
-                if (p->lk[j].step == p->lk[i].step && p->lk[j].pad == p->lk[i].pad && p->lk[j].param == p->lk[i].param) {
-                    p->lk[j] = p->lk[--p->nlk];
+                if (LK(p)[j].step == LK(p)[i].step && LK(p)[j].pad == LK(p)[i].pad && LK(p)[j].param == LK(p)[i].param) {
+                    lk_swapdel(p, j);
                     j--;
                 }
     } else {
@@ -5478,11 +5608,11 @@ static void quantize(void)
             d->prob |= (uint8_t)(o->prob & NS_SLIDE);
         }
         for (i = 0; i < p->nlk; i++)
-            p->lk[i].step = (uint8_t)q_to(p->lk[i].step, g, len);
+            LK(p)[i].step = (uint8_t)q_to(LK(p)[i].step, g, len);
         for (i = 0; i < p->nlk; i++)
             for (j = i + 1; j < p->nlk; j++)
-                if (p->lk[j].step == p->lk[i].step && p->lk[j].param == p->lk[i].param) {
-                    p->lk[j] = p->lk[--p->nlk];
+                if (LK(p)[j].step == LK(p)[i].step && LK(p)[j].param == LK(p)[i].param) {
+                    lk_swapdel(p, j);
                     j--;
                 }
     }
@@ -5541,14 +5671,14 @@ static void part_erase(void)
             sq.skip_once[s] = -1;
         }
         for (word = 0; word < STEP_WORDS; word++) p->acc[word] = 0;
-        p->nlk = 0;
+        lk_clear(p);
         locks_release();                  /* a knob a lock held: its own value again */
         ck.pre_pads = 0;
     } else {
         ipart_t *p = &proj.p[n].t[tr - 1], none;
         for (s = 0; s < NSTEPS; s++)
             nstep_clear(&p->st[s]);
-        p->nlk = 0;
+        lk_clear(p);
         none.nlk = 0;
         ilocks_apply(tr, &none, -1);      /* a knob a lock held: its own value again */
         sq.iskip[tr] = -1;
@@ -5987,7 +6117,7 @@ static void ilock_turn(int id, int32_t e)   /* a step held, a sound knob on EDIT
         return;
     }
     j = ilock_find(p, s, id);
-    v = clamp((j >= 0 ? p->lk[j].val : tset(tr)->snd[id]) + e, d->min, d->max);
+    v = clamp((j >= 0 ? LK(p)[j].val : tset(tr)->snd[id]) + e, d->min, d->max);
     if (!ui.held_used)
         undo_mark(0);
     ui.held_used = 1;
@@ -6040,7 +6170,7 @@ static void snd_turn(int id, int32_t e)   /* a sound's knob, on the EDIT or ENV 
             r = ilock_put(ipart(tr), sq.t[tr].step, id, v);
             plat_unlock(f);
             if (r) {
-                app_say("NO LOCK LEFT", "64 A PART");
+                app_say("NO LOCK LEFT", "256 A PATTERN");
                 return;
             }
         }
@@ -8586,8 +8716,8 @@ static void istep_knob(int k, int32_t e)
             p->st[0] = last;
         }
         for (i = 0; i < p->nlk; i++)
-            if (p->lk[i].step < len)
-                p->lk[i].step = (uint8_t)((p->lk[i].step + d) % len);
+            if (LK(p)[i].step < len)
+                LK(p)[i].step = (uint8_t)((LK(p)[i].step + d) % len);
     } else {
         for (i = 0; i < NSTEPS; i++) {
             nstep_t *q = &p->st[i];
@@ -8937,33 +9067,33 @@ static void part_resize(int up)
     undo_mark(0);
     f = plat_lock();
     if (p) {
-        for (i = 0, k = 0; i < p->nlk; i++)
-            if (p->lk[i].step < (up ? old : newlen)) p->lk[k++] = p->lk[i];
-        p->nlk = (uint8_t)k;
-        for (i = 0; up && i < k; i++) {
-            ilock_t c = p->lk[i];
-            if (p->nlk >= NILOCKS) {
+        for (i = p->nlk - 1; i >= 0; i--)  /* the locks past what stays (all of them already at its length) out */
+            if (LK(p)[i].step >= (up ? old : newlen))
+                lk_del(p, i);
+        for (i = 0, k = p->nlk; up && i < k; i++) {   /* and the first half's again, where the pattern has room */
+            int at = lk_add(p);
+            if (at < 0) {
                 out++;
                 continue;
             }
-            c.step = (uint8_t)(c.step + old);
-            p->lk[p->nlk++] = c;
+            LK(p)[at] = LK(p)[i];
+            LK(p)[at].step = (uint8_t)(LK(p)[at].step + old);
         }
         for (i = up ? old : newlen; i < NSTEPS; i++)
             if (i < newlen) p->st[i] = p->st[i - old];
             else nstep_clear(&p->st[i]);
     } else {
-        for (i = 0, k = 0; i < d->nlk; i++)
-            if (d->lk[i].step < (up ? old : newlen)) d->lk[k++] = d->lk[i];
-        d->nlk = (uint8_t)k;
-        for (i = 0; up && i < k; i++) {
-            lock_t c = d->lk[i];
-            if (d->nlk >= NLOCKS) {
+        for (i = d->nlk - 1; i >= 0; i--)
+            if (LK(d)[i].step >= (up ? old : newlen))
+                lk_del(d, i);
+        for (i = 0, k = d->nlk; up && i < k; i++) {
+            int at = lk_add(d);
+            if (at < 0) {
                 out++;
                 continue;
             }
-            c.step = (uint8_t)(c.step + old);
-            d->lk[d->nlk++] = c;
+            LK(d)[at] = LK(d)[i];
+            LK(d)[at].step = (uint8_t)(LK(d)[at].step + old);
         }
         for (k = 0; k <= NPADS; k++) {
             uint32_t *row = k < NPADS ? d->hit[k] : d->acc;
@@ -10300,7 +10430,7 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
             text_cat(t, bit_get(d->acc, s) ? "ON" : "OFF");
         } else {
             j = lock_find(d, s, ui.pad, k == 0 ? LK_VEL : k == 1 ? LK_PROB : LK_SUB);
-            int_text(j >= 0 ? d->lk[j].val : k == 0 ? (bit_get(d->acc, s) ? 127 : (int)(DRUMS_VEL_NORMAL * 127.0f + 0.5f))
+            int_text(j >= 0 ? LK(d)[j].val : k == 0 ? (bit_get(d->acc, s) ? 127 : (int)(DRUMS_VEL_NORMAL * 127.0f + 0.5f))
                                              : k == 1 ? 100 : 1, t);
             if (k == 1)
                 text_cat(t, "%");
@@ -10326,7 +10456,7 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
             ch = step_chord(s, &root, &inv);
             if (!ch && nstep_count(s) > 1)
                 ch = -1;
-            sub = j >= 0 ? ipart(tr)->lk[j].val : 1;
+            sub = j >= 0 ? LK(ipart(tr))[j].val : 1;
         }
         if (page == ST_PART) {
             text_cat(t, "ALL");
@@ -10381,7 +10511,7 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
         v = idx[i] < NPOTS && (ovr_mask[ui.pad] >> idx[i] & 1u) ? ovr_base[ui.pad][idx[i]]
                                                                : drums_get(drum_model(ui.pad), ui.pad, idx[i]);
         if (ui.held_step >= 0 && (j = lock_find(pat, ui.held_step, ui.pad, lk_param(drum_model(ui.pad), idx[i]))) >= 0)
-            v = pat->lk[j].val;
+            v = LK(pat)[j].val;
         param_text(p, v, t);
         card_put(c, p->name, t, v, 0, p->max, -1);
         c->lock = (uint8_t)(j >= 0);
@@ -10411,7 +10541,7 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
         if (id >= 0 && ui.held_step >= 0) {
             const ipart_t *ip = ipart(tr);
             int j = ilock_find(ip, ui.held_step, id), mn = syn_param(id)->min;
-            v = j >= 0 ? ip->lk[j].val : snd_value(tr, id);
+            v = j >= 0 ? LK(ip)[j].val : snd_value(tr, id);
             syn_param_text(id, v, t);
             card_put(c, snd_label(tr, id), t, v, mn, snd_max(tr, id), mn < 0 ? 0 : -1);
             c->lock = (uint8_t)(j >= 0);
@@ -10442,7 +10572,7 @@ static int kinfo(int kind, int page, int k, card_t *c)   /* knob k on page page 
             mn = syn_param(id)->min;
             v = snd_value(tr, id);
             if (ui.held_step >= 0 && (j = ilock_find(ipart(tr), ui.held_step, id)) >= 0)
-                v = ipart(tr)->lk[j].val;
+                v = LK(ipart(tr))[j].val;
             syn_param_text(id, v, t);
             card_put(c, page == LP_MATRIX ? ML[k] : syn_param(id)->name, t, v, mn, syn_param(id)->max, mn < 0 ? 0 : -1);
             c->lock = (uint8_t)(j >= 0);
@@ -11163,8 +11293,8 @@ static void page_steps(void)              /* the drums' grid: 11 pads and the ac
                     int j = lock_find(p, s, row, LK_SUB), q;
                     if (j < 0)
                         cv_rect(x + 7, y + 1, 4, 3, C_WHITE2);
-                    for (q = 1; j >= 0 && q < p->lk[j].val; q++)   /* substeps: the hit cut in as many */
-                        cv_rect(x + q * 11 / p->lk[j].val, y + 1, 1, 8, C_CANVAS);
+                    for (q = 1; j >= 0 && q < LK(p)[j].val; q++)   /* substeps: the hit cut in as many */
+                        cv_rect(x + q * 11 / LK(p)[j].val, y + 1, 1, 8, C_CANVAS);
                 }
                 if (row == ui.pad && s == ui.held_step)
                     cv_rect(x + 3, y + 3, 5, 4, C_WHITE2);
@@ -11301,7 +11431,7 @@ static void page_roll(void)               /* an instrument part: its notes, pitc
         }
         {   /* substeps: as many yellow dots under it */
             int j = ilock_find(p, s, IL_SUB), q;
-            for (q = 0; j >= 0 && q < p->lk[j].val; q++)
+            for (q = 0; j >= 0 && q < LK(p)[j].val; q++)
                 cv_rect(x + q * 3, H + 1, 2, 3, C_NOW);
         }
         for (i = 0; i < NCHORD && ns->note[i]; i++) {
@@ -11817,7 +11947,7 @@ static void page_dedit(void)              /* the drums' EDIT page: the pad, its 
         int_text(hs + 1, u);
         text_cat(v, u);
         text_cat(v, " LOCKS  ");
-        int_text(c >= 0 ? pat->lk[c].val : 100, u);
+        int_text(c >= 0 ? LK(pat)[c].val : 100, u);
         text_cat(v, u);
         text_cat(v, "%");
         kit_band(t, v, drum_epages(), ui.epage);
@@ -13851,7 +13981,7 @@ int app_expect(const char *what, int *got)
     else if (!strncmp(what, "dvel", 4)) { /* dvelPAD_STEP: the hit's velocity lock (0: none) */
         const char *u = strchr(what, '_');
         int j = u ? lock_find(p, (atoi(u + 1) - 1) & (NSTEPS - 1), atoi(what + 4) % NPADS, LK_VEL) : -1;
-        *got = j >= 0 ? p->lk[j].val : 0;
+        *got = j >= 0 ? LK(p)[j].val : 0;
     }
     else if (!strcmp(what, "hnote"))      /* the held step's note picked: 0 all, 1.. from its lowest */
         *got = ui.hnote;
@@ -14218,7 +14348,7 @@ int app_expect(const char *what, int *got)
         if (tr < 1 || tr >= NTRK || !v)
             return 0;
         j = ilock_find(ipart(tr), (atoi(u + 1) - 1) & (NSTEPS - 1), atoi(v + 1));
-        *got = j >= 0 ? ipart(tr)->lk[j].val : -1000;
+        *got = j >= 0 ? LK(ipart(tr))[j].val : -1000;
     } else if (!strncmp(what, "inlk", 4)) {  /* inlkN: track N's locks in this pattern */
         int tr = atoi(what + 4) - 1;
         if (tr < 1 || tr >= NTRK)
@@ -14257,14 +14387,14 @@ int app_expect(const char *what, int *got)
         int pad = atoi(what + 4), i;
         const char *u = strchr(what, '_');
         i = u ? lock_find(p, (atoi(u + 1) - 1) & (NSTEPS - 1), pad % NPADS, LK_PROB) : -1;
-        *got = i >= 0 ? p->lk[i].val : 100;
+        *got = i >= 0 ? LK(p)[i].val : 100;
     } else if (!strncmp(what, "lock", 4)) {   /* lockP_S_I: pad P's step S, knob I locked to (-1: none) */
         int pad = atoi(what + 4), s, k, i;
         const char *u = strchr(what, '_'), *v = u ? strchr(u + 1, '_') : 0;
         s = u ? (atoi(u + 1) - 1) & (NSTEPS - 1) : 0;
         k = v ? atoi(v + 1) : 0;
         i = lock_find(p, s, pad % NPADS, lk_param(drum_model(pad % NPADS), k));
-        *got = i >= 0 ? p->lk[i].val : -1;
+        *got = i >= 0 ? LK(p)[i].val : -1;
     } else if (!strncmp(what, "acc", 3))  /* accS */
         *got = bit_get(p->acc, (atoi(what + 3) - 1) & (NSTEPS - 1));
     else if (!strncmp(what, "pot", 3)) {  /* potP_I: the kit's pad P, parameter I */
@@ -14289,7 +14419,7 @@ int app_expect(const char *what, int *got)
         int t = atoi(what + 5), st = u ? atoi(u + 1) - 1 : -1, j;
         if (t < 1 || t > NTRK || st < 0 || st >= NSTEPS) return 0;
         j = t == 1 ? lock_find(dcur(), st, ui.pad, LK_NUDGE) : ilock_find(ipart(t - 1), st, IL_NUDGE);
-        *got = j < 0 ? 0 : t == 1 ? dcur()->lk[j].val : ipart(t - 1)->lk[j].val;
+        *got = j < 0 ? 0 : t == 1 ? LK(dcur())[j].val : LK(ipart(t - 1))[j].val;
     } else if (!strncmp(what, "xlk", 3)) {     /* xlkT_I: track T's lock I running now (XL_*), -999 none */
         const char *u = strchr(what, '_');
         int t = atoi(what + 3) - 1, i = u ? atoi(u + 1) : -1;

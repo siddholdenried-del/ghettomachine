@@ -110,14 +110,23 @@ static int project_decode(const uint8_t *in, uint32_t size, int fmt)
             }
         }
         if (put != want) return -1;
-        if (fmt < 14) {
+        if (fmt < 14) {                   /* each part, then its own locks: the parts here, their locks the pool's */
             const uint8_t *o = codec_out;
             pattern_t *p = &proj.p[i];
-            uint32_t t;
+            uint32_t t, k, n, pool = 0;
             for (j = 0; j < sizeof *p; j++) ((uint8_t *)p)[j] = 0;
-            for (j = 0; j < offsetof(dpart_t, lk) + old_locks * sizeof(lock_t); j++) ((uint8_t *)&p->d)[j] = *o++;
-            for (t = 0; t < NINST; t++)
-                for (j = 0; j < offsetof(ipart_t, lk) + old_locks * sizeof(ilock_t); j++) ((uint8_t *)&p->t[t])[j] = *o++;
+            for (t = 0; t <= NINST; t++) {
+                uint8_t *head = t ? (uint8_t *)&p->t[t - 1] : (uint8_t *)&p->d;
+                const uint32_t hb = t ? (uint32_t)sizeof(ipart_t) : (uint32_t)sizeof(dpart_t);
+                uint8_t *nlk = t ? &p->t[t - 1].nlk : &p->d.nlk;
+                for (j = 0; j < hb; j++) head[j] = *o++;
+                n = *nlk > old_locks ? 0u : *nlk;   /* (a count past the table: none, as the check after a load did) */
+                for (k = 0; k < old_locks; k++, o += sizeof(plock_t))
+                    if (k < n)
+                        for (j = 0; j < sizeof(plock_t); j++) ((uint8_t *)&p->lk[pool + k])[j] = o[j];
+                *nlk = (uint8_t)n;
+                pool += n;
+            }
         }
     }
     return at == size ? 0 : -1;

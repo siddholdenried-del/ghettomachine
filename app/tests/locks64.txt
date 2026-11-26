@@ -1,5 +1,5 @@
 # presets: new
-# 64 locks a part (0.5, project format 14; 32 in formats 11 to 13). A format-13 project (proj_v13.img,
+# The lock pool (0.5, project format 14: 256 a pattern, its parts between them; 32 a part in 11 to 13). A format-13 project (proj_v13.img,
 # fixtures/make_v13.txt: the drums' part with 18 locks and SWING 62) loads as it was; its part doubles with all its
 # locks; saved, it is format 14 and comes back the same.  app/build/host/ghettomachine_host app/tests/locks64.txt OUTDIR
 flash_load app/tests/fixtures/proj_v13.img

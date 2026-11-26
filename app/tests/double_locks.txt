@@ -1,8 +1,8 @@
 # presets: new
-# Doubling a part (SEQ + OCT+) with its locks (0.5): 64 a part since project format 14. A part whose locks all fit
-# twice doubles with them; one whose locks do not doubles all the same, the second half takes the locks there is room
-# for, and the rest are said (it refused: TOO MANY LOCKS).  app/build/host/ghettomachine_host app/tests/double_locks.txt OUTDIR
-# nlk: the drum part's locks; len: its steps
+# The pattern's lock pool (0.5, project format 14): 256 locks a pattern, its four parts' between them, so one part
+# can hold far more than 64. Doubling a part (SEQ + OCT+) takes its locks with it where the pattern has room, and says
+# how many did not fit.  app/build/host/ghettomachine_host app/tests/double_locks.txt OUTDIR
+# nlk: the drum part's locks; inlkN: track N's; len: the drum part's steps
 wait 600
 expect len 16
 expect nlk 0
@@ -68,7 +68,7 @@ wait 30
 key 14 up
 wait 30
 expect nlk 18
-# ---- doubled: 32 steps, all 36 locks
+# ---- doubled three times: 128 steps and all 144 locks (one part, past the 64 a part of before)
 listen
 press SEQ
 wait 30
@@ -78,9 +78,6 @@ release SEQ
 wait 60
 expect len 32
 expect nlk 36
-said DOUBLE PART 32 STEPS
-unsaid DID NOT FIT
-# ---- again: 64 steps; 28 of the second half's 36 fit (64 a part)
 press SEQ
 wait 30
 tap OCT+
@@ -88,14 +85,594 @@ wait 30
 release SEQ
 wait 60
 expect len 64
-expect nlk 64
-said 8 LOCKS DID NOT FIT
-# ---- halved back: 32 steps, the first half's 36
+expect nlk 72
+press SEQ
+wait 30
+tap OCT+
+wait 30
+release SEQ
+wait 60
+expect len 128
+expect nlk 144
+said DOUBLE PART 128 STEPS
+unsaid DID NOT FIT
+# ---- back to 64 steps (72 locks); T2 and T3 each a lock on four ENV knobs of all 16 steps: 72 + 64 + 64 = 200
 press SEQ
 wait 30
 tap OCT-
 wait 30
 release SEQ
 wait 60
-expect len 32
-expect nlk 36
+expect len 64
+expect nlk 72
+turn ALGO 1
+wait 30
+expect trk 2
+expect page 0
+key 0 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 0 up
+wait 30
+tap ENV
+wait 30
+key 2 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 2 up
+wait 30
+tap ENV
+wait 30
+key 4 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 4 up
+wait 30
+tap ENV
+wait 30
+key 6 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 6 up
+wait 30
+tap ENV
+wait 30
+key 7 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 7 up
+wait 30
+tap ENV
+wait 30
+key 9 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 9 up
+wait 30
+tap ENV
+wait 30
+key 11 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 11 up
+wait 30
+tap ENV
+wait 30
+key 12 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 12 up
+wait 30
+tap ENV
+wait 30
+key 14 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 14 up
+wait 30
+tap ENV
+wait 30
+key 16 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 16 up
+wait 30
+tap ENV
+wait 30
+key 18 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 18 up
+wait 30
+tap ENV
+wait 30
+key 19 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 19 up
+wait 30
+tap ENV
+wait 30
+key 21 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 21 up
+wait 30
+tap ENV
+wait 30
+key 23 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 23 up
+wait 30
+tap ENV
+wait 30
+key 24 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 24 up
+wait 30
+tap ENV
+wait 30
+key 26 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 26 up
+wait 30
+tap ENV
+wait 30
+expect inlk2 64
+turn ALGO 1
+wait 30
+expect trk 3
+expect page 0
+key 0 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 0 up
+wait 30
+tap ENV
+wait 30
+key 2 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 2 up
+wait 30
+tap ENV
+wait 30
+key 4 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 4 up
+wait 30
+tap ENV
+wait 30
+key 6 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 6 up
+wait 30
+tap ENV
+wait 30
+key 7 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 7 up
+wait 30
+tap ENV
+wait 30
+key 9 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 9 up
+wait 30
+tap ENV
+wait 30
+key 11 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 11 up
+wait 30
+tap ENV
+wait 30
+key 12 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 12 up
+wait 30
+tap ENV
+wait 30
+key 14 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 14 up
+wait 30
+tap ENV
+wait 30
+key 16 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 16 up
+wait 30
+tap ENV
+wait 30
+key 18 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 18 up
+wait 30
+tap ENV
+wait 30
+key 19 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 19 up
+wait 30
+tap ENV
+wait 30
+key 21 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 21 up
+wait 30
+tap ENV
+wait 30
+key 23 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 23 up
+wait 30
+tap ENV
+wait 30
+key 24 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 24 up
+wait 30
+tap ENV
+wait 30
+key 26 down
+wait 30
+tap ENV
+wait 30
+spin K1 20
+wait 20
+spin K2 20
+wait 20
+spin K3 20
+wait 20
+spin K4 20
+wait 20
+key 26 up
+wait 30
+tap ENV
+wait 30
+expect inlk3 64
+expect inlk2 64
+# ---- the drums doubled again: 56 of the 72 fit the pool (256), 16 said
+turn ALGO -2
+wait 30
+expect trk 1
+listen
+press SEQ
+wait 30
+tap OCT+
+wait 30
+release SEQ
+wait 60
+expect len 128
+expect nlk 128
+expect inlk2 64
+expect inlk3 64
+said 16 LOCKS DID NOT FIT
+# ---- the pool full (128 + 64 + 64): a new lock anywhere in the pattern says so
+key 6 down
+wait 30
+turn K2 -5
+wait 30
+key 6 up
+wait 30
+said NO LOCK LEFT
+expect nlk 128
+# ---- undo (three times: the hit and the refused lock were edits of their own): as it was
+press EDIT
+wait 20
+tap OCT-
+wait 20
+release EDIT
+wait 30
+press EDIT
+wait 20
+tap OCT-
+wait 20
+release EDIT
+wait 30
+press EDIT
+wait 20
+tap OCT-
+wait 20
+release EDIT
+wait 30
+expect len 64
+expect nlk 72
+expect inlk2 64
+expect inlk3 64
