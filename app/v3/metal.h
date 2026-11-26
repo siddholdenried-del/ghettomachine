@@ -11,6 +11,7 @@ typedef struct {
     float body_weight, bright_weight, edge_weight, decay_rate;
     float sweep_rate;
     float dark, tone;                     /* (0.5) the ring's darkening: 1 at the strike, falling; its low-pass */
+    float attack;                         /* (0.5) a cymbal's rise, set by the strike's velocity */
     unsigned rise_frames;
     uint32_t age;
     unsigned choke, bell_blend;

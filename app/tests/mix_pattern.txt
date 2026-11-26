@@ -110,7 +110,7 @@ expect fx0 100
 # ---- saved with the project
 tap SAVE
 wait 400
-expect projfmt 12
+expect projfmt 14
 reboot
 wait 600
 expect mixpp 1

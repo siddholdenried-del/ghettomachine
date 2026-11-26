@@ -201,24 +201,24 @@ key 26 up
 wait 30
 expect len 16
 expect nlk 32
-# no more: the 33rd says so
+# a 33rd: room for it since format 14 (64 a part; locks64.txt fills them)
 listen
 wait 100
 key 4 down
 wait 30
 turn K1 -3
 wait 30
-said NO LOCK LEFT
+unsaid NO LOCK LEFT
 key 4 up
 wait 30
-expect nlk 32
+expect nlk 33
 tap SAVE
 wait 400
-expect projfmt 12
+expect projfmt 14
 reboot
 wait 600
-expect projfmt 12
-expect nlk 32
+expect projfmt 14
+expect nlk 33
 expect prob0_1 75
 expect prob0_16 95
 expect dvel0_16 >0

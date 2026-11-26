@@ -28,10 +28,10 @@ expect dirty 1
 tap SAVE
 wait 400
 expect dirty 0
-expect projfmt 12
+expect projfmt 14
 reboot
 wait 600
-expect projfmt 12
+expect projfmt 14
 expect dparam2_7 >0
 expect hit0_3 1
 expect prob0_1 75

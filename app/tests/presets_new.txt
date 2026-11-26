@@ -1,0 +1,66 @@
+# presets: new
+# The second factory set (0.5): six banks by kind, each sound's level trim carried by the track; a project saved with
+# the first set keeps its sounds, their names and their levels.  app/build/host/ghettomachine_host app/tests/presets_new.txt OUTDIR
+# presetN: track N's preset id; ptrimN: its level trim, tenths of a dB; legacyN: its sound is a first-set one from a save
+wait 600
+# ---- a new project: ELECTRO BASS, PLUCK, SOFT PAD of the second set, each with its own trim
+expect preset2 9
+expect legacy2 0
+expect legacy3 0
+expect legacy4 0
+# ---- the banks are kinds: SEL + PRESETS steps MONO BASS, USER SOUNDS (none: skipped), MONO LEAD, POLY, STAB, HIT, DRUM
+turn ALGO 1
+wait 30
+listen
+press SEL
+wait 20
+turn PRESET 1
+wait 60
+said MONO LEAD
+turn PRESET 1
+wait 60
+said POLY
+turn PRESET 1
+wait 60
+said STAB
+turn PRESET 1
+wait 60
+said HIT
+turn PRESET 1
+wait 60
+said DRUM
+turn PRESET -5
+wait 80
+said MONO BASS
+release SEL
+wait 60
+expect preset2 0
+expect legacy2 0
+# PRESETS alone: the next sound of the bank
+turn PRESET 1
+wait 60
+expect preset2 1
+said ACID SQUARE
+# ---- a project saved with the first set: its sounds as they were (SQR BASS's trim), until another preset is picked
+flash_load app/tests/fixtures/proj_v12.img
+reboot
+wait 600
+expect projfmt 12
+expect preset2 0
+expect legacy2 1
+expect ptrim2 -86
+expect legacy3 1
+# (the simulator's restart keeps the track picked: T2)
+expect trk 2
+turn PRESET 1
+wait 60
+expect preset2 1
+expect legacy2 0
+# saved (format 13) and loaded again: T3 still its first-set sound, T2 the new one
+tap SAVE
+wait 400
+reboot
+wait 600
+expect legacy2 0
+expect preset2 1
+expect legacy3 1
