@@ -1,0 +1,80 @@
+name: Sync shared instrument sources
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/v3/**'
+      - 'app/dsp/**'
+      - 'app/tools/gen_engine_tables.py'
+      - 'release/engine_sync.py'
+      - '.github/workflows/sync-instrument-sources.yml'
+  pull_request:
+    paths:
+      - "release/*engine_sync.py"
+      - ".github/workflows/sync-instrument-sources.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: shared-instrument-source-sync
+  cancel-in-progress: false
+jobs:
+  exporter-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - working-directory: release
+        run: python3 -B -m unittest -v test_engine_sync
+  propose:
+    needs: exporter-test
+    if: github.ref == 'refs/heads/main' && github.repository == 'siddholdenried-del/ghettomachine'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [bongdrums, bongsynth]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          path: firmware
+          persist-credentials: false
+      - name: Export only tracked sources
+        env:
+          ENGINE: ${{ matrix.engine }}
+        run: |
+          set -eu
+          # Public main may still predate the unified firmware. Do not substitute local files.
+          if ! git -C firmware cat-file -e "$GITHUB_SHA:app/v3/kit.c"; then
+            echo 'Unified firmware is not yet on main.'; exit 0
+          fi
+          git clone --depth 1 https://github.com/siddholdenried-del/"$ENGINE".git "$ENGINE"
+          python3 firmware/release/engine_sync.py firmware "$GITHUB_SHA" "$ENGINE" "$ENGINE"
+      - name: Open source sync only when opted in
+        env:
+          ENGINE: ${{ matrix.engine }}
+          GH_TOKEN: ${{ secrets.BONG_ENGINE_SYNC_TOKEN }}
+          ENABLED: ${{ vars.BONG_ENGINE_SYNC_ENABLED }}
+        run: |
+          set -eu
+          if [ ! -d "$ENGINE/.git" ]; then exit 0; fi
+          cd "$ENGINE"
+          git add --all
+          if git diff --cached --quiet; then echo 'Shared sources unchanged.'; exit 0; fi
+          git diff --cached --stat
+          if [ "$ENABLED" != true ]; then echo 'Dry run. Not pushing.'; exit 0; fi
+          : "${GH_TOKEN:?Configure a credential limited to Contents and Pull requests on the two instrument repos}"
+          gh auth setup-git
+          git config user.name 'BongEngine sync'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          branch="sync/fm1-${GITHUB_SHA}"
+          git switch -c "$branch"
+          git commit -m "Sync shared engine source from FM-1 ${GITHUB_SHA}"
+          if ! git ls-remote --exit-code --heads origin "refs/heads/$branch" >/dev/null; then
+            git push origin "HEAD:refs/heads/$branch"
+          fi
+          repo="siddholdenried-del/$ENGINE"
+          if [ -z "$(gh pr list -R "$repo" --state all --head "$branch" --json number --jq '.[0].number // empty')" ]; then
+            gh pr create -R "$repo" --base main --head "$branch"               --title "Sync shared engine from FM-1 ${GITHUB_SHA:0:8}"               --body "Exports allowlisted sources from GhettoMachine commit $GITHUB_SHA. Rebuild WASM and check audio, existing presets, and browser compatibility before merging."
+          fi
