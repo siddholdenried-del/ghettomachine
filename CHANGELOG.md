@@ -47,6 +47,11 @@ Doubling a part (SEQ + OCT+) no longer refuses one with more than 16 locks (TOO 
 half takes the locks there is room for, and the rest are counted on the screen for 4 s (DOUBLED, BUT n LOCKS DID NOT
 FIT); undo takes it back. tests/double_locks.txt.
 
+**25 Nov 2026, RAM:** the save packer's 4.9 KB and the generators' 2 KB of scratch are the screen canvas's while they
+run (the canvas is cleared at every drawing; all three are the main loop's). Undo keeps 3 steps (6 before); Bluetooth
+audio still leaves one while it is on, so its 17.7 KB sit beside that step and the history is 21.8 KB, not 23.4. The
+radio's log off (fm1.toml bt_log). Freed: 6.4 KB of the pool, 2.1 KB of .data+.bss, 5.2 KB of flash.
+
 **25 Nov 2026, the drums' velocity:** hats, snare, kick, crash and ride shaped by velocity at the strike (kit_hard /
 kit_soft around the normal 88/127, which sounds as before); hats' and cymbals' tails idle at -90 dB, not -119 (a
 fifth less metal rendering over every recipe; the difference from full tails under -97 dBFS).

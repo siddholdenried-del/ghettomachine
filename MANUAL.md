@@ -129,7 +129,7 @@ you're turning. Purple draws the grids, the empty steps and the boxes. Top to bo
   each use one of the part's 32 locks (16 until project format 11). The step banks are on OCT− / OCT+.
 - **The snare's DECAY** (its editor, page 2, K3): the whole drum's length, body and wires together, −100 % to +100 %.
 
-Hold **SEQ** and tap **OCT+** to repeat the selected track’s part into a second half, or **OCT−** to keep its first half (rounding an odd length down). This copies notes, accents, chance and locks without changing the track’s rate. The second half is erased on halving. A full repeat is blocked if it would exceed 128 steps or the part’s lock capacity. **EDIT + OCT−** undoes, **EDIT + OCT+** redoes. On instrument STEPS, black keys 1–8 pick the available banks of 16.
+Hold **SEQ** and tap **OCT+** to repeat the selected track’s part into a second half, or **OCT−** to keep its first half (rounding an odd length down). This copies notes, accents, chance and locks without changing the track’s rate. The second half is erased on halving. A full repeat is blocked if it would exceed 128 steps. If the part's locks do not all fit twice (32 a part), it still doubles and the screen says how many of the second half's locks did not fit. **EDIT + OCT−** undoes, **EDIT + OCT+** redoes. On instrument STEPS, black keys 1–8 pick the available banks of 16.
 
 On instrument STEPS, hold a step and turn **K3 GATE**. Slow turns edit in eighths of a step; a fast turn snaps to whole bars at the selected rate. A note can hold for up to 128 steps.
 
@@ -727,7 +727,7 @@ Press HOME on the SONG page.
   - **It's late.** The sound reaches the ear 150 to 300 ms after a key, the device's own buffer: for listening
     back, not for playing in time.
   - **Undo keeps one step while it's on** (its memory is lent to the radio), and the undo history is emptied when
-    you turn it on or off. All six steps come back when it's off.
+    you turn it on or off. All three steps come back when it's off.
   - If it's on when you SAVE the project, it comes back on at power-on and reconnects to the last device.
 - **SELECT again: CPU.** Turn SELECT to see where the processor's time goes, live: **DRUMS**, **SYNTH**, **INSERT+COLOR**,
   **REV+DLY CORE2**, **MASTER CORE2**, **OTHER** and the **TOTAL**, each as a share of the time the FM-1 has for each

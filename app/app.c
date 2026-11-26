@@ -4370,11 +4370,17 @@ void app_init(void)
 
 /* ---------------------------------------------------------------------- undo --- */
 /* a snapshot is a whole pattern (all four tracks) */
-#define NUNDO 6                           /* (8 until BongVerb's lines took 26 KB of the pool: a step 3.6 KB) */
+#define NUNDO 3                           /* (0.5, RAM: 6 before, 8 until BongVerb's lines took 26 KB of the pool: a step 3.9 KB) */
+#define BTA_LEND 17920u                   /* Bluetooth audio's buffers (plat_bta_mem_bytes: 17.7 KB), beside undo's first step */
 typedef struct { pattern_t p; gen_t g[NINST]; dgen_t dg; uint8_t k[NINST][NSTEPS / 8]; uint8_t idx; } snap_t;   /* (the parts' generators with them) */
 /* The total can never exceed NUNDO: a new edit drops redo, and undo/redo
  * each move one item. Grow the stacks from opposite ends of one pool. */
-static snap_t history[NUNDO] PLAT_POOL;
+static union {
+    snap_t s[NUNDO];
+    uint8_t room[sizeof(snap_t) + BTA_LEND];   /* (the larger: Bluetooth audio on keeps one step and takes the rest) */
+} hist_mem PLAT_POOL;
+#define history hist_mem.s
+_Static_assert(sizeof(snap_t) % 4u == 0, "the lent memory starts on a word");
 static uint8_t nundo = NUNDO;             /* the steps kept now: 1 while Bluetooth audio has the others' memory (gbta_set) */
 static int undo_n, redo_n;
 static uint32_t undo_t, undo_kind;
@@ -5381,7 +5387,16 @@ static void step_rec_off(int tr)          /* every key of the chord let go: the 
  * gate); locks go with their steps. LEGATO (hold REC + OCT+, T2-T4): each step's gate to the next note's start (and
  * a little past, so a MONO sound with LEGATO ties them), the last to the first's, round the loop (at most 16 steps).
  * Both undoable (EDIT + OCT-) */
-static nstep_t gen_buf[2][NSTEPS];       /* (the generators' scratch, defined below: the main loop's, one user at a time) */
+/* The generators' scratch, the main loop's, one user at a time, nothing kept from one call to the next: (0.5, RAM) in
+ * the screen canvas, after the save packer's part of it (project_codec.h) */
+static nstep_t (*gen_borrow(void))[NSTEPS]
+{
+    lcd_sync();
+    return (nstep_t (*)[NSTEPS])(void *)(cv_px + BORROW_GEN);
+}
+#define gen_buf (gen_borrow())
+_Static_assert((BORROW_GEN * 2u + 2u * NSTEPS * sizeof(nstep_t)) <= APP_CANVAS_PX * 2u, "the packer's and the generators' scratch fit the canvas");
+_Static_assert(2u * NSTEPS * sizeof(nstep_t) >= 4u * NSTEPS * sizeof(uint16_t), "the drum generator's four rows fit the generators' scratch");
 #define q_old gen_buf[1]
 
 static int q_to(int s, int g, int len)
@@ -7166,7 +7181,7 @@ static void gbta_set(int on)
         return;
     if (on) {
         const uint32_t need = plat_bta_mem_bytes();
-        if (gbta.giving || need > (NUNDO - 1) * sizeof(snap_t)) {
+        if (gbta.giving || need > BTA_LEND) {
             app_say("BT AUDIO", gbta.giving ? "WAIT A MOMENT" : "NO MEMORY");
             return;
         }
@@ -7174,7 +7189,7 @@ static void gbta_set(int on)
             undo_n = redo_n = 0;
             undo_kind = 0;
             nundo = 1;
-            plat_bta_mem(&history[1]);
+            plat_bta_mem(hist_mem.room + sizeof(snap_t));
         }
         plat_bta_on(1);
         gbta.on = 1;
@@ -7699,7 +7714,6 @@ static const int8_t GS_DEG[NGSCALES][7] = {   /* each scale from the root, a bas
 #define GEN_ACC 127
 static gen_t gen_last[NTRK];              /* each track's settings used last: a part's first turn starts from them */
 static void seq_knob(int k, int32_t e);
-static nstep_t gen_buf[2][NSTEPS];
 
 static gen_t *gen_of(int tr) { return &proj.gen[clip_of(tr)][tr - 1]; }
 

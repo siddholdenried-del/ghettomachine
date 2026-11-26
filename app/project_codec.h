@@ -6,8 +6,18 @@
  * A preflight counts every byte before erasing the inactive atomic save slot. */
 #define CODEC_BUCKETS 512
 #define CODEC_MAX ((uint32_t)(sizeof(pattern_t) + (sizeof(pattern_t) + 127u) / 128u + 2u))
-static uint8_t codec_out[CODEC_MAX] PLAT_POOL;
-static uint16_t codec_prev[CODEC_BUCKETS] PLAT_POOL;
+/* (0.5, RAM) The packer's 4.9 KB are the screen canvas's while it runs. The canvas is the main loop's scratch: every
+ * drawing clears it first (cv_begin) and it is only read by the transfer lcd_sync waits out. A save, a load and the
+ * generators (gen_buf, app.c) are the main loop's too, so none meets a drawing. */
+#define BORROW_GEN (CODEC_BUCKETS + (CODEC_MAX + 3u) / 4u * 2u)   /* (in canvas pixels: the generators' after the packer's) */
+static uint8_t *codec_out;
+static uint16_t *codec_prev;
+static void codec_borrow(void)
+{
+    lcd_sync();
+    codec_prev = cv_px;
+    codec_out = (uint8_t *)(cv_px + CODEC_BUCKETS);
+}
 _Static_assert(sizeof(pattern_t) < 65535u, "pattern offsets fit the codec");
 
 static uint32_t codec_hash(const uint8_t *p)
@@ -21,6 +31,7 @@ static uint32_t codec_pack(const pattern_t *p)
 {
     const uint8_t *in = (const uint8_t *)p;
     uint32_t n = sizeof *p, at = 0, put = 2, lit = 0, j;
+    codec_borrow();
     for (j = 0; j < CODEC_BUCKETS; j++) codec_prev[j] = 0;
     while (at < n) {
         uint32_t match = 0, dist = 0, take = 1;
@@ -68,6 +79,7 @@ static int project_decode(const uint8_t *in, uint32_t size, int fmt)
     uint8_t *raw = (uint8_t *)&proj, *tail = raw + PROJ_TAIL;
     if (!in || size < at)
         return -1;
+    codec_borrow();
     for (j = 0; j < PROJ_PREFIX; j++) raw[j] = in[j];
     for (j = 0; j < meta_bytes; j++) tail[j] = in[PROJ_PREFIX + j];
     for (i = 0; i < NPAT; i++) {
