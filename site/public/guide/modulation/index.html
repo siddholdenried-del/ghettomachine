@@ -260,9 +260,9 @@ footer { margin-top: 48px; color: var(--muted); font-size: 0.85rem; border-top: 
 <thead><tr><th scope="col">Knob</th><th scope="col">Values</th><th scope="col">What it does</th></tr></thead>
 <tbody>
 <tr><th scope="row">SHAPE</th><td>The same seven shapes as LFO 1</td><td>S&amp;H and SMOOTH pick new random levels for each note.</td></tr>
-<tr><th scope="row">RATE</th><td>0.05–29 Hz (4.8 Hz unless the preset sets another)</td><td>Not tempo-synced. The matrix can move it (destination LFO 2 RATE).</td></tr>
+<tr><th scope="row">RATE</th><td>Free: 0.05–29 Hz. Synced: 4 BARS through 1/32.</td><td>RESTART selects free or tempo-synced rate. The matrix can move it (destination LFO 2 RATE).</td></tr>
 <tr><th scope="row">FADE IN</th><td>OFF, then 1 ms–5.0 s</td><td>Each note's LFO 2 grows from nothing: a delayed vibrato.</td></tr>
-<tr><th scope="row">RESTART</th><td>EACH NOTE or FREE</td><td>EACH NOTE starts every note at the beginning of the wave. FREE starts every note at a random point, so the notes of a chord drift out of step.</td></tr>
+<tr><th scope="row">RESTART</th><td>EACH NOTE, FREE, NOTE SYNC, FREE SYNC</td><td>EACH NOTE and NOTE SYNC start every voice at the beginning of the wave. FREE and FREE SYNC start each voice at a random point. The SYNC modes tie speed to the tempo, not phase to the bar.</td></tr>
 </tbody></table></div>
 <p>LFO 2 is part of the sound: it's saved in user presets and changes with PRESETS. Its four knobs can be locked per step and recorded as motion.</p>
 
@@ -347,7 +347,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 0.85rem; border-top: 
 <ul>
 <li>On T2–T4 you can lock the synth knobs on EDIT and ENV, the macros, LFO 2's knobs and the matrix AMOUNTs. These answer NOT LOCKABLE: TYPE, LEVEL, VOICES (UNISON), LEGATO, the matrix's SOURCE and DEST, and the sampler's START, END, LOOP, LOOP START, ROOT, TUNE and RECORD AT. LFO 1, the arpeggiator, the mixer and the effects can't be locked either.</li>
 <li>On DRUMS, open <strong>EDIT</strong> for the pad (the white keys are its steps there too), hold a lit step and turn one of the pad's knobs. You can also hold the step on STEPS and then tap EDIT. On STEPS itself the knobs are LENGTH, RATE, SWING and TEMPO, not locks. The KIT page and the Sound switches can't be locked.</li>
-<li>Each part holds 32 locks. When they run out the screen says <strong>NO LOCK LEFT</strong>. On DRUMS a step's CHANCE also uses one of those locks. On T2–T4 chance is stored in the step itself.</li>
+<li>In format 14, each pattern has 256 locks shared by DRUMS and T2–T4, with a maximum of 255 on any one part. Format 12 gives each part its own 32. When you hit the limit, the screen says <strong>NO LOCK LEFT</strong>. On DRUMS a step's CHANCE also uses one of those locks. On T2–T4 chance is stored in the step itself.</li>
 <li>Hold a step and press <strong>OCT−</strong> to clear its locks (and put its chance back to 100%).</li>
 </ul>
 <p>Locking a macro or a matrix AMOUNT gives you one-step timbre changes: route MACRO 2 to FM and RING, then lock MACRO 2 high on the off-beats only.</p>

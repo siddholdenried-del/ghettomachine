@@ -23,7 +23,7 @@
 <tbody>
 <tr><th scope="row">SEL + black 1–4</th><td>Track selection.</td><td>DRUMS, T2, T3, T4.</td></tr>
 <tr><th scope="row">SEL + GLO</th><td>Any track page.</td><td>Jump to master bus CHAIN.</td></tr>
-<tr><th scope="row">EDIT + OCT− / OCT+</th><td>Editing.</td><td>Undo / redo, six levels.</td></tr>
+<tr><th scope="row">EDIT + OCT− / OCT+</th><td>Editing.</td><td>Undo / redo. Format 14: five levels, or one while Bluetooth audio is active on hardware. Format 12: six.</td></tr>
 <tr><th scope="row">SAVE + white pattern key</th><td>Choose a destination pattern while holding SAVE.</td><td>Copy to that slot; check the destination before overwriting it.</td></tr>
 <tr><th scope="row">SAVE + PRESETS</th><td>Choose the user slot while holding SAVE.</td><td>Release SAVE to write a synth sound. Reusable custom drum kits are not yet saved this way.</td></tr>
 <tr><th scope="row">SAVE + OCT−</th><td>Select the relevant track and clip first.</td><td>Restore the selected track's saved sound. This isn't an undo of all pattern edits.</td></tr>
@@ -58,7 +58,7 @@
 <tr><th scope="row">User synth presets</th><td>Immediately on releasing SAVE after choosing a user location, while stopped. While playing, the screen says STOP FIRST.</td><td>Separate preset store. Tap SAVE as well to keep the edits in the current project.</td></tr>
 </tbody></table>
 <p>Browser preferences and supported saved objects are local to the site and browser profile. The project itself does not survive a page reload. Use the FM-1 for projects you need to keep. The browser's <strong>Factory reset</strong> requires a second press and forgets its saved groovebox data. It is not an audio fix and cannot restore data once cleared. <strong>Copy session</strong> is for troubleshooting, not backup.</p>
-<p><strong>Project compatibility:</strong> The current firmware reads project formats 4, 5, and 7–14, and saves format 14. It does not read formats 1–3 or the private format 6. Back up important projects before updating; older builds that do not support format 14 cannot open a new save. If an existing project opens blank or shows the default pattern, don’t save over it. Check the project’s format and keep the original backup.</p>
+<p><strong>Project compatibility:</strong> The browser instrument runs the format 14 build. The matching firmware source reads project formats 4, 5, and 7–14, and saves format 14. It does not read formats 1–3 or the private format 6. Back up important projects before updating; older builds that do not support format 14 cannot open a new save. If an existing project opens blank or shows the default pattern, don’t save over it. Check the project’s format and keep the original backup.</p>
 
 <h2 id="hardware-install">FM-1 hardware installation and recovery</h2>
 <p>This page documents the hardware workflow, not an install offer for the current preview. This update is for the browser groovebox only. It does not flash an FM-1 or provide a firmware download. GhettoMachine is replacement firmware for the M-VAVE FM-1. Save before updating, because the install restarts the device. Once an fm1-base or Felucca-based firmware is present, the fm1-base USB-MIDI installer can send the built GhettoMachine <code>.fwsc</code> package. It writes changed 4 KiB firmware sectors, not the boot code. Projects and samples are separate from those writes.</p>

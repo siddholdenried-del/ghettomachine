@@ -26,7 +26,7 @@
 <tr><th scope="row">REC</th><td>Arm or disarm recording (notes, hits and knob motion).</td><td>Held: the REC page (K1 CLICK, K2 COUNT-IN, K3 QUANTIZE, K4 click LEVEL). REC + OCT−: quantize the part. REC + OCT+: legato, notes held to the next (T2–T4). REC + GLO: erase the selected track's part in the pattern it plays (its notes or hits, accents, chance and step locks go; LENGTH, RATE, pad mutes and ACID settings stay); recording stays as it was and the step-record cursor goes back to step 1. REC + SEL: start sampling (SAMPLER tracks).</td></tr>
 <tr><th scope="row">SEL</th><td>Shows SEL + PAD KEYS 1-4 PICK A TRACK. While sampling, stops the recording.</td><td>SEL + black 1–4: pick DRUMS, T2, T3, T4. SEL + GLO: master bus. SEL + SELECT on HOME while playing: nudge 5 ms per click. REC + SEL: sampling.</td></tr>
 <tr><th scope="row">SAVE</th><td>Save the project (lit: unsaved changes). While playing, it saves when you stop.</td><td>SAVE + PRESETS, then let go: save a user synth sound (only while stopped). SAVE + white key: copy the current pattern to that slot. SAVE + OCT−: reload the selected track's sound as last saved.</td></tr>
-<tr><th scope="row">EDIT</th><td>EDIT pages (acts on release).</td><td>EDIT + OCT−: undo. EDIT + OCT+: redo. Six levels.</td></tr>
+<tr><th scope="row">EDIT</th><td>EDIT pages (acts on release).</td><td>EDIT + OCT−: undo. EDIT + OCT+: redo. See <a href="#limits">Limits</a> for undo depth.</td></tr>
 <tr><th scope="row">SEQ</th><td>STEPS, ACID, KEYS (see above).</td><td>Held on DRUMS STEPS: the step lights show accents, and white keys toggle accents.</td></tr>
 <tr><th scope="row">ENV, LFO, ARP, FX, GLO, HOME</th><td>Their pages (see above).</td><td>No hold function.</td></tr>
 <tr><th scope="row">OCT−</th><td colspan="2">In order of priority: SAVE held: reload the sound. HOME with a track key held: stop that track's clip. HOME (EDIT and REC not held): tap tempo, tapped twice or more. REC held: QUANTIZE. A step held: clear its locks and chance. EDIT held: undo. SONG: delete the cursor's entry. ACID: MUTATE. T2–T4 KEYS, EDIT, ENV, LFO, ARP, mixer, FX and master pages: octave down. STEPS and DRUMS EDIT: previous step bank.</td></tr>
@@ -72,7 +72,7 @@
 <tr><th scope="row">Held step: K1 NOTE</th><td>Moves the step's note, or its whole chord, by semitones</td><td>You hear the step while stopped. A “+” after the note means a chord.</td></tr>
 <tr><th scope="row">Held step: K2 VELOCITY</th><td>1–127, then ACCENT</td><td>ACCENT is 127 with the 303-style accent: louder with a filter lift.</td></tr>
 <tr><th scope="row">Held step: K3 GATE</th><td>⅛–128 steps</td><td>Turn slowly for an eighth of a step per click, or quickly to snap to musical bars at the selected RATE. SLIDE shows when the step slides.</td></tr>
-<tr><th scope="row">Held step: CHANCE knob</th><td>5–100%, 5% a click</td><td>Also on DRUMS, where it uses one of the part's 32 locks.</td></tr>
+<tr><th scope="row">Held step: CHANCE knob</th><td>5–100%, 5% a click</td><td>Also on DRUMS, where it uses one step lock.</td></tr>
 <tr><th scope="row">Held step: OCT+</th><td>HALF, WHOLE, SLIDE</td><td>T2–T4. HALF is half a step. WHOLE holds to just before the next note. SLIDE glides into the next note without a new attack.</td></tr>
 </tbody></table>
 
@@ -222,10 +222,10 @@
 <tr><th scope="row">Patterns</th><td>16, each with a DRUMS part and T2, T3, T4 parts</td></tr>
 <tr><th scope="row">Part length</th><td>1–128 steps, in banks of 16</td></tr>
 <tr><th scope="row">Notes per step</th><td>4 (T2–T4)</td></tr>
-<tr><th scope="row">Locks</th><td>16 per part (on DRUMS, a step's chance uses one)</td></tr>
+<tr><th scope="row">Locks</th><td>Format 14: 256 per pattern shared by its four parts, with up to 255 on one part. Format 12: 32 per part. Drum chance uses a lock.</td></tr>
 <tr><th scope="row">Gate</th><td>Up to 128 steps</td></tr>
 <tr><th scope="row">Voices</th><td>16 shared by T2–T4; POLY up to 8 per track; MONO up to 4 in unison. Fewer while the processor is short of time.</td></tr>
-<tr><th scope="row">Undo</th><td>8 pattern edits, and redo</td></tr>
+<tr><th scope="row">Undo</th><td>Format 14: up to five pattern edits and redo (one while Bluetooth audio is active on hardware). Format 12: six.</td></tr>
 <tr><th scope="row">Song</th><td>32 entries of 1–16 bars</td></tr>
 <tr><th scope="row">User presets</th><td>16 synth sounds</td></tr>
 <tr><th scope="row">Tempo and swing</th><td>60–240 BPM; 50–75%</td></tr>
@@ -240,7 +240,7 @@
 <thead><tr><th scope="col">Message</th><th scope="col">Meaning</th></tr></thead>
 <tbody>
 <tr><th scope="row">STEP PAST THE END</th><td>That step is beyond the part's LENGTH. Raise K1 LENGTH first.</td></tr>
-<tr><th scope="row">NO LOCK LEFT</th><td>The part's 32 locks are used. Clear some with a held step + OCT−.</td></tr>
+<tr><th scope="row">NO LOCK LEFT</th><td>The pattern’s shared lock pool or the part’s limit is full. Clear locks with a held step + OCT−.</td></tr>
 <tr><th scope="row">NOT LOCKABLE</th><td>That knob can't be locked to a step (TYPE, LEVEL, VOICES, LEGATO, matrix SOURCE and DEST, the sampler's own knobs, the drum KIT page, Sound switches).</td></tr>
 <tr><th scope="row">LOCKS CLEARED / NO LOCKS / CHANCE 100%</th><td>A held step + OCT− cleared its locks, or it had none.</td></tr>
 <tr><th scope="row">SAVE WHEN STOPPED</th><td>SAVE while playing: the project saves when you stop.</td></tr>
