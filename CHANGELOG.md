@@ -43,6 +43,9 @@ Then the shells rest at -96 dBFS, not -118 (auditioned old against new; a lone h
 the audio interrupt, a block (5.8 ms) at most after they move; the main loop, which a frame's drawing kept from the
 keys for up to 30 ms while playing on HOME (measured: the CPU view's KEYS MS MAX), follows up with the rest of a stop,
 a save that waited, the screen and the words. A count-in is the main loop's still. tests/fastkeys.txt.
+Doubling a part (SEQ + OCT+) no longer refuses one with more than 16 locks (TOO MANY LOCKS): it doubles, the second
+half takes the locks there is room for, and the rest are counted on the screen for 4 s (DOUBLED, BUT n LOCKS DID NOT
+FIT); undo takes it back. tests/double_locks.txt.
 
 **25 Nov 2026, the drums' velocity:** hats, snare, kick, crash and ride shaped by velocity at the strike (kit_hard /
 kit_soft around the normal 88/127, which sounds as before); hats' and cymbals' tails idle at -90 dB, not -119 (a

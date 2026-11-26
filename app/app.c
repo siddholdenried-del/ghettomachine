@@ -8889,10 +8889,10 @@ static void knob(int k, int32_t e)        /* KNOB 1..4 (k 0..3) on the page show
 }
 
 /* SEQ + octave doubles the selected clip's active loop or truncates it.
- * Preflight locks: never repeat the notes but silently drop their automation. */
+ * Locks that do not fit the second half are counted and said, never dropped silently. */
 static void part_resize(int up)
 {
-    int tr = ui.trk, i, k, count = 0;
+    int tr = ui.trk, i, k, out = 0;
     pattern_t *pat = &proj.p[clip_of(tr)];
     dpart_t *d = &pat->d;
     ipart_t *p = tr == TR_DRUM ? 0 : &pat->t[tr - 1];
@@ -8908,15 +8908,8 @@ static void part_resize(int up)
         app_say("HALVE PART", "MIN 1 STEP");
         return;
     }
-    if (up) {
-        int locks = p ? p->nlk : d->nlk;
-        for (i = 0; i < locks; i++)
-            count += (p ? p->lk[i].step : d->lk[i].step) < old;
-        if (count * 2 > (p ? NILOCKS : NLOCKS)) {
-            app_say("DOUBLE PART", "TOO MANY LOCKS");
-            return;
-        }
-    }
+    /* (0.5) A part with more than half its locks used doubles all the same: its steps all of them, and as many of
+       the second half's locks as there is room for; the rest are said (it refused: TOO MANY LOCKS) */
     undo_mark(0);
     f = plat_lock();
     if (p) {
@@ -8925,6 +8918,10 @@ static void part_resize(int up)
         p->nlk = (uint8_t)k;
         for (i = 0; up && i < k; i++) {
             ilock_t c = p->lk[i];
+            if (p->nlk >= NILOCKS) {
+                out++;
+                continue;
+            }
             c.step = (uint8_t)(c.step + old);
             p->lk[p->nlk++] = c;
         }
@@ -8937,6 +8934,10 @@ static void part_resize(int up)
         d->nlk = (uint8_t)k;
         for (i = 0; up && i < k; i++) {
             lock_t c = d->lk[i];
+            if (d->nlk >= NLOCKS) {
+                out++;
+                continue;
+            }
             c.step = (uint8_t)(c.step + old);
             d->lk[d->nlk++] = c;
         }
@@ -8953,7 +8954,15 @@ static void part_resize(int up)
     plat_unlock(f);
     int_text(newlen, t);
     text_cat(t, " STEPS");
-    app_say(up ? "DOUBLE PART" : "HALVE PART", t);
+    if (out) {                            /* (longer on the screen: it has to be read) */
+        char w[24];
+        int_text(out, w);
+        text_cat(w, " LOCKS DID NOT FIT");
+        app_say("DOUBLED, BUT", w);
+        ui.msg_until = plat_ms() + 4000u;
+    } else {
+        app_say(up ? "DOUBLE PART" : "HALVE PART", t);
+    }
     ui.redraw = 1;
 }
 
@@ -13779,6 +13788,15 @@ int app_expect(const char *what, int *got)
         *got = SEQ_RUN;                   /* (held by the audio interrupt: stopped, as heard) */
     else if (!strcmp(what, "playevt"))    /* the presses of PLAY the audio interrupt took */
         *got = play_evt;
+    else if (!strcmp(what, "savesize")) { /* what a save would write now, bytes; projcap: what fits; projmeta: its fixed part */
+        uint32_t z = PROJ_META, q;
+        for (q = 0; q < NPAT; q++)
+            z += codec_pack(&proj.p[q]);
+        *got = (int)z;
+    } else if (!strcmp(what, "projcap"))
+        *got = (int)PROJ_CAPACITY;
+    else if (!strcmp(what, "projmeta"))
+        *got = (int)PROJ_META;
     else if (!strcmp(what, "step"))
         *got = sq.t[TR_DRUM].step;
     else if (!strcmp(what, "len"))
