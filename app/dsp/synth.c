@@ -47,6 +47,9 @@ static const char *const N_L2DIV[L2_NDIV] = {"4 BARS", "2 BARS", "1 BAR", "1/2",
                                              "1/16T", "1/32"};
 static const float L2_BEATS[L2_NDIV] = {16.0f, 8.0f, 4.0f, 2.0f, 1.5f, 1.0f, 0.75f, 0.5f, 0.33333f, 0.25f, 0.16667f, 0.125f};
 static float syn_bpm = 120.0f;
+/* LFO 2 synced: each division's phase step a control tick, worked out again only when the tempo changes (syn_prepare),
+ * by the same operations in the same order as the per-voice sum it replaced: the same bits */
+static float l2_sync_bpm = -1.0f, l2_sync_inc[L2_NDIV];
 static int text_sync;                     /* syn_param_text: LFO 2's RATE reads as a division (syn_text_track's track is synced) */
 static const char *const N_MSRC[MS_NUM] = {"OFF", "LFO 1", "LFO 2", "MOD ENV", "FILT ENV", "AMP ENV", "VELOCITY", "NOTE",
                                           "RANDOM", "MACRO 1", "MACRO 2", "MACRO 3", "MACRO 4", "PRESSURE"};
@@ -1125,6 +1128,12 @@ void syn_split(int share0_q8) { split_q8 = share0_q8 < 0 ? 0 : share0_q8 > 256 ?
 void syn_prepare(void)
 {
     int i, h = 0, deal = 128;
+    const float bpm = syn_bpm;
+    if (bpm != l2_sync_bpm) {
+        for (i = 0; i < L2_NDIV; i++)
+            l2_sync_inc[i] = bpm * (1.0f / 60.0f) / L2_BEATS[i] * ((float)SYN_CTL / 44100.0f);
+        l2_sync_bpm = bpm;
+    }
     for (i = 1; i < SYN_TRACKS; i++) {
         tk[i].press += (tk[i].press_to - tk[i].press) * 0.35f;   /* (a block at a time: no steps in the filter) */
         push_mod(i);
@@ -1161,8 +1170,7 @@ void syn_prepare(void)
         x->menv = env_step(&x->mstage, x->menv, s, SP_MA, SP_MD, SP_MS, SP_MR);
         {   /* LFO 2: each note's own */
             int ri = clamp(s[SP_L2RATE] + (int32_t)x->l2rate, 0, 127);
-            x->l2ph += (s[SP_L2KEY] & 2) ? syn_bpm * (1.0f / 60.0f) / L2_BEATS[ri * L2_NDIV / 128] * ((float)SYN_CTL / 44100.0f)
-                                         : L2_INC[ri];
+            x->l2ph += (s[SP_L2KEY] & 2) ? l2_sync_inc[ri * L2_NDIV / 128] : L2_INC[ri];
             if (x->l2ph >= 1.0f) {
                 x->l2ph -= (float)(int32_t)x->l2ph;
                 x->l2a = x->l2b;
