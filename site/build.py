@@ -243,7 +243,7 @@ LANDING = """<div class="hero gm-home">
     <div class="gm-hero-copy">
       <div class="top"><span class="label">Custom firmware for the M-VAVE FM-1</span><span class="ver">RELEASE_VERSION_LABEL</span></div>
       <h1><span class="logo">GhettoMachine</span></h1>
-      <p class="sub">Four-track groovebox firmware. 909 and 808 kits, three synth or sampler tracks, and a 128-step sequencer.</p>
+      <p class="sub">Four-track groovebox firmware. Genre drum kits, three synth or sampler tracks, and a 128-step sequencer.</p>
     </div>
     <img class="gm-four-registers" src="/bongcult-frame/windchest/four-registers.webp"
       srcset="/bongcult-frame/windchest/four-registers-540.webp 540w, /bongcult-frame/windchest/four-registers.webp 1080w"
@@ -323,7 +323,7 @@ def build_landing(out):
         '    <div class="band"><h2>Play it</h2><span class="tag">IN THE BROWSER</span></div>\n'
         "    <p>This is GhettoMachine itself, compiled to WebAssembly: the same sequencer, drums, synth, effects and screen as on "
         "the FM-1, drawn as its panel. Press <strong>Switch on</strong>, then <strong>PLAY / STOP</strong> to hear its demo "
-        "groove, and play it with the mouse or your computer's keyboard. Your work is kept in this browser. If an iPhone "
+        "groove, and play it with the mouse or your computer's keyboard. Browser project saves last only until reload. If an iPhone "
         "stays silent, turn up its volume, and turn off silent mode: older iOS versions mute web audio in it.</p>\n"
         '    <div class="emu-frame"><iframe src="/emu/" title="GhettoMachine, running in the browser" allow="midi; autoplay" '
         'loading="lazy"></iframe></div>\n'

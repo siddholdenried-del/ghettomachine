@@ -1,12 +1,9 @@
 # GhettoMachine development preview
 
-This is a browser release candidate, not a new numbered firmware release. No firmware download is published for it.
+The [browser groovebox](https://ghettomachine.bongcult.com/emu/) was updated on November 25, 2026. It uses GhettoMachine source `31fccda0321f403bab914f7f094e4f38e7a906d1` and is shipped by site commit `eef6bcd`. The public manifest and the served WebAssembly match the recorded release digest. This is a web release, not a firmware download or a hardware install.
 
-- Up to 128 steps per track. Gate can span 128 steps; chord stamping and per-step note editing are on instrument STEPS.
-- 909 and 808 kits (the synthesized 606 and 707 were cut on 21 Nov 2026). Retains the current live build's 808 level matching.
-- Mutes cut an active drum or instrument immediately. An instrument's insert tail is cleared with its track; already-ringing shared delay/reverb can continue.
-- On T2–T4, hold **SEL** and tap **FX** for a single insert, then use SELECT to choose a mode/OFF and K4 for wet mix. It is independent of the two shared sends and the master.
-- Dark Dungeon BBS display and supplied boot art, on the same sequencer and audio paths.
-- This preview reads project formats 1–5 and 7, and saves format 7. Format 6 from private development builds is not supported. Earlier firmware cannot open a format 7 save; keep a backup for downgrades. If an existing project opens blank or shows the default pattern, don’t save over it.
+- On STEPS, hold **SEQ** and tap **OCT+** to repeat the selected track's part, up to 128 steps. In the browser, Shift-click **SEQ** to hold it, click **OCT+**, then click **SEQ** to release.
+- DRUMS **PRESETS** selects a genre kit; inside a pad's editor it selects that pad's preset. On DRUMS/STEPS, hold a lit hit to reach **K1 VELOCITY** (1–127).
+- Browser project **SAVE** is session-only. Reloading or closing the page starts a new session. Do not use the preview as a persistent project backup.
 
-Browser engine and site compiler provenance, hashes and device artifact status are listed separately in `site/public/release.json`. The how-it-works tour explicitly describes the historical 0.5 build.
+The [public release manifest](https://ghettomachine.bongcult.com/release.json) records browser provenance and separately labels the device target as not built or distributed for this release. The how-it-works tour describes an older 0.5 build.

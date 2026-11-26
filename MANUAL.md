@@ -103,26 +103,11 @@ you're turning. Purple draws the grids, the empty steps and the boxes. Top to bo
 
 ## The drum track
 
-- **Pads:** the 11 black keys are BD, SD, LT, MT, HT, RS, CP, CH, OH and CR/RD (909) or CY/CB (808). Pressing one picks it
-  and plays it. Steps are kept when switching kits. (The 606 and the 707 kits, and the 707's Cowbell and Tambourine,
-  were cut on 21 Nov: a project saved on the 606 loads on the 808, one saved on the 707 on the 909, and a pad that
-  used one of their voices plays its kit's own.)
-- **Mix models:** pick a pad, open **EDIT**, and turn **SELECT** fully right to **DRUM MODEL**. Turn **K1** to choose
-  the 909's or the 808's voice for that pad. The kit reads **CUSTOM** as soon as a lane differs. It keeps
-  the lane’s steps, MIDI note and mute, but cuts its previous sound. Factory presets restore their own lane maps.
-- **Steps (SEQ):** the 16 white keys are the picked pad's steps. Press an empty step to light it; press and let go of a
-  lit one to clear it. OCT− / OCT+ or SELECT move through step pages up to 128. The beats, steps 1, 5, 9 and 13 of the
-  page, glow dimly while they're empty, and the screen's grid gives them a darker column, so a bar is easy to count.
-  - Hold **SEQ** and press steps: accents.
-  - Hold a step and turn **SELECT**: its chance (100 % to 5 %).
-  - Hold a step and turn **ALGORITHM**: its substeps. The step plays 2, 3 or 4 times within its own length (a ratchet); 1 takes it away. It uses one of the part's locks. Works on drum hits and on synth steps (not while the track's arpeggiator is on). The grid shows a drum hit cut into as many pieces, a synth step as many yellow dots.
-- **EDIT:** the pad's knobs: tune, tone, decay, its reverb and delay sends, and so on. SELECT for more; EDIT again goes
-  back to where you were. The last page is the kit's own knobs (accent, velocity).
-- **The two kits play at the same level:** each 808 sound is as loud as the 909 pad that plays its part (until 21 Nov
-  the 808 played a groove about 12 dB quieter). The 808's accent is stronger than the 909's, as on a real 808: about
-  6 dB against 3; the KIT page's Accent sets it.
-  - Hold a step and turn a knob: that value for that step only (a lock). Held step + OCT− clears its locks.
-- **ENV:** the LANE MUTE page. Tap a black pad key to toggle that drum lane in this pattern, or hold **ENV** and tap a pad from the drum editor. The grid shows each lane as ON or MUTE. OCT+ unmutes them all. With the DrumEngine (the default) a lane mute is the lane's sound only: it fades out in 1.5 ms and its hits go on underneath, so unmuting brings back a tail that's still ringing. (On the stock 808/909 engine a mute stops the lane's hits, and unmuting waits for the next one.) The QUICK MIXER's white keys are the same mutes.
+- **Pads:** the 11 black keys, left to right, are **KICK, SNARE, CLAP, LOW TOM, MID TOM, HIGH TOM, CLOSED HAT, OPEN HAT, CYMBAL, PERC 1, PERC 2**. Tap a pad to select and audition it.
+- **Kits and pad presets:** turn **PRESETS** on DRUMS to pick a genre kit. In a pad's **EDIT** page, turn **PRESETS** to choose just that pad's sound. Kit and pad preset changes don't rewrite the steps. Project **SAVE** keeps drum edits on the device; the browser is session-only. **SAVE + PRESETS** does not save a whole custom kit as a reusable preset on this build.
+- **Steps (SEQ):** the 16 white keys are the selected pad's steps. Tap an empty step to add a hit. Tap and release a lit step without editing it to clear that hit. Use **OCT− / OCT+** to move through the banks. Hold **SEQ** and press a step to toggle the accent.
+- **EDIT:** change the selected pad's sound with **K1–K4**. Turn **SELECT** to move through its parameter pages. Release a held step before turning an EDIT knob to change the pad's sound.
+- **ENV:** open **LANE MUTE**. Tap a black key to mute or unmute that lane; **OCT+** unmutes all lanes. Existing hits keep running under the mute, so a tail that's still ringing can be heard when you unmute. The Quick Mixer's white keys provide the same individual drum mutes.
 - **Knobs on the steps page:** LENGTH and RATE of this track's part, SWING and TEMPO (**PART GROOVE**). Turn **SELECT**
   for **DRUM HIT**, or just hold a lit step: **K1 VELOCITY** (that hit's own, 1–127; none set, it plays normal or
   accented), **K2 CHANCE**, **K3 SUBSTEPS**, **K4 ACCENT** (the step's, for every pad). Velocity, chance and substeps

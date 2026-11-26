@@ -125,11 +125,11 @@
       "path": "guide/recording/index.html"
     },
     {
-      "literal": "909 and 808 kits, three synth or sampler tracks, and a 128-step sequencer.",
+      "literal": "Genre drum kits, three synth or sampler tracks, and a 128-step sequencer.",
       "path": "index.html"
     },
     {
-      "literal": "This guide covers the current browser development preview",
+      "literal": "Browser project saves don't survive a reload.",
       "path": "guide/index.html"
     },
     {
@@ -157,7 +157,7 @@
       "path": "emu/index.html"
     },
     {
-      "literal": "the last page, <strong>DRUM MODEL</strong>",
+      "literal": "<strong>K1 VELOCITY</strong>",
       "path": "guide/beats/index.html"
     },
     {
@@ -173,7 +173,7 @@
       "path": "guide/setup/index.html"
     },
     {
-      "literal": "Turn SELECT on SETUP to see where the processor's time goes",
+      "literal": "Browser timings don't predict FM-1 load.",
       "path": "guide/setup/index.html"
     }
   ],
