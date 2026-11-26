@@ -48,7 +48,7 @@ expect dparam1_0 460
 # ---- saved in format 13; after a restart each pattern still has its own
 tap SAVE
 wait 400
-expect projfmt 13
+expect projfmt 14
 reboot
 wait 600
 expect pat 2

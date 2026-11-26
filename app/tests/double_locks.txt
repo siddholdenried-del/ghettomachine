@@ -1,11 +1,12 @@
 # presets: new
-# Doubling a part whose locks do not all fit twice (0.5): it doubles, the second half takes the locks there is room
+# Doubling a part (SEQ + OCT+) with its locks (0.5): 64 a part since project format 14. A part whose locks all fit
+# twice doubles with them; one whose locks do not doubles all the same, the second half takes the locks there is room
 # for, and the rest are said (it refused: TOO MANY LOCKS).  app/build/host/ghettomachine_host app/tests/double_locks.txt OUTDIR
 # nlk: the drum part's locks; len: its steps
 wait 600
 expect len 16
 expect nlk 0
-# ---- six hits, each its velocity, chance and substeps: 18 locks of 32
+# ---- six hits, each its velocity, chance and substeps: 18 locks
 key 0 down
 wait 30
 turn K1 -20
@@ -67,7 +68,7 @@ wait 30
 key 14 up
 wait 30
 expect nlk 18
-# ---- SEQ + OCT+: doubled; 14 of the second half's 18 fit
+# ---- doubled: 32 steps, all 36 locks
 listen
 press SEQ
 wait 30
@@ -76,14 +77,25 @@ wait 30
 release SEQ
 wait 60
 expect len 32
-expect nlk 32
-said 4 LOCKS DID NOT FIT
-# ---- halved back: 16 steps, the first half's 18
+expect nlk 36
+said DOUBLE PART 32 STEPS
+unsaid DID NOT FIT
+# ---- again: 64 steps; 28 of the second half's 36 fit (64 a part)
+press SEQ
+wait 30
+tap OCT+
+wait 30
+release SEQ
+wait 60
+expect len 64
+expect nlk 64
+said 8 LOCKS DID NOT FIT
+# ---- halved back: 32 steps, the first half's 36
 press SEQ
 wait 30
 tap OCT-
 wait 30
 release SEQ
 wait 60
-expect len 16
-expect nlk 18
+expect len 32
+expect nlk 36

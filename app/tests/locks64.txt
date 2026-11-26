@@ -1,0 +1,36 @@
+# presets: new
+# 64 locks a part (0.5, project format 14; 32 in formats 11 to 13). A format-13 project (proj_v13.img,
+# fixtures/make_v13.txt: the drums' part with 18 locks and SWING 62) loads as it was; its part doubles with all its
+# locks; saved, it is format 14 and comes back the same.  app/build/host/ghettomachine_host app/tests/locks64.txt OUTDIR
+flash_load app/tests/fixtures/proj_v13.img
+reboot
+wait 600
+expect dirty 0
+expect projfmt 13
+expect nlk 18
+expect pswing1 62
+expect len 16
+expect prob0_1 75
+expect dvel0_1 >0
+expect hit0_3 1
+press SEQ
+wait 30
+tap OCT+
+wait 30
+release SEQ
+wait 60
+expect len 32
+expect nlk 36
+expect prob0_17 75
+tap SAVE
+wait 400
+expect projfmt 14
+reboot
+wait 600
+expect projfmt 14
+expect nlk 36
+expect len 32
+expect pswing1 62
+expect prob0_1 75
+expect prob0_17 75
+expect dvel0_17 >0

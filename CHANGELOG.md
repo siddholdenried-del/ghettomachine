@@ -52,6 +52,8 @@ run (the canvas is cleared at every drawing; all three are the main loop's). Und
 audio still leaves one while it is on, so its 17.7 KB sit beside that step and the history is 21.8 KB, not 23.4
 (five steps fit that room; fewer would free nothing). The
 radio's log off (fm1.toml bt_log). Freed: 6.4 KB of the pool, 2.1 KB of .data+.bss, 5.2 KB of flash.
+Project format 14: 64 locks a part (32 in formats 11 to 13; a format-13 save loads and converts). The user sounds'
+table (2.4 KB) left the pool for it. tests/locks64.txt, fixtures/proj_v13.img.
 
 **25 Nov 2026, the drums' velocity:** hats, snare, kick, crash and ride shaped by velocity at the strike (kit_hard /
 kit_soft around the normal 88/127, which sounds as before); hats' and cymbals' tails idle at -90 dB, not -119 (a

@@ -126,10 +126,10 @@ you're turning. Purple draws the grids, the empty steps and the boxes. Top to bo
 - **Knobs on the steps page:** LENGTH and RATE of this track's part, SWING and TEMPO (**PART GROOVE**). Turn **SELECT**
   for **DRUM HIT**, or just hold a lit step: **K1 VELOCITY** (that hit's own, 1–127; none set, it plays normal or
   accented), **K2 CHANCE**, **K3 SUBSTEPS**, **K4 ACCENT** (the step's, for every pad). Velocity, chance and substeps
-  each use one of the part's 32 locks (16 until project format 11). The step banks are on OCT− / OCT+.
+  each use one of the part's 64 locks (32 until project format 14, 16 until 11). The step banks are on OCT− / OCT+.
 - **The snare's DECAY** (its editor, page 2, K3): the whole drum's length, body and wires together, −100 % to +100 %.
 
-Hold **SEQ** and tap **OCT+** to repeat the selected track’s part into a second half, or **OCT−** to keep its first half (rounding an odd length down). This copies notes, accents, chance and locks without changing the track’s rate. The second half is erased on halving. A full repeat is blocked if it would exceed 128 steps. If the part's locks do not all fit twice (32 a part), it still doubles and the screen says how many of the second half's locks did not fit. **EDIT + OCT−** undoes, **EDIT + OCT+** redoes. On instrument STEPS, black keys 1–8 pick the available banks of 16.
+Hold **SEQ** and tap **OCT+** to repeat the selected track’s part into a second half, or **OCT−** to keep its first half (rounding an odd length down). This copies notes, accents, chance and locks without changing the track’s rate. The second half is erased on halving. A full repeat is blocked if it would exceed 128 steps. If the part's locks do not all fit twice (64 a part), it still doubles and the screen says how many of the second half's locks did not fit. **EDIT + OCT−** undoes, **EDIT + OCT+** redoes. On instrument STEPS, black keys 1–8 pick the available banks of 16.
 
 On instrument STEPS, hold a step and turn **K3 GATE**. Slow turns edit in eighths of a step; a fast turn snaps to whole bars at the selected rate. A note can hold for up to 128 steps.
 
@@ -744,8 +744,8 @@ Press HOME on the SONG page.
 | The project: patterns, song, sounds (each pattern's too), the drums' edits, mixer, FX, the master bus, LFOs, arps, follow actions, SETUP | a file with two copies, so a power cut while saving keeps the old one | when you tap SAVE (while playing: at the stop) |
 | User presets and kits | a store of their own | as soon as you save one |
 
-**Within 0.5:** the project format grew three times (32 locks a part; then mix per pattern, the generators' kept
-steps and beats). This build reads every earlier 0.5 save; once it has saved, an earlier 0.5 build starts a fresh
+**Within 0.5:** the project format grew four times (32 locks a part; then mix per pattern, the generators' kept
+steps and beats; then 64 locks a part, format 14). This build reads every earlier 0.5 save; once it has saved, an earlier 0.5 build starts a fresh
 project instead of reading it (the file stays, and this build reads it again).
 
 **From 0.2, 0.3 and 0.4:** their projects and 0.2's user presets are no longer read (their converters were cut on

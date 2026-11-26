@@ -75,7 +75,8 @@ static const char *trial_pad_name(int kit, int pad)
 #define STEP_WORDS (NSTEPS / 32)
 #define NPOTS 12                          /* knob positions kept per pad (the engines have at most 11) */
 #define OLD_LOCKS 16                      /* a part's locks up to format 10, drums and instruments alike */
-#define NLOCKS 32                         /* per drum part: a step's chance or a knob locked for one pad's step */
+#define V13_LOCKS 32                      /* a part's locks in formats 11 to 13 */
+#define NLOCKS 64                         /* (format 14; 32 before) per drum part: a step's chance or a knob locked for one pad's step */
 #define LK_KIT606 0x40u                    /* 606 locks keep their own pots */
 #define LK_KIT808 0x80u                   /* lock_t.param: the 808's knob (else the 909's) */
 #define LK_KIT707 (LK_KIT606 | LK_KIT808) /* both bits unused by legacy locks */
@@ -100,7 +101,7 @@ enum { XL_LRATE, XL_LDEPTH, XL_ARATE, XL_AGATE, XL_NUM };
 #define NKEYS 27
 #define KEY_NOTE0 53                      /* key 0 (F3) at octave 0 */
 #define PROJ_MAGIC 0x31544745u            /* "EGT1": fm1-eight 0.1's project; another magic loads the default project */
-#define PROJ_VERSION 13                   /* 13: each pattern's drum sounds (pdrum) appended (12's layout before them); 12: MIX PER PATTERN (pmix, pfx) appended (11's layout before them); 11: 32 locks a part (10's patterns had 16: pattern_v10_t); 10: the DrumEngine's patch (the drums' edits) appended (9's layout before
+#define PROJ_VERSION 14                   /* 14: 64 locks a part (11 to 13's patterns had 32); 13: each pattern's drum sounds (pdrum) appended (12's layout before them); 12: MIX PER PATTERN (pmix, pfx) appended (11's layout before them); 11: 32 locks a part (10's patterns had 16: pattern_v10_t); 10: the DrumEngine's patch (the drums' edits) appended (9's layout before
                                            * it); 9: BongVerb's and BongDelay's knobs in the sends' slots (fx_migrate; the
                                            * layout is 8's); 8: each clip its own LFO (plfo); 7: combined Color and mixed
                                            * kits; 1-5 and 7-9 readable, private divergent v6 rejected */
@@ -186,7 +187,7 @@ typedef struct {                          /* an instrument step (format 1 had a 
 static inline int ns_vel(const nstep_t *s) { return s->vel & 0x7F; }
 static inline int ns_prob(const nstep_t *s) { return s->prob & 0x7F; }
 
-#define NILOCKS 32                        /* per instrument part: a sound parameter locked for one step */
+#define NILOCKS 64                        /* (format 14; 32 before) per instrument part: a sound parameter locked for one step */
 typedef struct {
     uint8_t step, param;                  /* param: dsp/synth.h SP_* */
     int8_t val;
@@ -352,6 +353,12 @@ typedef struct {
 typedef struct { dpart_v10_t d; ipart_v10_t t[NINST]; } pattern_v10_t;
 _Static_assert(offsetof(dpart_v10_t, lk) == offsetof(dpart_t, lk) && offsetof(ipart_v10_t, lk) == offsetof(ipart_t, lk),
                "format 11 only lengthens the parts' lock tables");
+/* a saved pattern with n locks a part (formats 4..10: 16; 11..13: 32): the parts one after another, each its head and
+ * its n locks. Format 14 only lengthens the tables again */
+#define PAT_BYTES_WITH(n) ((uint32_t)(offsetof(dpart_t, lk) + (n) * sizeof(lock_t) + \
+                                      NINST * (offsetof(ipart_t, lk) + (n) * sizeof(ilock_t))))
+_Static_assert(PAT_BYTES_WITH(OLD_LOCKS) == sizeof(pattern_v10_t), "a format-10 pattern is its parts' heads and 16 locks each");
+_Static_assert(PAT_BYTES_WITH(NLOCKS) == sizeof(pattern_t) && NLOCKS == NILOCKS, "a pattern is its parts' heads and their locks, no padding");
 #define PROJ_PREFIX ((uint32_t)offsetof(project_t, p))
 #define PROJ_TAIL ((uint32_t)offsetof(project_t, pots))
 #define PROJ_TAIL_BYTES (sizeof(project_t) - PROJ_TAIL)
@@ -1243,6 +1250,8 @@ static int proj_file_format(void)
         return 0;
     if (sz >= (int)PROJ_META && sz <= (int)PROJ_CAPACITY && ver == PROJ_VERSION)
         return PROJ_VERSION;
+    if (sz >= (int)PROJ_META && sz <= (int)PROJ_CAPACITY && ver == 13)
+        return 13;                        /* (14's layout, its patterns with 32 locks a part) */
     if (sz >= (int)(PROJ_PREFIX + PROJ_V12_TAIL_BYTES) && sz <= (int)PROJ_CAPACITY && ver == 12)
         return 12;                        /* (13's layout without the patterns' drum sounds) */
     if (sz >= (int)(PROJ_PREFIX + PROJ_V11_TAIL_BYTES) && sz <= (int)PROJ_CAPACITY && ver == 11)
@@ -1374,7 +1383,7 @@ typedef struct {
     uint8_t model[NUKIT][NPADS];  /* suffix, preserving USR2’s complete legacy prefix */
 } user_t;
 _Static_assert(sizeof(user_t) <= 3840u, "the user presets fit one store object");
-static user_t user PLAT_POOL;
+static user_t user;                       /* (0.5: out of the pool, for the patterns' 64 locks a part) */
 
 /* a track's level as the synth takes it (0.5): its LEVEL, times the trim of the preset its sound came from, so the
  * factory sounds come up about as loud as each other (dsp/synth_levels.inc). A user sound carries the trim of the
@@ -6031,7 +6040,7 @@ static void snd_turn(int id, int32_t e)   /* a sound's knob, on the EDIT or ENV 
             r = ilock_put(ipart(tr), sq.t[tr].step, id, v);
             plat_unlock(f);
             if (r) {
-                app_say("NO LOCK LEFT", "16 A TRACK");
+                app_say("NO LOCK LEFT", "64 A PART");
                 return;
             }
         }

@@ -102,11 +102,11 @@ expect lset1_8 30
 # ---- saved (format 8) and started again: the pattern it was on, its LFOs; the others' kept
 tap SAVE
 wait 400
-expect projfmt 13
+expect projfmt 14
 expect dirty 0
 reboot
 wait 600
-expect projfmt 13
+expect projfmt 14
 expect pat 3
 expect lset2_8 40
 expect lset1_8 30
