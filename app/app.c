@@ -826,9 +826,10 @@ static void pat_locks_check(pattern_t *pt)   /* (a load) counts past the pool: n
 /* an instrument part's locks: a sound parameter's value for one step */
 static int ilock_find(const ipart_t *p, int step, int param)
 {
+    const ilock_t *l = LK(p);
     int i;
     for (i = 0; i < p->nlk; i++)
-        if (LK(p)[i].step == step && LK(p)[i].param == param)
+        if (l[i].step == step && l[i].param == param)
             return i;
     return -1;
 }
@@ -862,9 +863,10 @@ static int ilock_clear_step(ipart_t *p, int step)   /* how many went */
 
 static int istep_locked(const ipart_t *p, int step)
 {
+    const ilock_t *l = LK(p);
     int i;
     for (i = 0; i < p->nlk; i++)
-        if (LK(p)[i].step == step)
+        if (l[i].step == step)
             return 1;
     return 0;
 }
@@ -872,9 +874,10 @@ static int istep_locked(const ipart_t *p, int step)
 /* locks: a step's chance (LK_PROB) or one knob's value for one pad on one step */
 static int lock_find(const dpart_t *p, int step, int pad, int param)
 {
+    const lock_t *l = LK(p);
     int i;
     for (i = 0; i < p->nlk; i++)
-        if (LK(p)[i].step == step && LK(p)[i].pad == pad && LK(p)[i].param == param)
+        if (l[i].step == step && l[i].pad == pad && l[i].param == param)
             return i;
     return -1;
 }
@@ -911,9 +914,10 @@ static int lock_clear_step(dpart_t *p, int step, int pad)   /* every lock of tha
 
 static int step_locked(const dpart_t *p, int step, int pad)
 {
+    const lock_t *l = LK(p);
     int i;
     for (i = 0; i < p->nlk; i++)
-        if (LK(p)[i].step == step && LK(p)[i].pad == pad)
+        if (l[i].step == step && l[i].pad == pad)
             return 1;
     return 0;
 }
@@ -2251,9 +2255,10 @@ static uint32_t chance_rng = 0x2545F491u;
 static void locks_apply(const dpart_t *p, int step, int pad)
 {
     uint16_t want = 0, back;
+    const lock_t *lk = LK(p);
     int i;
     for (i = 0; i < p->nlk; i++) {
-        const lock_t *l = &LK(p)[i];
+        const lock_t *l = &lk[i];
         int k = l->param & (lk_model(l->param) >= KIT_NUM ? 0x0F : 0x3F);
         if (l->step != step || l->pad != pad || l->param == LK_PROB || k >= NPOTS ||
             lk_model(l->param) != drum_model(pad))
@@ -2294,14 +2299,17 @@ static void ilocks_apply(int tr, const ipart_t *p, int step)
 {
     uint64_t want = 0, back;
     uint8_t xon = 0;
+    const ilock_t *l = LK(p);
     int i;
     for (i = 0; i < p->nlk; i++)
-        if (LK(p)[i].step == step && LK(p)[i].param < SP_NUM) {
-            syn_set(tr, LK(p)[i].param, LK(p)[i].val);
-            want |= (uint64_t)1 << LK(p)[i].param;
-        } else if (LK(p)[i].step == step && LK(p)[i].param >= IL_X0 && LK(p)[i].param < IL_X0 + XL_NUM) {
-            xlk[tr][LK(p)[i].param - IL_X0] = LK(p)[i].val;
-            xon |= (uint8_t)(1u << (LK(p)[i].param - IL_X0));
+        if (l[i].step != step)
+            continue;
+        else if (l[i].param < SP_NUM) {
+            syn_set(tr, l[i].param, l[i].val);
+            want |= (uint64_t)1 << l[i].param;
+        } else if (l[i].param >= IL_X0 && l[i].param < IL_X0 + XL_NUM) {
+            xlk[tr][l[i].param - IL_X0] = l[i].val;
+            xon |= (uint8_t)(1u << (l[i].param - IL_X0));
         }
     xlk_on[tr] = xon;
     back = ilk_mask[tr] & ~want;
