@@ -1,7 +1,7 @@
 #include "kit_math.h"
 
 /* sin(2*pi*i/256), Q15 with both endpoints for linear interpolation. */
-static const int16_t sine_table[257] = {
+const int16_t kit_sine_table[257] = {
     0, 804, 1608, 2410, 3212, 4011, 4808, 5602, 6393, 7179, 7962, 8739,
     9512, 10278, 11039, 11793, 12539, 13279, 14010, 14732, 15446, 16151, 16846, 17530,
     18204, 18868, 19519, 20159, 20787, 21403, 22005, 22594, 23170, 23731, 24279, 24811,
@@ -25,11 +25,3 @@ static const int16_t sine_table[257] = {
     -12539, -11793, -11039, -10278, -9512, -8739, -7962, -7179, -6393, -5602, -4808, -4011,
     -3212, -2410, -1608, -804, 0
 };
-
-float kit_sine(uint32_t phase)
-{
-    const unsigned index = phase >> 24;
-    const float fraction = (float)(phase & 0x00ffffffu) * (1.0f / 16777216.0f);
-    const float a = sine_table[index];
-    return (a + fraction * (sine_table[index + 1] - a)) * (1.0f / 32767.0f);
-}

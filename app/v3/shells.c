@@ -3,9 +3,9 @@
 #include "kit_math.h"
 
 /* Time constants in milliseconds. All coefficients are computed at a strike.
- * FLOOR is -118 dBFS. The envelope bound, never an individual zero crossing or
- * the load of other voices, determines when a drum rests. */
-#define FLOOR 0.00000125f
+ * FLOOR is -96 dBFS (0.5, the CPU: it was -118; auditioned old against new). The envelope bound, never an
+ * individual zero crossing or the load of other voices, determines when a drum rests. */
+#define FLOOR 0.0000158f
 enum { RESTRIKE = 24 };
 static const unsigned body_outputs[] = {0, 3, 4, 5};
 
@@ -83,22 +83,30 @@ static void kick_hit(BodyVoice *v, struct KickImpact *impact, float velocity, co
     float ratio = drop_ratio(bound(p->drop_st, 0.f, 36.f));
     float drop_ms = bound(p->drop_ms, 2.f, 120.f);
     float drive = kit_unit(p->drive);
+    /* Velocity is a touch, not only a level: it shapes the click and the first of the punch (the head's pressure,
+       44 ms), set here once. The fundamental, its drop and its drive stay the patch's at every velocity; a normal
+       hit is the patch as written. */
+    const float hard = kit_hard(velocity), soft = kit_soft(velocity);
     excite(&v->head, f, velocity*.96f/(1.f+.10f*drive), t60*(1.f/6.90775528f),
            f*(ratio-1.f), drop_ms, 0.f, 1.f);
     v->shape = drive;
-    v->stick = kit_unit(p->click);
+    v->stick = kit_unit(kit_unit(p->click) * (1.f + .60f * hard - .75f * soft));
     v->carry = v->last;
     v->age = 0;
     /* The head is under pressure briefly before free decay begins. */
     impact->hold = (unsigned)(drive * (6.f + .65f*drop_ms) * (KIT_RATE*.001f));
     impact->click_level = v->stick;
     impact->filtered_noise = 0.f;
-    impact->pressure = 1.f;
+    impact->pressure = 1.f + .70f * hard - .65f * soft;   /* (a soft kick is rounder at its front, an accent punchier) */
     impact->seed = 0xe3a12877u;
 }
 
-static void kick_render(BodyVoice *v, struct KickImpact *impact, float *out, unsigned n)
+static void kick_render(BodyVoice *voice, struct KickImpact *struck, float *out, unsigned n)
 {
+    /* (0.5, the CPU) the voice's state in the loop's own variables, as the percs' and the cymbals': the output could
+       be any float as far as the compiler knows. To the sample as before. */
+    BodyVoice state = *voice, *v = &state;
+    struct KickImpact blow = *struck, *impact = &blow;
     Membrane *m = &v->head;
     for (unsigned i=0; i<n && m->level>FLOOR; ++i) {
         float x = membrane_wave(m);
@@ -129,6 +137,8 @@ static void kick_render(BodyVoice *v, struct KickImpact *impact, float *out, uns
         ++v->age;
     }
     if (m->level <= FLOOR) v->last = 0.f;
+    *voice = state;
+    *struck = blow;
 }
 
 float kit_tom_pitch_hz(int pad, TomPatch controls)
@@ -166,8 +176,9 @@ static void tom_hit(BodyVoice *v, unsigned tom, float vel, const KitPatch *p)
     v->age = 0;
 }
 
-static void tom_render(BodyVoice *v, float *out, unsigned frames)
+static void tom_render(BodyVoice *voice, float *out, unsigned frames)
 {
+    BodyVoice state = *voice, *v = &state;   /* (the CPU: see kick_render) */
     Membrane *m = &v->head;
     for (unsigned i = 0; i < frames && m->level > FLOOR; ++i) {
         float fundamental = membrane_wave(m);
@@ -188,6 +199,7 @@ static void tom_render(BodyVoice *v, float *out, unsigned frames)
         m->level *= m->level_rate;
     }
     if (m->level <= FLOOR) v->last = 0.f;
+    *voice = state;
 }
 
 static void snare_hit(SnareVoice *v, float vel, const KitPatch *p)
@@ -206,20 +218,28 @@ static void snare_hit(SnareVoice *v, float vel, const KitPatch *p)
     float ring = (dry ? 18.f + 104.f*body*body : hard ? 11.f + 55.f*body*body : 10.f + 66.f*body*body) * len;
     float upper = dry ? 2.32f : hard ? 1.44f : 1.97f;
     float lift = hard ? .47f : dry ? .22f : .035f;
-    excite(v->head, f, vel * .375f, ring, f * lift, hard ? 9.f : 5.f, 0.f, 1.f);
-    excite(v->head + 1, f * upper, vel * (dry ? .11f + .20f * vel * vel : hard ? .15f : .30f),
+    /* The touch (set once, here; a normal hit is the patch as written). A ghost note keeps its round body, a little
+       forward of where its velocity alone would leave it, and loses the wires' attack: less wire, a duller band, no
+       edge. An accent's wires stay audible longer; its brightness is only what it was. */
+    const float hit_hard = kit_hard(vel), hit_soft = kit_soft(vel);
+    const float body_touch = 1.f + .30f * hit_soft;
+    excite(v->head, f, vel * .375f * body_touch, ring, f * lift, hard ? 9.f : 5.f, 0.f, 1.f);
+    excite(v->head + 1, f * upper, vel * body_touch * (dry ? .11f + .20f * vel * vel : hard ? .15f : .30f),
            ring * (dry ? .58f : hard ? .84f : .41f), f * upper * lift, 7.f, 0.f, 1.f);
     /* The 909-style body is prominent around the working setting; the upper
      * travel of Snappy retains a full, bright noise burst for live accents. */
     float snappy2 = snappy*snappy;
     float wire_gain = hard ? .07f + 1.75f*snappy2*snappy2*snappy2 : dry ? 1.13f : 1.06f;
+    wire_gain *= 1.f + .30f * hit_hard - .62f * hit_soft;
     v->wire = vel * snappy * wire_gain;
     /* The Hard pitched component dies before its quieter high-passed wires. */
-    v->wire_rate = fall((dry ? 13.f + 146.f*wire*wire : hard ? 20.f + 287.f*wire*wire : 9.f + 100.f*wire*wire) * len);
+    v->wire_rate = fall((dry ? 13.f + 146.f*wire*wire : hard ? 20.f + 287.f*wire*wire : 9.f + 100.f*wire*wire) * len
+                        * (1.f + .45f * hit_hard));
     /* Two moving averages give the independently decaying snappy band. */
     v->wire_hp = hard ? .145f : dry ? .13f + .065f * vel : .083f;
     v->wire_lp = hard ? .67f : dry ? .32f + .42f * vel : .58f;
-    v->edge = dry ? .25f + .8f * vel * vel : hard ? .65f : .12f;
+    v->wire_lp = bound(v->wire_lp + .14f * hit_hard - .26f * hit_soft, .10f, .93f);
+    v->edge = (dry ? .25f + .8f * vel * vel : hard ? .65f : .12f) * (1.f + .60f * hit_hard) * (1.f - .80f * hit_soft);
     v->edge_rate = fall(dry ? 17.f : 8.f);
     v->low = v->band = 0.f;
     v->carry = v->last;
@@ -231,8 +251,13 @@ static inline int snare_active(const SnareVoice *v)
     return v->head[0].level > FLOOR || v->head[1].level > FLOOR || v->wire > FLOOR;
 }
 
-static void snare_render(SnareVoice *v, float *out, unsigned frames)
+static void snare_render(SnareVoice *voice, float *out, unsigned frames)
 {
+    if (!snare_active(voice)) {           /* at rest: nothing to copy */
+        if (frames) voice->last = 0.f;
+        return;
+    }
+    SnareVoice state = *voice, *v = &state;   /* (the CPU: see kick_render) */
     for (unsigned i = 0; i < frames; ++i) {
         if (!snare_active(v)) {
             v->last = 0.f;
@@ -259,6 +284,7 @@ static void snare_render(SnareVoice *v, float *out, unsigned frames)
         out[i] += v->last;
         ++v->age;
     }
+    *voice = state;
 }
 
 static void clap_hit(ClapVoice *v, float vel, const KitPatch *p)
@@ -299,8 +325,13 @@ static inline int clap_active(const ClapVoice *v)
     return v->fired != v->count || v->wash > FLOOR || v->tooth > FLOOR;
 }
 
-static void clap_render(ClapVoice *v, float *out, unsigned frames)
+static void clap_render(ClapVoice *voice, float *out, unsigned frames)
 {
+    if (!clap_active(voice)) {
+        if (frames) voice->last = 0.f;
+        return;
+    }
+    ClapVoice state = *voice, *v = &state;    /* (the CPU: see kick_render) */
     for (unsigned i = 0; i < frames; ++i) {
         if (!clap_active(v)) {
             v->last = 0.f;
@@ -335,6 +366,7 @@ static void clap_render(ClapVoice *v, float *out, unsigned frames)
         out[i] += v->last;
         ++v->age;
     }
+    *voice = state;
 }
 
 void shells_init(Shells *s)

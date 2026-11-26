@@ -1,6 +1,7 @@
 #include "freestanding.h"
 #include "perc.h"
 #include "kit_math.h"
+#include "../dsp/gm_ram.h"
 
 /* SY-1-inspired signal paths. All controls are captured at the strike.
    The original operation guide describes Width as the span of a closing
@@ -82,16 +83,24 @@ void perc_hit(PercVoice *v, float velocity, const PercPatch *p)
         v->ic1 = v->ic2 = 0.0f;
         if (v->filter)
             v->amplitude *= 1.0f - .55f * reso;
+        {   /* The filter's two reciprocals, exact here at the strike; perc_render follows them from one sample to
+               the next with a Newton step each (no division in the loop: the corner moves slowly) */
+            float k = v->cutoff_min + v->cutoff_offset, g;
+            v->inv_k = 1.0f / (1.0f - k);
+            g = .5f * k * v->inv_k;
+            if (g > 3.0f) g = 3.0f;
+            v->inv_d = 1.0f / (1.0f + g * (g + v->damp));
+        }
     }
 }
 
-static float triangle(uint32_t phase)
+GM_INLINE float triangle(uint32_t phase)
 {
     float folded = (float)(phase >> 16) * (1.0f/32768.0f) - 1.0f;
     return 1.0f - 2.0f*V3_ABS(folded);
 }
 
-static float source(PercVoice *v, float increment)
+GM_INLINE float source(PercVoice *v, float increment)
 {
     /* The modulation branches are genuine instantaneous-frequency FM.
        At the highest Tune and upward sweep, the worst signed step is
@@ -141,9 +150,13 @@ static float source(PercVoice *v, float increment)
     }
 }
 
-void perc_render(PercVoice *v, float *mono, unsigned n)
+/* (0.5, the CPU) from RAM, out of the flash's cache's way: its oscillators and its filter in line, nothing called */
+GM_RAM void perc_render(PercVoice *voice, float *mono, unsigned n)
 {
-    if (!v->level) return;
+    if (!voice->level) return;
+    /* The voice's state in the loop's own variables (the output could be any float as far as the compiler knows: with
+       the state in the voice it would load and store all of it every sample) */
+    PercVoice state = *voice, *v = &state;
     for (unsigned i = 0; i < n; ++i) {
         float increment = v->pitch_end + v->pitch_offset;
         if (v->mode != 5)
@@ -159,9 +172,13 @@ void perc_render(PercVoice *v, float *mono, unsigned n)
         } else {
             /* A zero-delay state-variable filter at the same swept corner (g from the pole's coefficient: k/(1-k)
                is the corner's angle a sample, half of it the integrators' gain). Stable at any corner and Q. */
-            float g = .5f * k / (1.0f - k);
+            /* r <- r (2 - x r): one step from last sample's reciprocal is exact to the float's last bits, the corner
+               having moved by a fraction of a percent */
+            v->inv_k *= 2.0f - (1.0f - k) * v->inv_k;
+            float g = .5f * k * v->inv_k;
             if (g > 3.0f) g = 3.0f;
-            float a1 = 1.0f / (1.0f + g * (g + v->damp)), a2 = g * a1;
+            v->inv_d *= 2.0f - (1.0f + g * (g + v->damp)) * v->inv_d;
+            float a1 = v->inv_d, a2 = g * a1;
             float v3 = signal - v->ic2;
             float bp = a1 * v->ic1 + a2 * v3, lp = v->ic2 + a2 * v->ic1 + g * a2 * v3;
             v->ic1 = 2.0f * bp - v->ic1;
@@ -176,7 +193,8 @@ void perc_render(PercVoice *v, float *mono, unsigned n)
         v->level *= v->release;
         if (v->level < .000008f) {
             v->level = v->last = 0.0f;
-            return;
+            break;
         }
     }
+    *voice = state;
 }

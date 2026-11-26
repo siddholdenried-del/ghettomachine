@@ -16,6 +16,7 @@ typedef struct {
        for it), and the SYNC model's second phase */
     int filter;
     float damp, ic1, ic2;
+    float inv_k, inv_d;                   /* 1/(1-k) and 1/(1+g(g+damp)), followed a sample at a time (perc.c) */
     uint32_t sync_phase;
 } PercVoice;
 

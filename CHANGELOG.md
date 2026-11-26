@@ -25,6 +25,55 @@ macros, per-key aftertouch out; Bluetooth audio back at power-on.
 the drums' trims written again for every recipe (tests/drumengine_levels.c), and a trim for every synth factory
 sound for the first time (tests/synth_levels.c, dsp/synth_levels.inc).
 LEVEL reads in dB (100 = 0.0 dB) and goes to 200 (+6.0 dB).
+Project format 13: with SOUNDS PER PATTERN each pattern keeps every drum's own settings. LFO 2's page draws and
+scrolls as LFO 1's. The delay's line 59400 -> 58200 samples for the pool.
+
+**25 Nov 2026, the percs' and cymbals' CPU:** the same sounds for less work. The percs: their filter's two divisions a
+sample became one Newton step each on the reciprocals kept from the sample before (exact at the strike; the result
+within -108 dB of the old one), the sine's table read in line, the voice's state in the loop's own variables, and the
+loop runs from RAM (1.8 KB of it; 320 B of RAM code left). The cymbals, hats and sweeps: to the sample as before; the
+bank's and the voices' state in the loops' own variables, and each lane its own copy of its loop, so the lane's
+choices are made once a block and not a sample at a time. Cut: kit_sine as a function.
+Then the shells (kick, snare, clap, toms): their state in the loops' own variables, to the sample as before. The drum
+bus when it is on: its .75, level, pan and the track's gain inside each pad's gains and the first pad setting the
+buffers, so four clears and a scaling pass a block are gone (the same sound to -124 dB: float rounding).
+Then the shells rest at -96 dBFS, not -118 (auditioned old against new; a lone hit 8-20 % less work).
+
+**25 Nov 2026, the transport:** PLAY and the perform keys (HOME and the QUICK MIXER, black keys 5-11) are taken by
+the audio interrupt, a block (5.8 ms) at most after they move; the main loop, which a frame's drawing kept from the
+keys for up to 30 ms while playing on HOME (measured: the CPU view's KEYS MS MAX), follows up with the rest of a stop,
+a save that waited, the screen and the words. A count-in is the main loop's still. tests/fastkeys.txt.
+Doubling a part (SEQ + OCT+) no longer refuses one with more than 16 locks (TOO MANY LOCKS): it doubles, the second
+half takes the locks there is room for, and the rest are counted on the screen for 4 s (DOUBLED, BUT n LOCKS DID NOT
+FIT); undo takes it back. tests/double_locks.txt.
+
+**25 Nov 2026, RAM:** the save packer's 4.9 KB and the generators' 2 KB of scratch are the screen canvas's while they
+run (the canvas is cleared at every drawing; all three are the main loop's). Undo keeps 5 steps (6 before); Bluetooth
+audio still leaves one while it is on, so its 17.7 KB sit beside that step and the history is 21.8 KB, not 23.4
+(five steps fit that room; fewer would free nothing). The
+radio's log off (fm1.toml bt_log). Freed: 6.4 KB of the pool, 2.1 KB of .data+.bss, 5.2 KB of flash.
+Project format 14: a pattern's locks are one pool of 256 its four parts share (32 a part in formats 11 to 13; a
+format-13 save loads and converts): one part can hold 128 and more. The user sounds' table (2.4 KB) left the pool to
+make room. tests/locks64.txt, tests/double_locks.txt, fixtures/proj_v13.img.
+
+**25 Nov 2026, the drums' velocity:** hats, snare, kick, crash and ride shaped by velocity at the strike (kit_hard /
+kit_soft around the normal 88/127, which sounds as before); hats' and cymbals' tails idle at -90 dB, not -119 (a
+fifth less metal rendering over every recipe; the difference from full tails under -97 dBFS).
+Retuned the same day to the player's brief: ghost snares keep their body and lose the wires' attack, accents hold
+the wires longer; closed hats tight to open; open hats change at the front only; the kick's fundamental and drive
+steady; crash and ride on separate curves. ELECTRO's kick click 16 -> 30 %.
+
+**25 Nov 2026, the steps pages and the second factory set:** both steps pages have a bars' strip, BAR n/N and a view
+that stays put while you work; the instruments' rows are laid out as a keyboard and name their notes. The synth's 129
+factory sounds were replaced (tools/make_presets.py -> dsp/preset_table.inc): banks by kind (MONO BASS, MONO LEAD,
+POLY, STAB, HIT, DRUM), levelled to the first set's target. A track now carries its sound's trim; a project saved
+with a first-set sound keeps that sound, its name and its level (dsp/preset_legacy.inc). The simulator's older
+suites run on the first set (GM_OLD_PRESETS; tests/run_all.sh).
+
+**25 Nov 2026, the CPU:** measured on the FM-1 against AC84F7D2 with the same scores: the block's input stage had
+gone from 14 to 149 us and the drums up 14-18 % (the percs' filter: +46 % on the Mac). MIDI is now read every block
+only while it is coming (every fourth otherwise), the tempo is told to the synth when it changes, and the note-offs'
+scan runs only while a note is out and somebody listens.
 
 **Historical hardware test: 0.5** (first installed over USB on 20 Nov). The first recording from it clicked now and then, so
 0.5 now keeps a deeper USB buffer, MASTER no longer changes what a computer records, and the drum steps' beats glow

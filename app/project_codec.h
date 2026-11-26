@@ -6,8 +6,18 @@
  * A preflight counts every byte before erasing the inactive atomic save slot. */
 #define CODEC_BUCKETS 512
 #define CODEC_MAX ((uint32_t)(sizeof(pattern_t) + (sizeof(pattern_t) + 127u) / 128u + 2u))
-static uint8_t codec_out[CODEC_MAX] PLAT_POOL;
-static uint16_t codec_prev[CODEC_BUCKETS] PLAT_POOL;
+/* (0.5, RAM) The packer's 4.9 KB are the screen canvas's while it runs. The canvas is the main loop's scratch: every
+ * drawing clears it first (cv_begin) and it is only read by the transfer lcd_sync waits out. A save, a load and the
+ * generators (gen_buf, app.c) are the main loop's too, so none meets a drawing. */
+#define BORROW_GEN (CODEC_BUCKETS + (CODEC_MAX + 3u) / 4u * 2u)   /* (in canvas pixels: the generators' after the packer's) */
+static uint8_t *codec_out;
+static uint16_t *codec_prev;
+static void codec_borrow(void)
+{
+    lcd_sync();
+    codec_prev = cv_px;
+    codec_out = (uint8_t *)(cv_px + CODEC_BUCKETS);
+}
 _Static_assert(sizeof(pattern_t) < 65535u, "pattern offsets fit the codec");
 
 static uint32_t codec_hash(const uint8_t *p)
@@ -21,6 +31,7 @@ static uint32_t codec_pack(const pattern_t *p)
 {
     const uint8_t *in = (const uint8_t *)p;
     uint32_t n = sizeof *p, at = 0, put = 2, lit = 0, j;
+    codec_borrow();
     for (j = 0; j < CODEC_BUCKETS; j++) codec_prev[j] = 0;
     while (at < n) {
         uint32_t match = 0, dist = 0, take = 1;
@@ -60,19 +71,23 @@ static uint32_t codec_pack(const pattern_t *p)
 static int project_decode(const uint8_t *in, uint32_t size, int fmt)
 {
     uint32_t tail_bytes = fmt == 4 ? PROJ_V4_TAIL_BYTES : fmt == 5 ? PROJ_V5_TAIL_BYTES :
-                          fmt == 7 ? PROJ_V7_TAIL_BYTES : fmt < 10 ? PROJ_V9_TAIL_BYTES : fmt < 12 ? PROJ_V11_TAIL_BYTES : PROJ_TAIL_BYTES;
+                          fmt == 7 ? PROJ_V7_TAIL_BYTES : fmt < 10 ? PROJ_V9_TAIL_BYTES : fmt < 12 ? PROJ_V11_TAIL_BYTES :
+                          fmt < 13 ? PROJ_V12_TAIL_BYTES : PROJ_TAIL_BYTES;
     uint32_t meta_bytes = fmt == 4 ? offsetof(project_t, insert) - PROJ_TAIL :
                           fmt == 5 ? PROJ_V5_META_BYTES : fmt == 7 ? PROJ_V7_META_BYTES : tail_bytes;
     uint32_t at = PROJ_PREFIX + tail_bytes, j, i;
     uint8_t *raw = (uint8_t *)&proj, *tail = raw + PROJ_TAIL;
     if (!in || size < at)
         return -1;
+    codec_borrow();
     for (j = 0; j < PROJ_PREFIX; j++) raw[j] = in[j];
     for (j = 0; j < meta_bytes; j++) tail[j] = in[PROJ_PREFIX + j];
     for (i = 0; i < NPAT; i++) {
-        /* (up to format 10 a record is a pattern with 16 locks a part: decoded into the packer's buffer, then spread) */
-        const uint32_t want = fmt < 11 ? (uint32_t)sizeof(pattern_v10_t) : (uint32_t)sizeof(pattern_t);
-        uint8_t *out = fmt < 11 ? codec_out : (uint8_t *)&proj.p[i];
+        /* (up to format 13 a record is a pattern with fewer locks a part, 16 until format 10 and 32 after: decoded
+           into the packer's buffer, then spread) */
+        const uint32_t old_locks = fmt < 11 ? OLD_LOCKS : V13_LOCKS;
+        const uint32_t want = fmt < 14 ? PAT_BYTES_WITH(old_locks) : (uint32_t)sizeof(pattern_t);
+        uint8_t *out = fmt < 14 ? codec_out : (uint8_t *)&proj.p[i];
         uint32_t end, put = 0;
         if (size - at < 2u) return -1;
         end = (uint32_t)in[at] | (uint32_t)in[at + 1u] << 8;
@@ -95,16 +110,22 @@ static int project_decode(const uint8_t *in, uint32_t size, int fmt)
             }
         }
         if (put != want) return -1;
-        if (fmt < 11) {
-            const pattern_v10_t *o = (const pattern_v10_t *)(const void *)codec_out;
+        if (fmt < 14) {                   /* each part, then its own locks: the parts here, their locks the pool's */
+            const uint8_t *o = codec_out;
             pattern_t *p = &proj.p[i];
-            uint32_t t;
+            uint32_t t, k, n, pool = 0;
             for (j = 0; j < sizeof *p; j++) ((uint8_t *)p)[j] = 0;
-            for (j = 0; j < offsetof(dpart_t, lk); j++) ((uint8_t *)&p->d)[j] = ((const uint8_t *)&o->d)[j];
-            for (j = 0; j < OLD_LOCKS; j++) p->d.lk[j] = o->d.lk[j];
-            for (t = 0; t < NINST; t++) {
-                for (j = 0; j < offsetof(ipart_t, lk); j++) ((uint8_t *)&p->t[t])[j] = ((const uint8_t *)&o->t[t])[j];
-                for (j = 0; j < OLD_LOCKS; j++) p->t[t].lk[j] = o->t[t].lk[j];
+            for (t = 0; t <= NINST; t++) {
+                uint8_t *head = t ? (uint8_t *)&p->t[t - 1] : (uint8_t *)&p->d;
+                const uint32_t hb = t ? (uint32_t)sizeof(ipart_t) : (uint32_t)sizeof(dpart_t);
+                uint8_t *nlk = t ? &p->t[t - 1].nlk : &p->d.nlk;
+                for (j = 0; j < hb; j++) head[j] = *o++;
+                n = *nlk > old_locks ? 0u : *nlk;   /* (a count past the table: none, as the check after a load did) */
+                for (k = 0; k < old_locks; k++, o += sizeof(plock_t))
+                    if (k < n)
+                        for (j = 0; j < sizeof(plock_t); j++) ((uint8_t *)&p->lk[pool + k])[j] = o[j];
+                *nlk = (uint8_t)n;
+                pool += n;
             }
         }
     }

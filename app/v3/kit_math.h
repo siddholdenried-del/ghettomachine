@@ -4,7 +4,15 @@
 #define KIT_RATE 44100
 
 /* Unit phase, 2^32 steps per cycle. No transcendentals in this oscillator. */
-float kit_sine(uint32_t phase);
+/* (GhettoMachine 0.5, the CPU: in line, so a voice's loop makes no call for it; the table is kit_math.c's) */
+extern const int16_t kit_sine_table[257];
+static inline __attribute__((always_inline)) float kit_sine(uint32_t phase)
+{
+    const unsigned index = phase >> 24;
+    const float fraction = (float)(phase & 0x00ffffffu) * (1.0f / 16777216.0f);
+    const float a = kit_sine_table[index];
+    return (a + fraction * (kit_sine_table[index + 1] - a)) * (1.0f / 32767.0f);
+}
 static inline uint32_t kit_increment(float hz)
 {
     return (uint32_t)(hz * (4294967296.0f / KIT_RATE));
@@ -12,6 +20,18 @@ static inline uint32_t kit_increment(float hz)
 static inline float kit_unit(float x)
 {
     return x > 0.0f ? (x < 1.0f ? x : 1.0f) : 0.0f;
+}
+/* Velocity shaping (GhettoMachine 0.5). A hit at the sequencer's normal velocity (88/127) sounds as the patch says;
+   kit_hard is how far above it a hit is (0 .. 1 at full velocity: an accent), kit_soft how far below (0 .. 1 at
+   nothing). Each voice turns them into its own differences once, at the strike. */
+#define KIT_NORMAL_VELOCITY (88.0f / 127.0f)
+static inline float kit_hard(float velocity)
+{
+    return velocity > KIT_NORMAL_VELOCITY ? (velocity - KIT_NORMAL_VELOCITY) * (1.0f / (1.0f - KIT_NORMAL_VELOCITY)) : 0.0f;
+}
+static inline float kit_soft(float velocity)
+{
+    return velocity < KIT_NORMAL_VELOCITY ? (KIT_NORMAL_VELOCITY - velocity) * (1.0f / KIT_NORMAL_VELOCITY) : 0.0f;
 }
 static inline float kit_noise(uint32_t *seed)
 {

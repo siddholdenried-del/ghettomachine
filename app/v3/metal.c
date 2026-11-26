@@ -1,4 +1,5 @@
 #include "freestanding.h"
+#include "../dsp/gm_ram.h"
 #include "metal.h"
 #include "kit_math.h"
 
@@ -6,6 +7,12 @@ enum { CLOSED, OPEN, CRASH, RIDE, RISER, DROP, VOICES };
 enum { CHOKE_FRAMES = 160, BELL_BLEND = 64, PIECE = 32 };
 /* Envelope retirement below -119 dB, independent of CPU or active voice count. */
 static const float quiet = 0.000001f;
+/* A hat's or a cymbal's tail goes idle once it is nearly silent (-90 dB: under a 16-bit output's last bit), not at
+   -119 dB: a third of a long tail's time and work, none of what is heard. A harder cut was tried and heard. */
+#ifndef METAL_IDLE
+#define METAL_IDLE 0.00003f
+#endif
+static const float idle = METAL_IDLE;
 static const float tuning[2][6] = {
     {218.3f, 301.7f, 379.1f, 518.9f, 627.1f, 811.3f},
     {331.7f, 453.1f, 591.7f, 751.9f, 1003.1f, 1279.7f}
@@ -25,14 +32,42 @@ void metal_init(Metal *m)
 
 /* Each articulation mixes the existing filter taps independently. Changing
    one pad's brightness leaves the shared oscillator bank and its filters alone. */
-static void metal_controls(MetalVoice *v, int lane, MetalPatch param)
+static void metal_controls(MetalVoice *v, int lane, MetalPatch param, float velocity)
 {
+    /* Velocity, at the strike, on the shared source's taps: a soft hat is shorter and darker; a soft cymbal shorter,
+       darker and slower to rise, a hard one a little brighter and quicker. The normal hit is the patch as written. */
+    const float hard = kit_hard(velocity), soft = kit_soft(velocity);
     static const float rate[VOICES] = {
         .99843738f, .9999035f, .9999496f, .99995465f, .99973326f, .99993331f
     };
     float brightness = 2.f * kit_unit(param.brightness) - 1.f;
     float time = 2.f * kit_unit(param.decay) - 1.f;
     float stretch = 1.f + time * (time < 0.f ? .60f : .50f);
+    switch (lane) {
+    case CLOSED:                          /* light: tight and dry; harder: it opens up, smoothly through the normal hit */
+        brightness += .22f * hard - .30f * soft;
+        stretch *= 1.f + .30f * hard - .55f * soft;
+        v->attack = .095f;
+        break;
+    case OPEN:                            /* the first of the hit changes, not the tail: a soft one still washes */
+        brightness += .10f * hard - .12f * soft;
+        stretch *= 1.f - .08f * soft;
+        v->attack = .012f * (1.f + .80f * hard) * (1.f - .60f * soft);
+        break;
+    case CRASH:                           /* a hard crash blooms wider and faster */
+        brightness += .22f * hard - .35f * soft;
+        stretch *= 1.f + .22f * hard - .25f * soft;
+        v->attack = .0029f * (1.f + 1.60f * hard) * (1.f - .50f * soft);
+        break;
+    case RIDE:                            /* a hard ride is its stick, not more wash (metal_hit: the level, the accent) */
+        brightness += .06f * hard - .30f * soft;
+        stretch *= 1.f - .15f * soft;
+        v->attack = .022f * (1.f + .50f * hard) * (1.f - .35f * soft);
+        break;
+    default:
+        break;
+    }
+    if (brightness < -1.f) brightness = -1.f; else if (brightness > 1.f) brightness = 1.f;
     v->decay_rate = 1.f - (1.f - rate[lane]) / stretch;
     switch (lane) {
     case CLOSED:
@@ -99,13 +134,28 @@ void metal_hit(Metal *m, int pad, float velocity, const KitPatch *patch)
     MetalVoice *v = &b->voice[lane];
     int sounding = !!(b->active & (1u << lane));
     if (!sounding) V3_CLEAR(v, 0, sizeof *v);
-    metal_controls(v, lane, param);
+    metal_controls(v, lane, param, velocity);
     if (!sounding) v->cutoff = lane == DROP ? .852f + (v->bright_weight - .83f) : .023f;
     b->active |= 1u << lane;
     v->level = v->accent = velocity;
     v->age = v->choke = 0;
     v->movement = 1.0f;
+    {   /* the touch, once (a normal hit: none of it). movement is the first of a hit: a hat's sizzle, a crash's
+           width; accent a cymbal's stick */
+        const float hard = kit_hard(velocity), soft = kit_soft(velocity);
+        if (lane == CLOSED) v->movement = 1.0f + .35f * hard - .60f * soft;
+        else if (lane == OPEN) v->movement = 1.0f + .50f * hard - .70f * soft;
+        else if (lane == CRASH) v->movement = 1.0f + .60f * hard - .40f * soft;
+        else if (lane == RIDE) {
+            v->level = velocity - .55f * hard * (1.0f - KIT_NORMAL_VELOCITY);   /* (the wash: half an accent's rise) */
+            v->accent = velocity * (1.0f + .90f * hard - .50f * soft);
+        }
+    }
     v->dark = 1.0f;                       /* (bright again at the strike; the ring's low-pass keeps its state) */
+    /* A soft hat is darker: the open hat's ring starts part-way down its darkening; the closed hat goes through
+       the same low-pass, held (a normal or harder closed hat does not: it is as it was, to the sample). */
+    if (lane == OPEN) v->dark = 1.0f - .15f * kit_soft(velocity);
+    else if (lane == CLOSED) v->dark = 1.0f - .50f * kit_soft(velocity);
     if (lane == RIDE) {
         /* Re-striking does not abruptly replace the ringing bell. The two
            copies have the same poles: collapse an unfinished crossfade into
@@ -117,13 +167,13 @@ void metal_hit(Metal *m, int pad, float velocity, const KitPatch *patch)
             v->bell_blend = BELL_BLEND;
         }
         v->ring1 = 0;
-        v->ring2 = -velocity * (p ? .35364f : .29230f);
+        v->ring2 = -velocity * (1.0f + .35f * kit_hard(velocity)) * (p ? .35364f : .29230f);   /* (the bell with the stick) */
     }
 }
 
 /* Stateless, seekable air excitation. Skipping an idle bank or subdividing a
    block leaves the subsequent air sample at the same point in the sequence. */
-static float air_at(uint32_t frame, unsigned profile)
+static inline float air_at(uint32_t frame, unsigned profile)
 {
     uint32_t x = (frame ^ (profile * 0x632be5abu)) * 0x9e3779b9u;
     x = (x ^ (x >> 15)) * 0x85ebca6bu;
@@ -176,30 +226,43 @@ static void source(MetalBank *b, unsigned p, Taps *tap, unsigned count)
     const float top0 = p ? .28765588f : .27577891f;
     const float top1 = p ? .52804666f : .69905788f;
     const float top2 = p ? -.42468825f : -.44844218f;
+    /* (0.5, the CPU) The bank's state in the loop's own variables: the taps are floats, so with the state in the bank
+       the compiler has to load and store all of it around every tap it writes. To the sample as before. */
+    uint32_t phase[6], frame = b->next_frame;
+    const uint32_t s0 = b->step[0], s1 = b->step[1], s2 = b->step[2], s3 = b->step[3], s4 = b->step[4], s5 = b->step[5];
+    float lp_p1 = b->lp_p1, lp_p2 = b->lp_p2, lp_n1 = b->lp_n1, lp_n2 = b->lp_n2;
+    float low = b->low, air_low = b->air_low, air_high_low = b->air_high_low;
+    float m1 = b->mid1, m2 = b->mid2, h1 = b->high1, h2 = b->high2;
+    for (unsigned i = 0; i < 6; i++) phase[i] = b->phase[i];
     for (unsigned n = 0; n < count; n++) {
-        for (unsigned i = 0; i < 6; i++) b->phase[i] += b->step[i];
-        tap[n].air = pulse_mix(b->phase);
+        phase[0] += s0; phase[1] += s1; phase[2] += s2; phase[3] += s3; phase[4] += s4; phase[5] += s5;
+        tap[n].air = pulse_mix(phase);
     }
     for (unsigned n = 0; n < count; n++) {
-        float pulse = lp13k(tap[n].air, &b->lp_p1, &b->lp_p2);
-        float noise = lp13k(air_at(b->next_frame++, p), &b->lp_n1, &b->lp_n2);
-        b->low += .19f * (pulse - b->low);
-        float exciter = .77f*(pulse-b->low) + .69f*noise;
-        b->air_low += .38f*(noise-b->air_low);
-        float hiss = noise-b->air_low;
-        b->air_high_low += .51f*(hiss-b->air_high_low);
-        float edge = hiss-b->air_high_low;
-        float mid = mid0*exciter + b->mid1;
-        b->mid1 = mid1*mid + b->mid2;
-        b->mid2 = mid2*mid - mid0*exciter;
-        float top = top0*exciter + b->high1;
-        b->high1 = top1*top + b->high2;
-        b->high2 = top2*top - top0*exciter;
+        float pulse = lp13k(tap[n].air, &lp_p1, &lp_p2);
+        float noise = lp13k(air_at(frame++, p), &lp_n1, &lp_n2);
+        low += .19f * (pulse - low);
+        float exciter = .77f*(pulse-low) + .69f*noise;
+        air_low += .38f*(noise-air_low);
+        float hiss = noise-air_low;
+        air_high_low += .51f*(hiss-air_high_low);
+        float edge = hiss-air_high_low;
+        float mid = mid0*exciter + m1;
+        m1 = mid1*mid + m2;
+        m2 = mid2*mid - mid0*exciter;
+        float top = top0*exciter + h1;
+        h1 = top1*top + h2;
+        h2 = top2*top - top0*exciter;
         tap[n].body = .97f*mid + .35f*top;
         tap[n].bright = .81f*top + .25f*hiss;
         tap[n].edge = .95f*edge + .14f*top;
         tap[n].air = .24f*pulse + .76f*noise;
     }
+    for (unsigned i = 0; i < 6; i++) b->phase[i] = phase[i];
+    b->next_frame = frame;
+    b->lp_p1 = lp_p1; b->lp_p2 = lp_p2; b->lp_n1 = lp_n1; b->lp_n2 = lp_n2;
+    b->low = low; b->air_low = air_low; b->air_high_low = air_high_low;
+    b->mid1 = m1; b->mid2 = m2; b->high1 = h1; b->high2 = h2;
 #ifdef METAL_TEST_COUNTERS
     b->rendered_frames += count;
 #endif
@@ -212,11 +275,13 @@ static void source(MetalBank *b, unsigned p, Taps *tap, unsigned count)
 #define DARK_CRASH .62f
 #define DARK_RIDE .70f
 
-static int render_hat(MetalVoice *v, int lane, const Taps *tap, float *out, unsigned n)
+GM_INLINE int render_hat(MetalVoice *voice, int lane, const Taps *tap, float *out, unsigned n)
 {
+    MetalVoice state = *voice, *v = &state;   /* (the CPU: see source) */
+    int alive = 1;
     const float settle = lane == CLOSED ? .9983816f : .9996977f; /* contact or open sizzle */
     for (unsigned i = 0; i < n; i++) {
-        v->gain += (lane == CLOSED ? .095f : .012f) * (v->level - v->gain);
+        v->gain += v->attack * (v->level - v->gain);
         v->level *= v->decay_rate;
         float g = v->gain;
         if (v->choke) g *= (float)v->choke * (1.0f / CHOKE_FRAMES);
@@ -229,15 +294,22 @@ static int render_hat(MetalVoice *v, int lane, const Taps *tap, float *out, unsi
             v->dark *= .99993521f;        /* (0.35 s) */
             s = v->tone;
         }
+        else if (v->dark < 1.0f) {        /* a soft closed hat: darker, by the same pole, held */
+            v->tone += v->dark * (s - v->tone);
+            s = v->tone;
+        }
         out[i] += s;
         if (v->movement > 1e-8f) v->movement *= settle;
-        if ((v->choke && --v->choke == 0) || v->gain < quiet) return 0;
+        if ((v->choke && --v->choke == 0) || (v->gain < idle && v->level < idle)) { alive = 0; break; }
     }
-    return 1;
+    *voice = state;
+    return alive;
 }
 
-static int render_cymbal(MetalVoice *v, int lane, unsigned p, const Taps *tap, float *out, unsigned n)
+GM_INLINE int render_cymbal(MetalVoice *voice, int lane, unsigned p, const Taps *tap, float *out, unsigned n)
 {
+    MetalVoice state = *voice, *v = &state;   /* (the CPU: see source) */
+    int alive = 1;
     const float bell_a = p ? 1.87043584f : 1.91231757f;
     /* Parallel plate mode: unity-peak bandpass, Q=3.5, 7.10/7.60 kHz.
        The state belongs to Crash only. Its original wash carries through. */
@@ -275,7 +347,7 @@ static int render_cymbal(MetalVoice *v, int lane, unsigned p, const Taps *tap, f
             v->dark *= .99998866f;        /* (2 s) */
             out[i] += v->tone;
         }
-        v->gain += (lane == CRASH ? .0029f : .022f) * (v->level-v->gain);
+        v->gain += v->attack * (v->level-v->gain);
         if (lane == CRASH && v->movement>1e-8f) v->movement *= .9998740f;
         v->level *= v->decay_rate;
         if (v->accent > 1e-8f) {
@@ -284,13 +356,16 @@ static int render_cymbal(MetalVoice *v, int lane, unsigned p, const Taps *tap, f
         } else {
             v->accent = v->accent_gain = 0;
         }
-        if (v->gain < quiet) return 0;
+        if (v->gain < idle && v->level < idle) { alive = 0; break; }
     }
-    return 1;
+    *voice = state;
+    return alive;
 }
 
-static int render_fx(MetalVoice *v, int lane, const Taps *tap, float *out, unsigned n)
+GM_INLINE int render_fx(MetalVoice *voice, int lane, const Taps *tap, float *out, unsigned n)
 {
+    MetalVoice state = *voice, *v = &state;   /* (the CPU: see source) */
+    int alive = 1;
     for (unsigned i = 0; i < n; i++) {
         float g, cutoff;
         if (lane == RISER) {
@@ -313,9 +388,10 @@ static int render_fx(MetalVoice *v, int lane, const Taps *tap, float *out, unsig
         out[i] += .96f * v->gain * v->filter2;
         v->gain += .055f * (g - v->gain);
         v->cutoff += .055f * (cutoff - v->cutoff);
-        if (v->level < quiet) return 0;
+        if (v->level < quiet) { alive = 0; break; }
     }
-    return 1;
+    *voice = state;
+    return alive;
 }
 
 void metal_render_routed(Metal *m, float *lanes[3], unsigned n)
@@ -331,9 +407,15 @@ void metal_render_routed(Metal *m, float *lanes[3], unsigned n)
                 MetalVoice *v = &b->voice[lane];
                 float *lane_out = lanes[lane <= OPEN ? lane : 2] + off;
                 int alive;
-                if (lane <= OPEN) alive = render_hat(v, lane, tap, lane_out, len);
-                else if (lane <= RIDE) alive = render_cymbal(v, lane, p, tap, lane_out, len);
-                else alive = render_fx(v, lane, tap, lane_out, len);
+                /* (the CPU) each lane its own copy of its loop, the lane's choices made once, not a sample at a time */
+                switch (lane) {
+                case CLOSED: alive = render_hat(v, CLOSED, tap, lane_out, len); break;
+                case OPEN: alive = render_hat(v, OPEN, tap, lane_out, len); break;
+                case CRASH: alive = render_cymbal(v, CRASH, p, tap, lane_out, len); break;
+                case RIDE: alive = render_cymbal(v, RIDE, p, tap, lane_out, len); break;
+                case RISER: alive = render_fx(v, RISER, tap, lane_out, len); break;
+                default: alive = render_fx(v, DROP, tap, lane_out, len); break;
+                }
                 if (!alive) b->active &= ~(1u << lane);
             }
         }

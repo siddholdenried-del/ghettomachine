@@ -34,7 +34,7 @@ the package over USB-MIDI and the FM-1's loader writes only the 4 KiB sectors th
 cd third_party/fm1-base/tools && ../../../.venv/bin/python fm1_install.py ../../../app/build/ghettomachine.fwsc --yes
 ```
 
-**A project saved by this build is format 11** (it holds the drums' edits, the FX's second pages and 32 locks a part). Builds before 24 Nov 2026 can't read it and start with an empty project instead, so don't go back to one after saving here unless you mean to.
+**A project saved by this build is format 14** (it holds the drums' edits, the FX's second pages and 256 locks a pattern, shared by its parts). Builds before 26 Nov 2026 can't read it and start with an empty project instead, so don't go back to one after saving here unless you mean to.
 
 **Tap SAVE first:** an install restarts the FM-1, and the saved project is what comes back. The project is
 kept; only the firmware is written, never the boot code. A project and user presets saved by 0.2, 0.3 or
@@ -111,14 +111,34 @@ you're turning. Purple draws the grids, the empty steps and the boxes. Top to bo
 - **Knobs on the steps page:** LENGTH and RATE of this track's part, SWING and TEMPO (**PART GROOVE**). Turn **SELECT**
   for **DRUM HIT**, or just hold a lit step: **K1 VELOCITY** (that hit's own, 1–127; none set, it plays normal or
   accented), **K2 CHANCE**, **K3 SUBSTEPS**, **K4 ACCENT** (the step's, for every pad). Velocity, chance and substeps
-  each use one of the part's 32 locks (16 until project format 11). The step banks are on OCT− / OCT+.
+  each use one of the pattern's 256 locks, shared by its four parts: one part can hold far more than the others (32 a part until project format 14, 16 until 11). The step banks are on OCT− / OCT+.
 - **The snare's DECAY** (its editor, page 2, K3): the whole drum's length, body and wires together, −100 % to +100 %.
 
-Hold **SEQ** and tap **OCT+** to repeat the selected track’s part into a second half, or **OCT−** to keep its first half (rounding an odd length down). This copies notes, accents, chance and locks without changing the track’s rate. The second half is erased on halving. A full repeat is blocked if it would exceed 128 steps or the part’s lock capacity. **EDIT + OCT−** undoes, **EDIT + OCT+** redoes. On instrument STEPS, black keys 1–8 pick the available banks of 16.
+Hold **SEQ** and tap **OCT+** to repeat the selected track’s part into a second half, or **OCT−** to keep its first half (rounding an odd length down). This copies notes, accents, chance and locks without changing the track’s rate. The second half is erased on halving. A full repeat is blocked if it would exceed 128 steps. If the locks do not all fit twice (256 a pattern, between its four parts), it still doubles and the screen says how many of the second half's locks did not fit. **EDIT + OCT−** undoes, **EDIT + OCT+** redoes. On instrument STEPS, black keys 1–8 pick the available banks of 16.
 
 On instrument STEPS, hold a step and turn **K3 GATE**. Slow turns edit in eighths of a step; a fast turn snaps to whole bars at the selected rate. A note can hold for up to 128 steps.
 
 A very dense collection of long parts can exceed the fixed FM-1 project save slot. If SAVE reports **PROJECT TOO LARGE**, the previous save is kept and the current edits stay in memory. Shorten or clear unused parts before saving again.
+
+### Velocity shapes the drums
+
+How hard a drum is hit changes its sound, not only its level, set once as the hit starts. A hit at the sequencer's
+normal velocity sounds exactly as the drum is set; softer and harder ones differ:
+
+A soft hit is a different touch, not only a quieter one; most of the difference is below the normal velocity, where
+the ghost notes are.
+
+- **Snare:** a ghost note keeps its round body (a little forward of where its velocity alone would leave it) and
+  loses the wires' attack: less wire, a duller band, no edge. An accent's wires stay audible longer.
+- **Closed hat:** light hits are tight and dry; harder ones open up, smoothly through the normal hit.
+- **Open hat:** the first of the hit changes (how fast it comes up, its sizzle), not the tail: a soft one still
+  washes. Velocity never chokes it.
+- **Kick:** the fundamental, its drop and its drive are the same at every velocity; velocity shapes the click and
+  the first 40 ms of the punch.
+- **Crash:** a hard one blooms wider, faster and a little longer. **Ride:** a hard one brings out the stick and the
+  bell; its wash rises only half as much, so accents don't turn it into a crash.
+
+Use the hit's own VELOCITY (hold a step, K1), accents, or velocity from the pads and MIDI.
 
 ### The two percs (P1, P2)
 
@@ -170,6 +190,23 @@ bar whatever its swing.
 - **Hold SEL and turn SWING** to set every track's part of the patterns they are playing at once, and the
   project's with them.
 - A part's swing is copied with the part or the pattern, saved with the project, and undone with EDIT + OCT−.
+
+### Finding your way in a long part (every track's steps)
+
+The drums' steps have the same bars' strip and BAR 2/4 as the instruments', and the same steady view; there OCT− /
+OCT+ step the bars (the black keys are the pads).
+
+A part longer than 16 steps is shown a **bar** (16 steps) at a time. Along the bottom of the steps page is the
+**bars' strip**: every bar of the part, numbered; the one you're looking at is framed, bars with notes in them are
+filled, and while it plays a yellow mark runs through them. The top line says **BAR 2/4**.
+
+- **OCT− / OCT+** step to the bar before or after; **black keys 1–8** jump straight to a bar.
+- While it plays the view follows the playhead, but not while you work: touch a step or turn the bar and the view
+  stays on that bar until 6 seconds after your last touch (and for as long as a step is held).
+- The rows are laid out as a keyboard: the white keys' rows lighter, the black keys' darker, with the keys themselves
+  down the left edge. Rows with a note on this bar are named.
+- The top line names the notes: a held step's, or while playing the notes sounding now (after **>**). A note
+  sounding is drawn white.
 
 ### Microtiming, and copy and paste (every track)
 
@@ -339,12 +376,18 @@ On STEPS an accented note has a white bar over it and a slide a mark at its end.
 
 ### Presets
 
-- **PRESETS** goes through 24 factory sounds (basses, leads, pads, keys...), then your own **USER 1–16**. A `*` after
-  the name means you've changed it since loading it.
-- **ACID** (since 0.4) has LEGATO SLIDE (keys played tied glide, others don't) and GLIDE 25. A sound you saved from
-  it before keeps its own settings.
-- The last nine show off the synth update: **FM BELL**, **FM BASS**, **FM KEYS**, **FOLD LEAD**, **WEST PLUCK**,
-  **RING METAL**, **DRIFT PAD**, **CRUSH BASS**, **WOBBLE**. MACRO 1 does something on each.
+- **PRESETS** steps through the factory sounds, 129 of them in six banks by **kind**, so you never step through a
+  mix: **MONO BASS** (24: acid, sub, FM, reese, wobble...), your own **USER 1–16**, then **MONO LEAD**, **POLY** (keys,
+  then pads), **STAB** (short chords), **HIT** (zaps, risers, blips, impacts) and **DRUM** (synth drums: kicks,
+  snares, hats, toms), 21 each. **Hold SEL and turn PRESETS** to jump from one kind to the next. A `*` after the name
+  means you've changed it since loading it.
+- The set was rebuilt in 0.5 (25 Nov 2026). **A project saved before that keeps its sounds exactly**: a track holds its
+  whole sound, so nothing you saved changes, and it still shows the old sound's name and plays at the old level
+  until you pick another preset on that track. The old sounds can't be picked from PRESETS any more; save one you
+  want to keep as a USER sound.
+- The **ACID** basses have LEGATO SLIDE (keys played tied glide, others don't) and GLIDE 25, for the 303 generator.
+- MACRO 1 does something on many of them (the filter, FM, the shaper, the LFO's rate); pressure opens the filter on
+  a few (TALK, SOLO BRASS, DARK PAD).
 - **To keep a sound:** hold **SAVE**, turn **PRESETS** to pick a USER slot (the screen says EMPTY or REPLACE), and let go
   of SAVE.
 - **On the drums**, PRESETS goes through the **genre kits**: ELECTRO (the factory kit, and what every project saved
@@ -639,7 +682,8 @@ Press HOME on the SONG page.
   clock after Start, measures the tempo over the last 4 beats and pulls its groove to the clock every 16th, so they
   don't drift apart. A jump in tempo is caught within about two beats.
 - **K2 SOUNDS:** **SHARED** (one sound per track, whatever the pattern) or **OWN** (**sounds per pattern**): each
-  pattern keeps T2–T4's sounds and the drums' kit. A track moving to another pattern (a scene, a clip, the song, a
+  pattern keeps T2–T4's sounds, the drums' kit and every drum's own settings (tune, decay, model and the rest: edit a
+  drum on one pattern and the others keep theirs). A track moving to another pattern (a scene, a clip, the song, a
   follow action) takes that pattern's sound; a pattern with none yet takes the sound that's playing. So pattern 1 can
   be a 909 with a soft pad and pattern 2 an 808 with an acid bass. The grid shows which patterns have their own.
 - **K3 USB PORT:** **COMPUTER** or **MIDI HOST** (a USB controller or synth plugged straight into the FM-1).
@@ -668,7 +712,7 @@ Press HOME on the SONG page.
   - **It's late.** The sound reaches the ear 150 to 300 ms after a key, the device's own buffer: for listening
     back, not for playing in time.
   - **Undo keeps one step while it's on** (its memory is lent to the radio), and the undo history is emptied when
-    you turn it on or off. All six steps come back when it's off.
+    you turn it on or off. All five steps come back when it's off.
   - If it's on when you SAVE the project, it comes back on at power-on and reconnects to the last device.
 - **SELECT again: CPU.** Turn SELECT to see where the processor's time goes, live: **DRUMS**, **SYNTH**, **INSERT+COLOR**,
   **REV+DLY CORE2**, **MASTER CORE2**, **OTHER** and the **TOTAL**, each as a share of the time the FM-1 has for each
@@ -685,8 +729,8 @@ Press HOME on the SONG page.
 | The project: patterns, song, sounds (each pattern's too), the drums' edits, mixer, FX, the master bus, LFOs, arps, follow actions, SETUP | a file with two copies, so a power cut while saving keeps the old one | when you tap SAVE (while playing: at the stop) |
 | User presets and kits | a store of their own | as soon as you save one |
 
-**Within 0.5:** the project format grew three times (32 locks a part; then mix per pattern, the generators' kept
-steps and beats). This build reads every earlier 0.5 save; once it has saved, an earlier 0.5 build starts a fresh
+**Within 0.5:** the project format grew four times (32 locks a part; then mix per pattern, the generators' kept
+steps and beats; then 256 locks a pattern shared by its parts, format 14). This build reads every earlier 0.5 save; once it has saved, an earlier 0.5 build starts a fresh
 project instead of reading it (the file stays, and this build reads it again).
 
 **From 0.2, 0.3 and 0.4:** their projects and 0.2's user presets are no longer read (their converters were cut on
@@ -701,6 +745,9 @@ the sound saved with the pattern it's on.
 
 - **In:** channel 10 plays the pads (General MIDI drum notes), channels 2–4 play T2–T4, and channel 1 plays the
   track picked.
+- **MIDI is watched closely only while it's coming.** With nothing sending, the FM-1 looks for MIDI every fourth
+  block of sound, so the first message after a silence can wait up to 23 ms; from then on (until 2 s after the last
+  message) it looks every block, as before. An FM-1 played alone doesn't pay for the look each block.
 - **Controllers in:** on channels 2–4 (and 1, the track picked), CC 20–23 turn the track's MACRO 1–4 and the mod
   wheel (CC 1) MACRO 1.
 - **Song Position:** followed and stopped, a position sent before Continue is where Continue goes on from.

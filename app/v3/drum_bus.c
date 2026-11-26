@@ -179,15 +179,19 @@ static void render_dry(DrumBus *b, const BusMix *m, float *lanes[BUS_PADS], cons
     b->comp_env = b->fast_env = b->slow_env = 0;
 }
 
+/* (0.5, the CPU) As render_dry: the bus's .75, level, pan and the track's gain go into each pad's two gains, and the
+   first pad to sound sets the buffers: no clears and no scaling pass before the saturation. The same sound, to float
+   rounding (the gains multiplied in another order). */
 static float render_block(DrumBus *b, const BusMix *m, float *lanes[BUS_PADS], const float *trim,
                          unsigned offset, float *l, float *r, float *rev, float *dly, unsigned n)
 {
-    V3_CLEAR(l, 0, n * sizeof *l);
-    V3_CLEAR(r, 0, n * sizeof *r);
-    V3_CLEAR(rev, 0, n * sizeof *rev);
-    V3_CLEAR(dly, 0, n * sizeof *dly);
+    float blg, brg;
+    balance(m->bus.pan,m->bus.level,&blg,&brg);
+    blg *= .75f*b->track_gain;
+    brg *= .75f*b->track_gain;
     const float master_rv = .75f * b->track_gain * kit_unit(m->bus.reverb_send);
     const float master_dl = .75f * b->track_gain * kit_unit(m->bus.delay_send);
+    int first = 1, sends_written = 0;
     for (unsigned p = 0; p < BUS_PADS; ++p) {
         if (!lanes[p]) continue;
         const BusPad *v = &m->pad[p];
@@ -195,27 +199,33 @@ static float render_block(DrumBus *b, const BusMix *m, float *lanes[BUS_PADS], c
         if (level == 0) continue;
         float lg, rg;
         balance(v->pan,level,&lg,&rg);
-        lg *= t;
-        rg *= t;
+        lg *= t * blg;
+        rg *= t * brg;
         const float *src = lanes[p] + offset;
-        float rv = level * t * master_rv * kit_unit(v->reverb);
-        float dl = level * t * master_dl * kit_unit(v->delay);
-        if (rv != 0 || dl != 0) {
-            for (unsigned i = 0; i < n; ++i) {
-                l[i] += lg*src[i]; r[i] += rg*src[i];
-                rev[i] += rv*src[i]; dly[i] += dl*src[i];
-            }
+        const float rv = level * t * master_rv * kit_unit(v->reverb);
+        const float dl = level * t * master_dl * kit_unit(v->delay);
+        if (first) {
+            for (unsigned i = 0; i < n; ++i) { const float x = src[i]; l[i] = lg*x; r[i] = rg*x; }
+            first = 0;
         } else {
-            for (unsigned i = 0; i < n; ++i) {
-                l[i] += lg*src[i]; r[i] += rg*src[i];
+            for (unsigned i = 0; i < n; ++i) { const float x = src[i]; l[i] += lg*x; r[i] += rg*x; }
+        }
+        if (rv != 0 || dl != 0) {
+            if (!sends_written) {
+                for (unsigned i = 0; i < n; ++i) { const float x = src[i]; rev[i] = rv*x; dly[i] = dl*x; }
+                sends_written = 1;
+            } else {
+                for (unsigned i = 0; i < n; ++i) { const float x = src[i]; rev[i] += rv*x; dly[i] += dl*x; }
             }
         }
     }
-    float lg, rg;
-    balance(m->bus.pan,m->bus.level,&lg,&rg);
-    for (unsigned i = 0; i < n; ++i) {
-        l[i] *= .75f*lg*b->track_gain;
-        r[i] *= .75f*rg*b->track_gain;
+    if (first) {
+        V3_CLEAR(l, 0, n * sizeof *l);
+        V3_CLEAR(r, 0, n * sizeof *r);
+    }
+    if (!sends_written) {
+        V3_CLEAR(rev, 0, n * sizeof *rev);
+        V3_CLEAR(dly, 0, n * sizeof *dly);
     }
     if (!m->dry_only && b->saturation)
         v3_saturate(l, r, n, b->saturation);

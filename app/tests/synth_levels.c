@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #define WIN 4410
-#define TARGET (-16.0)
+#define TARGET (-16.3)
 typedef struct { double b0, b1, b2, a1, a2, z1, z2; } bq_t;
 static double bq(bq_t *f, double x) { double y = f->b0 * x + f->z1; f->z1 = f->b1 * x - f->a1 * y + f->z2; f->z2 = f->b2 * x - f->a2 * y; return y; }
 static void kw(bq_t *s, bq_t *h)
@@ -67,10 +67,11 @@ int main(int argc, char **argv)
         double target;
         for (int p = 0; p < n; p++) srt[p] = raw[p] = measure(p, 1.0);
         qsort(srt, (size_t)n, sizeof srt[0], cmp);
-        target = srt[n / 2];
+        target = TARGET;                  /* (the first set's median when its trims were first written: the level every
+                                           * project's sounds were brought to, kept for the second set) */
         if (!(f = fopen(write, "w"))) return 2;
         fprintf(f, "/* GhettoMachine's synth: each factory sound's level trim, tenths of a dB (synth.c PRESET_TRIM). Written by\n"
-                   " * tests/synth_levels.c --write (the loudest 100 ms of a note or a chord, K-weighted; the target the median,\n"
+                   " * tests/synth_levels.c --write (the loudest 100 ms of a note or a chord, K-weighted; the target the first set's median,\n"
                    " * %.1f LUFS at level 100; +6 / -12 dB at most); write it again after a preset's sound changes */\n", target);
         for (int p = 0; p < n; p++) {
             int t = (int)lround((target - raw[p]) * 10.0);
@@ -85,8 +86,8 @@ int main(int argc, char **argv)
     for (int p = 0; p < n; p++) srt[p] = raw[p] = measure(p, pow(10, syn_preset_trim(p) / 200.0));
     qsort(srt, (size_t)n, sizeof srt[0], cmp);
     for (int p = 0; p < n; p++)
-        if (fabs(raw[p] - srt[n / 2]) > 1.5 && syn_preset_trim(p) < 60 && syn_preset_trim(p) > -120) {
-            printf("FAIL %d %s: %.1f LUFS, the median %.1f\n", p, syn_preset_name(p), raw[p], srt[n / 2]);
+        if (fabs(raw[p] - TARGET) > 1.5 && syn_preset_trim(p) < 60 && syn_preset_trim(p) > -120) {
+            printf("FAIL %d %s: %.1f LUFS, the target %.1f\n", p, syn_preset_name(p), raw[p], TARGET);
             fails++;
         }
     printf("%s: %d presets, median %.1f, quietest %.1f, loudest %.1f, %d off by over 1.5 dB\n", fails ? "FAIL" : "PASS", n, srt[n / 2], srt[0], srt[n - 1], fails);
