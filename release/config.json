@@ -195,14 +195,14 @@
   "site": "https://ghettomachine.bongcult.com",
   "source": {
     "emscripten": "7.0.0+777e6e5db7b4990bcaeb1b9998ed642cc84e6629",
-    "emulator_build_commit": "337dcddf7e13fee51fdd909435b0ab866d459bc7",
-    "feature_source": "337dcddf7e13fee51fdd909435b0ab866d459bc7",
+    "emulator_build_commit": "2f54cb6583cdfdb393d93a64170cd81b86ec7604",
+    "feature_source": "2f54cb6583cdfdb393d93a64170cd81b86ec7604",
     "felucca_bsp": "2a5af3dfc8bccb92e37d48a3e7e0bf9a5827e51f",
     "fm1_base": "7337375c15e9db26f23b0c68a1db61429add2f48",
-    "provenance": "Browser build of the exact GhettoMachine main source and its pinned submodules: the unified-engine merge (CPU passes, PLAY and perform keys read in the audio interrupt, 5 undo steps, project format 14 with 256 locks a pattern shared by its parts). The previous public emulator was 31fccda0321f403bab914f7f094e4f38e7a906d1.",
-    "remote_main_predecessor": "49f16dbbfa56c9a115d8345c88ca394df1e0d6e3",
+    "provenance": "Browser build of the exact GhettoMachine main source and its pinned submodules: LFO 2's synced rates worked out once a tempo instead of per voice a tick (sound unchanged). The previous public emulator was 337dcddf7e13fee51fdd909435b0ab866d459bc7.",
+    "remote_main_predecessor": "cce02b54bef334b0af31022834385e85b4e6a272",
     "repository": "https://github.com/siddholdenried-del/ghettomachine",
-    "runtime_tree": "b977db1836984a85a42cd8afa3317f6a3dd00f14"
+    "runtime_tree": "bf2904b14bd8ca7192e0ecf82655a7aafb94a2ae"
   },
   "targets": {
     "device": {
@@ -240,7 +240,7 @@
       "identity": "GHETTOMACHINE DEV",
       "path": "emu/app.wasm",
       "platform": "browser",
-      "sha256": "2ffafb090feb89d3daeebdc2eed66d3b59d7624f6d256f77b277fb487dd5caec"
+      "sha256": "a76ee810e4e9cae207ee38c815ebfff0e9c4e9f18f8adf855090ee34403b4f60"
     }
   ]
 }
