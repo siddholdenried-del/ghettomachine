@@ -34,7 +34,7 @@ the package over USB-MIDI and the FM-1's loader writes only the 4 KiB sectors th
 cd third_party/fm1-base/tools && ../../../.venv/bin/python fm1_install.py ../../../app/build/ghettomachine.fwsc --yes
 ```
 
-**A project saved by this build is format 11** (it holds the drums' edits, the FX's second pages and 32 locks a part). Builds before 24 Nov 2026 can't read it and start with an empty project instead, so don't go back to one after saving here unless you mean to.
+**A project saved by this build is format 14** (it holds the drums' edits, the FX's second pages and 256 locks a pattern, shared by its parts). Builds before 26 Nov 2026 can't read it and start with an empty project instead, so don't go back to one after saving here unless you mean to.
 
 **Tap SAVE first:** an install restarts the FM-1, and the saved project is what comes back. The project is
 kept; only the firmware is written, never the boot code. A project and user presets saved by 0.2, 0.3 or

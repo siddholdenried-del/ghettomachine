@@ -102,7 +102,7 @@ enum { XL_LRATE, XL_LDEPTH, XL_ARATE, XL_AGATE, XL_NUM };
 #define NKEYS 27
 #define KEY_NOTE0 53                      /* key 0 (F3) at octave 0 */
 #define PROJ_MAGIC 0x31544745u            /* "EGT1": fm1-eight 0.1's project; another magic loads the default project */
-#define PROJ_VERSION 14                   /* 14: 64 locks a part (11 to 13's patterns had 32); 13: each pattern's drum sounds (pdrum) appended (12's layout before them); 12: MIX PER PATTERN (pmix, pfx) appended (11's layout before them); 11: 32 locks a part (10's patterns had 16: pattern_v10_t); 10: the DrumEngine's patch (the drums' edits) appended (9's layout before
+#define PROJ_VERSION 14                   /* 14: 256 locks a pattern, shared by its parts (11 to 13's patterns had 32 a part); 13: each pattern's drum sounds (pdrum) appended (12's layout before them); 12: MIX PER PATTERN (pmix, pfx) appended (11's layout before them); 11: 32 locks a part (10's patterns had 16: pattern_v10_t); 10: the DrumEngine's patch (the drums' edits) appended (9's layout before
                                            * it); 9: BongVerb's and BongDelay's knobs in the sends' slots (fx_migrate; the
                                            * layout is 8's); 8: each clip its own LFO (plfo); 7: combined Color and mixed
                                            * kits; 1-5 and 7-9 readable, private divergent v6 rejected */
