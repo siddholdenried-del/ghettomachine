@@ -265,8 +265,8 @@
       "sha256": "c4fc02bbe685f3161e16c6233e7f7f1fb3a36f4de9c8a874103030b6751bcfa9"
     },
     "emu/app.wasm": {
-      "bytes": 794727,
-      "sha256": "f9738d564b664bb802b3e49da70dc0f18f4457cddfe7b975b5835376a0e12f62"
+      "bytes": 834724,
+      "sha256": "2ffafb090feb89d3daeebdc2eed66d3b59d7624f6d256f77b277fb487dd5caec"
     },
     "emu/app_worklet.js": {
       "bytes": 210,
@@ -274,7 +274,7 @@
     },
     "emu/index.html": {
       "bytes": 46364,
-      "sha256": "77ca9c80e924f6e141d9b43cb77f53f006120e16c4aa2a30c0e115cf39498df7"
+      "sha256": "45e815be8e6988a16916025c90f2e75b6e1ad4bc70553b753762da0fd9b5a4dd"
     },
     "emu/parts/midi.js": {
       "bytes": 4429,
@@ -346,7 +346,7 @@
     },
     "guide/setup/index.html": {
       "bytes": 31711,
-      "sha256": "0c5a093fbfa32f7beec73f02a35a5a0fd8c056b4b2def28740585a915cb89460"
+      "sha256": "4c6db11026a27052254c6ca2452eb71395e774a716810dde2358533ad8c33576"
     },
     "guide/sounds/index.html": {
       "bytes": 28179,
@@ -365,15 +365,15 @@
   "schema": 1,
   "site": "https://ghettomachine.bongcult.com",
   "source": {
-    "emscripten": "4.0.11+d3432e7a2a6585331c94b041973fb16c9f332ce4",
-    "emulator_build_commit": "31fccda0321f403bab914f7f094e4f38e7a906d1",
-    "feature_source": "31fccda0321f403bab914f7f094e4f38e7a906d1",
+    "emscripten": "7.0.0+777e6e5db7b4990bcaeb1b9998ed642cc84e6629",
+    "emulator_build_commit": "337dcddf7e13fee51fdd909435b0ab866d459bc7",
+    "feature_source": "337dcddf7e13fee51fdd909435b0ab866d459bc7",
     "felucca_bsp": "2a5af3dfc8bccb92e37d48a3e7e0bf9a5827e51f",
     "fm1_base": "7337375c15e9db26f23b0c68a1db61429add2f48",
-    "provenance": "Browser build of the exact GhettoMachine main source and its pinned submodules. The previous public emulator was 86ad2b3cd0ecdd1bd5b9f115f5d7a853b4b9b8a9.",
-    "remote_main_predecessor": "31fccda0321f403bab914f7f094e4f38e7a906d1",
+    "provenance": "Browser build of the exact GhettoMachine main source and its pinned submodules: the unified-engine merge (CPU passes, PLAY and perform keys read in the audio interrupt, 5 undo steps, project format 14 with 256 locks a pattern shared by its parts). The previous public emulator was 31fccda0321f403bab914f7f094e4f38e7a906d1.",
+    "remote_main_predecessor": "49f16dbbfa56c9a115d8345c88ca394df1e0d6e3",
     "repository": "https://github.com/siddholdenried-del/ghettomachine",
-    "runtime_tree": "b8c0791ba8ae478bef4ead114936afa263867258"
+    "runtime_tree": "b977db1836984a85a42cd8afa3317f6a3dd00f14"
   },
   "targets": {
     "device": {
@@ -410,7 +410,7 @@
       "identity": "GHETTOMACHINE DEV",
       "path": "emu/app.wasm",
       "platform": "browser",
-      "sha256": "f9738d564b664bb802b3e49da70dc0f18f4457cddfe7b975b5835376a0e12f62"
+      "sha256": "2ffafb090feb89d3daeebdc2eed66d3b59d7624f6d256f77b277fb487dd5caec"
     }
   ]
 }
